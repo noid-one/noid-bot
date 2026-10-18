@@ -24,7 +24,7 @@
         "start": "node bin/pi-pocket.js",
         "dev": "node bin/pi-pocket.js --cwd .",
         "check": "tsc --noEmit -p . && node test/types-file.ts && node docs-site/check-reference.mjs",
-        "test": "node --test test/*.test.ts",
+        "test": "node --test --test-timeout=120000 test/*.test.ts",
         "format": "eslint --fix . && prettier --write .",
         "format:check": "prettier --check . && eslint .",
         "lint": "eslint ."

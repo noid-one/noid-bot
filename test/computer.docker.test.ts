@@ -230,3 +230,106 @@ test(
         );
     },
 );
+
+test(
+    "bots share the computer's one browser: a window each, one login for all, live frames",
+    { skip },
+    async () => {
+        const made = async (name: string) =>
+            (await app!.bots.create(owner(app!), { name: `${name} ${run}` })).id;
+        const first = await made("Browser One");
+        const second = await made("Browser Two");
+
+        // A site on the computer, as a dev server a bot starts would be.
+        await docker([
+            "exec",
+            "-d",
+            "noid-computer",
+            "sh",
+            "-c",
+            "cd /tmp && python3 -m http.server 8765 --bind 127.0.0.1",
+        ]);
+        await until(
+            async () =>
+                (await onComputer(
+                    "python3 -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8765/').status)\"",
+                )) === "200",
+            "the site to answer",
+            20_000,
+        );
+
+        const one = await app!.browsers.open(Number(first));
+        const two = await app!.browsers.open(Number(second));
+
+        assert.ok(one.shared && two.shared, "windows of the shared browser");
+        assert.notEqual(one.targetId, two.targetId);
+        assert.equal(one.contextId, two.contextId, "one context: one set of logins");
+
+        await one.navigate("http://127.0.0.1:8765/");
+        await one.evaluate(`document.cookie = "noid_login=${run}; max-age=86400; path=/"`);
+        await two.navigate("http://127.0.0.1:8765/");
+        assert.match(await two.evaluate("document.cookie"), new RegExp(`noid_login=${run}`));
+
+        // Neither window took the other for its popup.
+        assert.ok(!one.closed && !two.closed);
+
+        // People watch through the panel: frames keep coming for both, though one window covers the other.
+        const firstFrame = await one.frame(0);
+        const secondFrame = await two.frame(0);
+
+        assert.ok(firstFrame !== undefined && secondFrame !== undefined, "frames for both windows");
+
+        await app!.browsers.close(Number(first));
+        assert.ok(!two.closed, "closing one bot's window leaves the other's");
+        await app!.browsers.close(Number(second));
+    },
+);
+
+test(
+    "the computer's browser starts on a stopped computer, and a quick restart keeps the login",
+    { skip },
+    async () => {
+        const id = (await app!.bots.create(owner(app!), { name: `Cold ${run}` })).id;
+
+        // A stopped computer: its display starts in the background as the browser asks for it.
+        await app!.browsers.closeAll();
+        await docker(["stop", "--time", "2", "noid-computer"]);
+
+        const page = await app!.browsers.open(Number(id));
+
+        assert.ok(page.shared);
+        await page.navigate("about:blank");
+        await page.evaluate("1 + 1");
+
+        // Stopped and opened again at once: the new browser waits for the old one before it takes the profile.
+        await docker([
+            "exec",
+            "-d",
+            "noid-computer",
+            "sh",
+            "-c",
+            "cd /tmp && python3 -m http.server 8766 --bind 127.0.0.1",
+        ]);
+        await until(
+            async () =>
+                (await onComputer(
+                    "python3 -c \"import urllib.request as u; print(u.urlopen('http://127.0.0.1:8766/').status)\"",
+                )) === "200",
+            "the site to answer",
+            20_000,
+        );
+        await page.navigate("http://127.0.0.1:8766/");
+        await page.evaluate(`document.cookie = "quick=${run}; max-age=86400; path=/"`);
+        await app!.browsers.closeAll();
+
+        const again = await app!.browsers.open(Number(id));
+
+        await again.navigate("http://127.0.0.1:8766/");
+        assert.match(await again.evaluate("document.cookie"), new RegExp(`quick=${run}`));
+        assert.equal(
+            await onComputer("pgrep -c -x chromium >/dev/null && echo running"),
+            "running",
+        );
+        await app!.browsers.close(Number(id));
+    },
+);

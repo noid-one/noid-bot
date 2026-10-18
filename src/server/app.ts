@@ -79,7 +79,8 @@ import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
 import { ApprovalRulesDoc, createApprovals, NOID_APPROVAL } from "./noid/approvals.ts";
 import { Bots } from "./noid/bots.ts";
-import { Computer, onComputer } from "./noid/computer.ts";
+import { Chromium } from "./browser/cdp.ts";
+import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
 import { configureHttp } from "./net.ts";
@@ -388,6 +389,20 @@ export class PocketApp {
             dataDir: options.dataDir,
             ...(options.browser === undefined ? {} : { executable: options.browser }),
             log: (line) => this.#log(line),
+            // noid: bots, and sessions on the shared computer, use the computer's one browser: a window each, logins
+            // shared. People watch and use the same window in the Browser panel.
+            remote: {
+                claims: (id) =>
+                    this.bots.of(id as unknown as ConversationId) !== undefined ||
+                    onComputer(this.cwdOf(id as unknown as ConversationId)),
+                launch: async () =>
+                    Chromium.over(
+                        await this.computer.launchBrowser(),
+                        "the shared computer's browser",
+                    ),
+                hold: () => this.computer.hold(),
+                downloadPath: `${COMPUTER_HOME}/shared/downloads`,
+            },
             load: async (id) =>
                 (await this.harness.snapshot(
                     BrowserDoc,

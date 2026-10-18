@@ -137,6 +137,7 @@ export class BrowserPage {
     readonly #session: string;
     readonly #target: string;
     readonly #context: string;
+    readonly #shared: boolean;
     readonly #baseAgent: string;
     readonly #changed: () => void;
     readonly #saved: (saved: Saved) => void;
@@ -179,12 +180,18 @@ export class BrowserPage {
         viewport: Viewport;
         changed: () => void;
         saved: (saved: Saved) => void;
+        /**
+         * noid: the page is a window in a browser context other conversations' windows share (the shared computer's
+         * one browser, logins and all), so only windows it opened itself are its popups.
+         */
+        shared?: boolean;
     }) {
         this.conversationId = options.conversationId;
         this.#connection = options.connection;
         this.#session = options.session;
         this.#target = options.target;
         this.#context = options.context;
+        this.#shared = options.shared === true;
         this.#baseAgent = options.userAgent;
         this.#viewport = options.viewport;
         this.#changed = options.changed;
@@ -194,6 +201,11 @@ export class BrowserPage {
 
     get targetId(): string {
         return this.#target;
+    }
+
+    /** noid: whether the page is a window in a shared browser context (closed by itself, not with its context). */
+    get shared(): boolean {
+        return this.#shared;
     }
 
     get contextId(): string {
@@ -469,9 +481,11 @@ export class BrowserPage {
         }
 
         // Pages the browser prerenders on a site's hint are its guesses, not tabs; and only this page's tabs come here.
+        // In a shared context another conversation's new window has no opener either: only this page's own count.
         if (
             (info.subtype ?? "") !== "" ||
             (info.openerId !== undefined && info.openerId !== this.#target) ||
+            (this.#shared && info.openerId !== this.#target) ||
             this.#handled.has(id)
         ) {
             return;

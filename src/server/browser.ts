@@ -38,6 +38,17 @@ export interface BrowsersOptions {
     log?(line: string): void;
     /** A page nobody used or watched for this long closes. */
     idleMs?: number;
+    /**
+     * noid: a browser elsewhere (the shared computer's) for the conversations it claims (the bots): one Chromium there,
+     * started with the first such page, with a window per conversation in its default context, so they share logins.
+     * `hold` keeps that computer up while the browser runs.
+     */
+    remote?: {
+        claims(conversationId: number): boolean;
+        launch(): Promise<Chromium>;
+        hold?(): () => void;
+        downloadPath?: string;
+    };
 }
 
 /**
@@ -48,6 +59,10 @@ export class Browsers {
     readonly #options: BrowsersOptions;
     #executable: string | null | undefined;
     #chromium: Promise<Chromium> | undefined;
+    /** noid: the shared computer's browser, when one runs, and how to let its computer stop again. */
+    #remote: Promise<Chromium> | undefined;
+    #remoteRelease: (() => void) | undefined;
+    #remoteIdleSince = Date.now();
     readonly #pages = new Map<number, BrowserPage>();
     readonly #opening = new Map<number, Promise<BrowserPage>>();
     readonly #listeners = new Set<(conversationId: number, state: BrowserState) => void>();
@@ -88,15 +103,16 @@ export class Browsers {
     /** A conversation's page as it is now; a closed one has no address. */
     state(conversationId: number): BrowserState {
         const page = this.#pages.get(conversationId);
+        const available = this.#isRemote(conversationId) || this.available;
 
         if (page !== undefined && !page.closed) {
-            return page.state(this.available);
+            return page.state(available);
         }
 
         const problem = this.#problems.get(conversationId);
 
         return {
-            available: this.available,
+            available,
             open: false,
             url: "",
             title: "",
@@ -135,6 +151,123 @@ export class Browsers {
 
         timer.unref();
         this.#pending.set(conversationId, timer);
+    }
+
+    #isRemote(conversationId: number): boolean {
+        return this.#options.remote?.claims(conversationId) === true;
+    }
+
+    /** Route the browser's target events to its own pages: windows of the shared browser, or pages here. */
+    #routeTargets(chromium: Chromium, shared: boolean): void {
+        chromium.connection.onEvent = (method, params) => {
+            if (!method.startsWith("Target.")) {
+                return;
+            }
+
+            const info =
+                params.targetInfo ??
+                (method === "Target.targetDestroyed" ? { targetId: params.targetId } : undefined);
+
+            if (info === undefined) {
+                return;
+            }
+
+            for (const [id, page] of this.#pages) {
+                if (page.shared !== shared) {
+                    continue;
+                }
+
+                // A page closed by its own script (window.close()) is gone, with its browser context.
+                if (method === "Target.targetDestroyed" && info.targetId === page.targetId) {
+                    void this.#discard(id, page);
+                } else {
+                    page.targetEvent(method, info);
+                }
+            }
+        };
+    }
+
+    /** noid: the shared computer's browser, started (with its computer) if it is not running. */
+    async #remoteBrowser(): Promise<Chromium> {
+        const remote = this.#options.remote!;
+
+        if (this.#remote !== undefined) {
+            const running = await this.#remote.catch(() => undefined);
+
+            if (running !== undefined && !running.connection.closed) {
+                return running;
+            }
+        }
+
+        if (this.#closing) {
+            throw new BrowserError("The server is stopping.");
+        }
+
+        // Everything is set up before the promise settles, so a second caller never gets a half-ready browser.
+        const launching: Promise<Chromium> = (async () => {
+            const chromium = await remote.launch();
+            const hold = remote.hold?.();
+            let held = true;
+
+            const release = () => {
+                if (held) {
+                    held = false;
+                    hold?.();
+                }
+            };
+
+            this.#routeTargets(chromium, true);
+
+            chromium.connection.onClose = () => {
+                if (this.#remote === launching) {
+                    this.#remote = undefined;
+                }
+
+                release();
+
+                for (const page of this.#pages.values()) {
+                    if (page.shared) {
+                        page.close();
+                    }
+                }
+            };
+
+            this.#remoteRelease = release;
+
+            // Closed before its handler was there: let the computer go now.
+            if (chromium.connection.closed) {
+                release();
+
+                throw new BrowserError("The shared computer's browser stopped as it started.");
+            }
+
+            if (this.#closing) {
+                chromium.kill();
+
+                throw new BrowserError("The server is stopping.");
+            }
+
+            await chromium.connection
+                .send(
+                    "Browser.setDownloadBehavior",
+                    remote.downloadPath === undefined
+                        ? { behavior: "deny" }
+                        : { behavior: "allow", downloadPath: remote.downloadPath },
+                )
+                .catch(() => {});
+            this.#options.log?.("Browser started on the shared computer");
+
+            return chromium;
+        })();
+
+        this.#remote = launching;
+        launching.catch(() => {
+            if (this.#remote === launching) {
+                this.#remote = undefined;
+            }
+        });
+
+        return launching;
     }
 
     async #browser(): Promise<Chromium> {
@@ -184,29 +317,7 @@ export class Browsers {
         }
 
         this.#options.log?.(`Browser started: ${executable}`);
-
-        chromium.connection.onEvent = (method, params) => {
-            if (!method.startsWith("Target.")) {
-                return;
-            }
-
-            const info =
-                params.targetInfo ??
-                (method === "Target.targetDestroyed" ? { targetId: params.targetId } : undefined);
-
-            if (info === undefined) {
-                return;
-            }
-
-            for (const [id, page] of this.#pages) {
-                // A page closed by its own script (window.close()) is gone, with its browser context.
-                if (method === "Target.targetDestroyed" && info.targetId === page.targetId) {
-                    void this.#discard(id, page);
-                } else {
-                    page.targetEvent(method, info);
-                }
-            }
-        };
+        this.#routeTargets(chromium, false);
 
         chromium.connection.onClose = () => {
             if (this.#chromium === launching) {
@@ -214,7 +325,9 @@ export class Browsers {
             }
 
             for (const page of this.#pages.values()) {
-                page.close();
+                if (!page.shared) {
+                    page.close();
+                }
             }
         };
 
@@ -272,21 +385,38 @@ export class Browsers {
             throw new BrowserError("The browser was closed.");
         }
 
-        const chromium = await this.#browser();
+        // noid: a bot's page is a window of the shared computer's one browser, in the context all its windows share.
+        const shared = this.#isRemote(conversationId);
+        const chromium = shared ? await this.#remoteBrowser() : await this.#browser();
         const connection = chromium.connection;
-        const { browserContextId } = await connection.send("Target.createBrowserContext", {
-            disposeOnDetach: false,
-        });
+        let browserContextId = "";
+        let targetId: string | undefined;
         let page: BrowserPage | undefined;
 
+        if (!shared) {
+            ({ browserContextId } = await connection.send("Target.createBrowserContext", {
+                disposeOnDetach: false,
+            }));
+        }
+
         try {
-            await connection
-                .send("Browser.setDownloadBehavior", { behavior: "deny", browserContextId })
-                .catch(() => {});
-            const { targetId } = await connection.send("Target.createTarget", {
-                url: "about:blank",
-                browserContextId,
-            });
+            if (shared) {
+                ({ targetId } = await connection.send("Target.createTarget", {
+                    url: "about:blank",
+                    newWindow: true,
+                }));
+                browserContextId = (await connection.send("Target.getTargetInfo", { targetId }))
+                    .targetInfo.browserContextId;
+            } else {
+                await connection
+                    .send("Browser.setDownloadBehavior", { behavior: "deny", browserContextId })
+                    .catch(() => {});
+                ({ targetId } = await connection.send("Target.createTarget", {
+                    url: "about:blank",
+                    browserContextId,
+                }));
+            }
+
             const { sessionId } = await connection.send("Target.attachToTarget", {
                 targetId,
                 flatten: true,
@@ -296,8 +426,9 @@ export class Browsers {
                 conversationId,
                 connection,
                 session: sessionId,
-                target: targetId,
+                target: targetId!,
                 context: browserContextId,
+                shared,
                 userAgent: chromium.userAgent,
                 viewport: viewportFrom(saved?.viewport) ??
                     options.viewport ?? { ...VIEWPORTS.desktop },
@@ -314,6 +445,7 @@ export class Browsers {
 
             this.#pages.set(conversationId, page);
             this.#idleSince = Date.now();
+            this.#remoteIdleSince = Date.now();
 
             if (options.restore !== false && saved?.url !== undefined && saved.url !== "") {
                 const restoring = page.navigate(saved.url, { timeoutMs: 15_000 }).catch(() => {});
@@ -326,9 +458,16 @@ export class Browsers {
             return page;
         } catch (error) {
             page?.close();
-            void connection
-                .send("Target.disposeBrowserContext", { browserContextId })
-                .catch(() => {});
+
+            if (shared) {
+                if (targetId !== undefined) {
+                    void connection.send("Target.closeTarget", { targetId }).catch(() => {});
+                }
+            } else {
+                void connection
+                    .send("Target.disposeBrowserContext", { browserContextId })
+                    .catch(() => {});
+            }
 
             throw error;
         }
@@ -351,11 +490,25 @@ export class Browsers {
 
         page.close();
 
-        if (this.#pages.size === 0) {
+        // This machine's browser rests once its own last page closed, whatever the shared one has open.
+        if (![...this.#pages.values()].some((each) => !each.shared)) {
             this.#idleSince = Date.now();
         }
 
         this.#changed(conversationId);
+
+        // A window of the shared browser closes alone: its context holds every bot's logins.
+        if (page.shared) {
+            this.#remoteIdleSince = Date.now();
+            const remote = await this.#remote?.catch(() => undefined);
+
+            await remote?.connection
+                .send("Target.closeTarget", { targetId: page.targetId })
+                .catch(() => {});
+
+            return;
+        }
+
         const chromium = await this.#chromium?.catch(() => undefined);
 
         await chromium?.connection
@@ -372,15 +525,43 @@ export class Browsers {
             }
         }
 
+        // The shared computer's browser stops a few minutes after its last window closed (and lets the computer rest).
+        if (
+            this.#remote !== undefined &&
+            this.#opening.size === 0 &&
+            ![...this.#pages.values()].some((page) => page.shared) &&
+            Date.now() - this.#remoteIdleSince > 5 * 60_000
+        ) {
+            void this.#stopRemote();
+        }
+
         // The browser itself stops a few minutes after its last page closed.
         if (
-            this.#pages.size === 0 &&
+            ![...this.#pages.values()].some((page) => !page.shared) &&
             this.#opening.size === 0 &&
             this.#chromium !== undefined &&
             Date.now() - this.#idleSince > 5 * 60_000
         ) {
             void this.#stopBrowser();
         }
+    }
+
+    /** noid: stop the shared computer's browser. Stopping its `docker exec` closes the pipe, and Chromium saves and exits. */
+    async #stopRemote(): Promise<void> {
+        const pending = this.#remote;
+
+        this.#remote = undefined;
+        const chromium = await pending?.catch(() => undefined);
+
+        this.#remoteRelease?.();
+        this.#remoteRelease = undefined;
+
+        if (chromium === undefined) {
+            return;
+        }
+
+        chromium.kill();
+        await Promise.race([chromium.exited, wait(10_000)]);
     }
 
     async #stopBrowser(): Promise<void> {
@@ -423,7 +604,7 @@ export class Browsers {
             this.#pending.clear();
         }
 
-        await this.#stopBrowser();
+        await Promise.all([this.#stopBrowser(), this.#stopRemote()]);
 
         if (options.final !== true) {
             for (const id of ids) {

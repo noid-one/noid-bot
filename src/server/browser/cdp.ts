@@ -239,22 +239,52 @@ export class Chromium {
 
         child.once("exit", () => connection.close("The browser stopped."));
 
+        await chromium.#handshake(failed, 20_000);
+
+        return chromium;
+    }
+
+    /** The first exchange: the browser answers, says who it is, and reports its tabs. A browser that does not is stopped. */
+    async #handshake(failed: Promise<never>, timeoutMs: number): Promise<void> {
         try {
             const version = await Promise.race([
-                connection.send("Browser.getVersion", {}, undefined, 20_000),
+                this.connection.send("Browser.getVersion", {}, undefined, timeoutMs),
                 failed,
             ]);
 
-            chromium.userAgent = String(version.userAgent ?? "").replace(
-                "HeadlessChrome/",
-                "Chrome/",
-            );
-            await connection.send("Target.setDiscoverTargets", { discover: true });
+            this.userAgent = String(version.userAgent ?? "").replace("HeadlessChrome/", "Chrome/");
+            await this.connection.send("Target.setDiscoverTargets", { discover: true });
         } catch (error) {
-            chromium.kill();
+            this.kill();
 
             throw error;
         }
+    }
+
+    /**
+     * noid: a Chromium started elsewhere (the shared computer, through `docker exec -i`), whose DevTools pipe is that
+     * process's stdin and stdout. Stopping the process closes the pipe, and Chromium exits with it.
+     */
+    static async over(child: ChildProcess, what: string): Promise<Chromium> {
+        if (child.stdin === null || child.stdout === null) {
+            throw new BrowserError(`Could not start ${what}.`);
+        }
+
+        const connection = new Connection(child.stdin, child.stdout);
+        const chromium = new Chromium(child, connection);
+        const failed = new Promise<never>((_, reject) => {
+            child.on("error", (error) =>
+                reject(new BrowserError(`Could not start ${what}: ${error.message}`)),
+            );
+            child.once("exit", (code) =>
+                reject(new BrowserError(`${what} stopped as it started (code ${code}).`)),
+            );
+        });
+
+        failed.catch(() => {});
+        child.once("exit", () => connection.close("The browser stopped."));
+        // A minute: a computer that just started may still be starting its display.
+        await chromium.#handshake(failed, 60_000);
 
         return chromium;
     }

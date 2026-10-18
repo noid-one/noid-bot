@@ -14,7 +14,7 @@ import {
     toError,
 } from "@earendil-works/pi-durable/env";
 import { Connection, packagedDaemon, RemoteExecutionEnv } from "@earendil-works/pi-env";
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix } from "node:path";
@@ -83,6 +83,32 @@ export function dockerCommand(binary: string): Docker {
             }
         });
 }
+
+/** The one browser's profile on the computer: every bot's window shares it, so a login is everyone's. */
+export const BROWSER_PROFILE = `${COMPUTER_HOME}/.browser-profile`;
+
+/**
+ * How the computer's Chromium runs (spikes/RESULTS.md): headful on the display, its DevTools pipe on fds 3 and 4,
+ * covered windows kept rendering (each bot's window is often under another's), downloads into shared/downloads.
+ * `--no-sandbox`: Chromium's own sandbox needs user namespaces Docker's default seccomp profile blocks; the container
+ * is the boundary.
+ */
+const BROWSER_FLAGS = [
+    "--remote-debugging-pipe",
+    `--user-data-dir=${BROWSER_PROFILE}`,
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-sync",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--password-store=basic",
+    "--window-size=1280,800",
+];
 
 /** A folder as noid keeps it: absolute, `..` and `.` resolved, no slash at the end. */
 export function normalFolder(cwd: string): string {
@@ -312,6 +338,30 @@ export class Computer {
         return this.#stopping;
     }
 
+    /**
+     * Start the computer's one Chromium. Returns the `docker exec` process whose stdin and stdout are its DevTools pipe
+     * (pi-pocket's `Chromium.over` speaks it); stopping that process stops Chromium, which saves its profile as it goes.
+     */
+    async launchBrowser(): Promise<ChildProcess> {
+        await this.start();
+
+        const script = [
+            `mkdir -p ${BROWSER_PROFILE} ${COMPUTER_HOME}/shared/downloads`,
+            // A computer just started may not have its display yet (start.sh starts it in the background).
+            "i=0; while [ ! -S /tmp/.X11-unix/X99 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done",
+            // The last browser may still be saving its profile as it exits: wait for it (a while), so two never share it.
+            "i=0; while pgrep -x chromium >/dev/null && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done",
+            "pkill -KILL -x chromium 2>/dev/null; true",
+            // Only now: a browser stopped hard leaves its profile locked (rakazo clears these too).
+            `rm -f ${BROWSER_PROFILE}/Singleton*`,
+            `exec chromium ${BROWSER_FLAGS.join(" ")} about:blank 3<&0 4>&1 1>/dev/null 2>>/tmp/chromium.log`,
+        ].join("; ");
+
+        return spawn(this.#binary, ["exec", "-i", this.container, "sh", "-c", script], {
+            stdio: ["pipe", "pipe", "ignore"],
+        });
+    }
+
     /** Build the image from `computer/`, with pi-env's daemon for Linux put in beside the Dockerfile. */
     async build(): Promise<void> {
         const context = mkdtempSync(join(tmpdir(), "noid-computer-"));
@@ -343,10 +393,18 @@ export class Computer {
             });
 
             // Both must succeed: a context cut short would build a broken image, or fail with a confusing error.
-            await Promise.all([
-                packed,
-                this.#docker(["build", "--quiet", "--tag", this.image, "-"], tar.stdout!),
-            ]);
+            try {
+                await Promise.all([
+                    packed,
+                    this.#docker(["build", "--quiet", "--tag", this.image, "-"], tar.stdout!),
+                ]);
+            } catch (error) {
+                // A docker that stopped reading leaves tar blocked on a full pipe, forever: stop it too.
+                tar.kill();
+                packed.catch(() => {});
+
+                throw error;
+            }
         } finally {
             rmSync(context, { recursive: true, force: true });
         }
