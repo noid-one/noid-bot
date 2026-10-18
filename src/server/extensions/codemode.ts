@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@earendil-works/chord";
+import type { Context, JsonValue } from "@earendil-works/chord";
 import { withAbortSignal } from "@earendil-works/chord/context";
 import { type ToolCall, Type } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
@@ -32,6 +32,7 @@ import {
     type ToolRegistration,
     ToolTask,
 } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { CodemodeStoreDoc } from "../docs.ts";
 import { describe } from "../errors.ts";
 import type { PocketHost } from "../host.ts";
@@ -146,10 +147,15 @@ function formatError(
 type OutputItem =
     { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
-/** Keep the start and end of text over the budget; the whole text goes to a temporary file the agent can read. */
+/**
+ * Keep the start and end of text over the budget; the whole text goes to a temporary file the agent can read: in the
+ * call's environment when it has one (noid: the shared computer, whose tools cannot read this machine's files).
+ */
 async function budget(
     items: OutputItem[],
     maxTokens: number,
+    env: ExecutionEnv | undefined,
+    context: Context,
 ): Promise<{ items: OutputItem[]; fullOutputPath?: string }> {
     const texts = items.flatMap((item) => (item.type === "text" ? [item.text] : []));
     const combined = texts.join("\n");
@@ -162,10 +168,28 @@ async function budget(
     const head = combined.slice(0, Math.floor(limit / 2));
     const tail = combined.slice(-(limit - head.length));
     let text = `Warning: output truncated (about ${Math.ceil(combined.length / CHARS_PER_TOKEN)} tokens, ${combined.split("\n").length} lines)\n\n${head}\n… ${Math.ceil((combined.length - limit) / CHARS_PER_TOKEN)} tokens not shown …\n${tail}`;
-    const path = join(tmpdir(), `pi-pocket-codemode-${randomBytes(8).toString("hex")}.txt`);
+    const name = `pi-pocket-codemode-${randomBytes(8).toString("hex")}.txt`;
+    let path = join(tmpdir(), name);
 
     try {
-        await writeFile(path, combined, { mode: 0o600 });
+        if (env === undefined) {
+            await writeFile(path, combined, { mode: 0o600 });
+        } else {
+            const folder = await env.createTempDir("pi-pocket-codemode-", context);
+
+            if (!folder.ok) {
+                throw folder.error;
+            }
+
+            path = `${folder.value}/${name}`;
+
+            const written = await env.writeFile(path, combined, context);
+
+            if (!written.ok) {
+                throw written.error;
+            }
+        }
+
         text += `\n\n[Full output: ${path} (read it with offset and limit)]`;
     } catch (error) {
         text += `\n\n[Could not save the full output: ${describe(error)}]`;
@@ -391,7 +415,12 @@ export default function createCodemode(_host: PocketHost) {
                 items.push({ type: "text", text: `Script error:\n${formatError(result, calls)}` });
             }
 
-            const shown = await budget(items, options.maxOutputTokens ?? MAX_OUTPUT_TOKENS);
+            const shown = await budget(
+                items,
+                options.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+                api.env,
+                context,
+            );
             const header = `${result.ok ? "Script completed" : "Script failed"}\nWall time ${((performance.now() - started) / 1000).toFixed(1)} seconds\nOutput:\n`;
 
             return {

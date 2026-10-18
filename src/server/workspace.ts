@@ -6,6 +6,7 @@
  */
 import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
@@ -24,7 +25,13 @@ import { type Changes, changesIn, diffOf, revertFile } from "./changes.ts";
 import type { User } from "./config.ts";
 import { describe, HttpError } from "./errors.ts";
 import { FileLists, type FileListing, type FileView, viewFile } from "./files.ts";
+import { imageIn, listFilesIn, type RemoteImage, resolveIn, viewFileIn } from "./noid/env-files.ts";
+import { normalFolder } from "./noid/computer.ts";
 import { displayPath, expandHome } from "./paths.ts";
+
+/** Why git features refuse a session on the shared computer: they run git on this machine. */
+const HOST_GIT_ONLY =
+    "This works for sessions on this machine. On the shared computer, ask Pi to run git there.";
 
 export class Workspace {
     readonly #app: PocketApp;
@@ -67,13 +74,24 @@ export class Workspace {
         return gitDir;
     }
 
-    /** Whether a folder is in a git repository. */
+    /** Whether a folder is in a git repository on this machine. */
     inRepository(cwd: string): boolean {
-        return this.#gitDir(cwd) !== undefined;
+        return !this.#app.claims(cwd) && this.#gitDir(cwd) !== undefined;
+    }
+
+    /** noid: refuse a git feature for a session whose folder is on the shared computer. */
+    #requireHostGit(id: ConversationId): void {
+        if (!this.#app.onHost(id)) {
+            throw new HttpError(409, HOST_GIT_ONLY);
+        }
     }
 
     /** What a conversation's folder has checked out, for its view: its repository's HEAD file, read as it is now. */
     head(id: ConversationId): Head | undefined {
+        if (!this.#app.onHost(id)) {
+            return undefined;
+        }
+
         const gitDir = this.#gitDir(this.#app.cwdOf(id));
 
         return gitDir === undefined ? undefined : headOf(gitDir);
@@ -83,6 +101,7 @@ export class Workspace {
     async branches(id: ConversationId, user: User): Promise<Branches> {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
+        this.#requireHostGit(id);
 
         const cwd = this.#app.cwdOf(id);
 
@@ -113,6 +132,7 @@ export class Workspace {
             throw new HttpError(403, "You were invited to one session.");
         }
 
+        this.#requireHostGit(id);
         await this.#app.requireDriver(id, user);
 
         const track = typeof request.track === "string" ? request.track : undefined;
@@ -189,6 +209,27 @@ export class Workspace {
         }
 
         return absolute;
+    }
+
+    /**
+     * noid: a folder to start a session in or move one to. One an environment runs (the shared computer) is made there
+     * when it is missing; any other is a folder of this machine, which must be there (`checkDirectory`).
+     */
+    async prepareFolder(path: string): Promise<string> {
+        // `..` resolved first: a path that only looks like the computer's must not be made on this machine.
+        const folder = normalFolder(path);
+
+        if (!this.#app.claims(folder)) {
+            return this.checkDirectory(path.trim());
+        }
+
+        const made = await this.#app.envAt(folder).createDir(folder, { recursive: true }, context);
+
+        if (!made.ok) {
+            throw new HttpError(409, `Could not make ${folder}: ${made.error.message}`);
+        }
+
+        return folder;
     }
 
     /**
@@ -350,6 +391,10 @@ export class Workspace {
         this.#app.requireSteer(user);
         await this.#app.conversation(id);
 
+        if (!this.#app.onHost(id)) {
+            return listFilesIn(this.#app.envFor(id), this.#app.cwdOf(id), context);
+        }
+
         return this.#files.get(this.#app.cwdOf(id));
     }
 
@@ -365,6 +410,11 @@ export class Workspace {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
         await this.#app.conversation(id);
+
+        if (!this.#app.onHost(id)) {
+            return this.#viewRemote(id, user, path);
+        }
+
         let file: string;
 
         try {
@@ -384,12 +434,71 @@ export class Workspace {
         }
     }
 
+    /** noid: a file in a session's folder on the shared computer, as the person may reach it (`conversationFile`). */
+    async remotePath(id: ConversationId, user: User, path: string): Promise<string> {
+        const env = this.#app.envFor(id);
+        const file = await resolveIn(env, path, context);
+
+        // Only the owner reaches the whole computer (its sign-ins and browser profile included); anyone else reaches the
+        // session's folder, compared by real path so a link inside it cannot lead out.
+        if (user.role !== "owner") {
+            const real = await env.canonicalPath(file, context);
+            const root = await env.canonicalPath(this.#app.cwdOf(id), context);
+
+            if (
+                !real.ok ||
+                !root.ok ||
+                (real.value !== root.value && !real.value.startsWith(`${root.value}/`))
+            ) {
+                throw new HttpError(404, "Not found");
+            }
+        }
+
+        return file;
+    }
+
+    /** noid: an image in a session's folder on the shared computer, for the image route. */
+    async remoteImage(id: ConversationId, user: User, path: string): Promise<RemoteImage> {
+        const file = await this.remotePath(id, user, path);
+        const image = await imageIn(this.#app.envFor(id), file, context);
+
+        if (image === undefined) {
+            throw new HttpError(404, "Image not found");
+        }
+
+        return { file, ...image };
+    }
+
+    async #viewRemote(
+        id: ConversationId,
+        user: User,
+        path: string,
+    ): Promise<{ path: string; display: string } & FileView> {
+        try {
+            // Not this person's to see, or not there: the same answer, as on this machine.
+            const file = await this.remotePath(id, user, path);
+
+            return {
+                path: file,
+                display: displayPath(file, this.#app.cwdOf(id)),
+                ...(await viewFileIn(this.#app.envFor(id), file, context)),
+            };
+        } catch (error) {
+            if (error instanceof HttpError || (error as { code?: string }).code === "not_found") {
+                throw new HttpError(404, `${path} is not there.`);
+            }
+
+            throw new HttpError(409, describe(error));
+        }
+    }
+
     /**
      * Undo the uncommitted changes to one file of a session's repository. It changes files under Pi, so it takes the
      * right to drive and waits until Pi is not working; Pi is told, with its next message.
      */
     async revertChange(id: ConversationId, user: User, path: string): Promise<void> {
         this.#app.requireSee(user, id);
+        this.#requireHostGit(id);
         await this.#app.requireDriver(id, user);
 
         if (this.#app.isBusy(id)) {
@@ -418,6 +527,11 @@ export class Workspace {
     async changes(id: ConversationId, user: User): Promise<Changes> {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
+
+        // noid: on the shared computer there is no git of this machine to ask; Changes stays empty there for now.
+        if (!this.#app.onHost(id)) {
+            return { files: [], more: 0, piOnly: [] };
+        }
 
         // Someone invited to this session only sees the files in its folder, here as in `conversationFile`.
         const onlyHere = user.sessions !== undefined;
@@ -454,6 +568,7 @@ export class Workspace {
     async changeDiff(id: ConversationId, user: User, path: string): Promise<string> {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
+        this.#requireHostGit(id);
 
         try {
             return await diffOf(this.#app.cwdOf(id), path, user.sessions !== undefined);

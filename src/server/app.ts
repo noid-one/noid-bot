@@ -37,6 +37,7 @@ import {
     UsageDoc,
     type UsageState,
 } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -76,6 +77,7 @@ import { type ApprovalRequest, Approvals, type PocketHost, type WebAccess } from
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
+import { Computer, onComputer } from "./noid/computer.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
 import { configureHttp } from "./net.ts";
@@ -242,6 +244,22 @@ export interface OpenOptions {
     home?: string;
 }
 
+/** How long noid's shared computer may sit idle before it stops (NOID_COMPUTER_IDLE_MINUTES; 0 never stops it). */
+function idleMinutes(): number {
+    const minutes = Number(process.env.NOID_COMPUTER_IDLE_MINUTES ?? 15);
+
+    return minutes > 0 ? minutes : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * An environment other than this machine (noid's shared computer): which folders it runs, and the environment of each.
+ * `claims` only looks at the path, so asking costs nothing.
+ */
+export type EnvironmentProvider = {
+    claims(cwd: string): boolean;
+    env(cwd: string): ExecutionEnv;
+};
+
 export class PocketApp {
     readonly config: ConfigStore;
     /** Push subscriptions and their keys; undefined until the server opened. */
@@ -306,6 +324,17 @@ export class PocketApp {
     readonly #clients = new Set<Client>();
     readonly #rooms = new Map<ConversationId, Promise<Room>>();
     readonly #envs = new Map<string, NodeExecutionEnv>();
+    /** Extensions' environments (noid's shared computer): the first that claims a cwd runs its commands. */
+    readonly #environments = new Set<EnvironmentProvider>();
+    /**
+     * noid's shared computer. Part of the app, not a module that can be off or reloading: a folder under its home always
+     * runs there (or fails, when Docker is not there), never on this machine.
+     */
+    readonly computer = new Computer({
+        idleMs: idleMinutes() * 60_000,
+        log: (message) => this.#log(`computer: ${message}`),
+    });
+    #stopIdleWatch: () => void = () => {};
     readonly #busy = new Set<ConversationId>();
     /** When each conversation's last run ended, since this server started: peek tiles show sessions done since a look. */
     readonly #endedAt = new Map<ConversationId, number>();
@@ -466,6 +495,11 @@ export class PocketApp {
 
     async #open(): Promise<void> {
         takeLock(this.#lockFile);
+        this.provideEnvironment({ claims: onComputer, env: (cwd) => this.computer.env(cwd) });
+
+        if (Number.isFinite(idleMinutes())) {
+            this.#stopIdleWatch = this.computer.watchIdle();
+        }
 
         try {
             this.pushStore = new PushStore(this.dataDir);
@@ -527,6 +561,7 @@ export class PocketApp {
             notice: (level, message, conversationId) => this.notice(level, message, conversationId),
             heldBack: (conversationId) => this.spend.heldBack(conversationId),
             onLimitsChanged: (listener) => this.spend.onLimitsChanged(listener),
+            onHost: (conversationId) => this.onHost(conversationId),
             linkedSessions: this.linkedSessions,
             schedules: this.schedules,
             goals: this.goals,
@@ -584,7 +619,7 @@ export class PocketApp {
                 registry,
                 settings: this.#harnessSettings(),
                 now: this.now,
-                env: ({ cwd }) => this.#env(cwd ?? this.defaultCwd),
+                env: ({ cwd }) => this.envAt(cwd ?? this.defaultCwd),
                 conversationCreated: async (tx, conversation) => {
                     // Every conversation gets the app's documents up front, so views can read them from the start.
                     await tx.doc(AuthorsDoc, conversation.id);
@@ -955,9 +990,41 @@ export class PocketApp {
         } as HarnessSettings;
     }
 
-    /** Where a conversation's commands run: its folder on this machine. */
-    envFor(id: ConversationId): NodeExecutionEnv {
-        return this.#env(this.cwdOf(id));
+    /** Where a conversation's commands run: an extension's environment that claims its folder, else this machine. */
+    envFor(id: ConversationId): ExecutionEnv {
+        return this.envAt(this.cwdOf(id));
+    }
+
+    /** Whether a conversation's folder is on this machine, so features that read it directly (files, git) may. */
+    onHost(id: ConversationId): boolean {
+        return !this.claims(this.cwdOf(id));
+    }
+
+    /** Whether an extension's environment runs this folder (it is not a folder of this machine). */
+    claims(cwd: string): boolean {
+        return this.#providerOf(cwd) !== undefined;
+    }
+
+    /** Adds an environment: it claims the folders it runs (returning their environment) and leaves the rest. */
+    provideEnvironment(provider: EnvironmentProvider): () => void {
+        this.#environments.add(provider);
+
+        return () => this.#environments.delete(provider);
+    }
+
+    #providerOf(cwd: string): EnvironmentProvider | undefined {
+        for (const provider of this.#environments) {
+            if (provider.claims(cwd)) {
+                return provider;
+            }
+        }
+
+        return undefined;
+    }
+
+    /** Where commands in a folder run: the environment that claims it, else this machine. */
+    envAt(cwd: string): ExecutionEnv {
+        return this.#providerOf(cwd)?.env(cwd) ?? this.#env(cwd);
     }
 
     #env(cwd: string): NodeExecutionEnv {
@@ -2872,6 +2939,10 @@ export class PocketApp {
                 for (const env of this.#envs.values()) {
                     await env.cleanup(context);
                 }
+
+                // The container keeps running: the next server finds it (or it stops itself when idle).
+                this.#stopIdleWatch();
+                await this.computer.close(context);
             } finally {
                 // After the harness: a browser call cut off by the stop resumes as interrupted, not as failed.
                 await this.browsers.closeAll({ final: true }).catch(() => {});

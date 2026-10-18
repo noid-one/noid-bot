@@ -5,7 +5,7 @@
  *
  * Edit freely: saving this file reloads it into the running server.
  */
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
     formatSkillsForPrompt,
@@ -15,6 +15,7 @@ import {
 import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
 import { APP_ROOT } from "../config.ts";
 import type { PocketHost } from "../host.ts";
+import { contextFilesIn } from "../noid/env-files.ts";
 
 const PREAMBLE = `You are Pi, a coding agent running inside Pi Pocket: a durable, multiplayer web app built on Pi Durable. People talk to you from a browser, often a phone, and several people can share one conversation. When more than one person uses this server, each message starts with [from: Name].
 
@@ -107,19 +108,98 @@ export default function createPrompt(host: PocketHost) {
 
     const cwdOf = (input: PromptInput) => input.env?.cwd ?? input.agent.cwd ?? process.cwd();
 
+    // noid: a session on the shared computer reads its AGENTS.md files there (through its environment), after Pi's
+    // global one from this machine. Kept for STALE_MS per folder, as on this machine.
+    const remote = new Map<string, { at: number; context: Promise<string | undefined> }>();
+
+    const formatted = (files: { path: string; content: string }[]) =>
+        files.length === 0
+            ? undefined
+            : files
+                  .map((file) => `<file path="${file.path}">\n${file.content.trim()}\n</file>`)
+                  .join("\n\n");
+
+    const globalContext = () => {
+        for (const name of [
+            "AGENTS.override.md",
+            "AGENTS.md",
+            "AGENTS.MD",
+            "CLAUDE.md",
+            "CLAUDE.MD",
+        ]) {
+            const path = join(host.agentDir, name);
+
+            try {
+                if (statSync(path).isFile()) {
+                    return [{ path, content: readFileSync(path, "utf8").replace(/^\uFEFF/, "") }];
+                }
+            } catch {
+                // Not there: the next name.
+            }
+        }
+
+        return [];
+    };
+
+    const remoteContext = (
+        input: PromptInput,
+        cwd: string,
+        context: Parameters<typeof contextFilesIn>[2],
+    ) => {
+        const cached = remote.get(cwd);
+
+        if (cached !== undefined && Date.now() - cached.at < STALE_MS) {
+            return cached.context;
+        }
+
+        const loading = contextFilesIn(input.env!, cwd, context)
+            .then((files) => formatted([...globalContext(), ...files]))
+            .catch((error: unknown) => {
+                host.notice(
+                    "warning",
+                    `Could not load AGENTS.md files for ${cwd}: ${String(error)}`,
+                );
+                remote.delete(cwd);
+
+                return undefined;
+            });
+
+        remote.set(cwd, { at: Date.now(), context: loading });
+
+        return loading;
+    };
+
+    const onComputer = (input: PromptInput) =>
+        input.env !== undefined && !host.onHost(input.conversationId);
+
     return defineExtension({
         name: "pocket-prompt",
         sections: [
             section("preamble", () => PREAMBLE, { tag: false }),
             section("guidelines", () => GUIDELINES),
-            section("pocket_docs", () => docs(host.dataDir)),
-            section("project_context", (input) => load(cwdOf(input)).context),
-            section("skills", (input) => load(cwdOf(input)).skills, { tag: false }),
+            // noid: Pi Pocket's docs and this machine's skills are files of this machine, which tools on the shared
+            // computer cannot read; sessions there get neither (skills on the computer come later).
+            section("pocket_docs", (input) => (onComputer(input) ? undefined : docs(host.dataDir))),
+            section("project_context", (input, context) =>
+                onComputer(input)
+                    ? remoteContext(input, cwdOf(input), context)
+                    : load(cwdOf(input)).context,
+            ),
+            section(
+                "skills",
+                (input) => (onComputer(input) ? undefined : load(cwdOf(input)).skills),
+                {
+                    tag: false,
+                },
+            ),
             section("environment", (input) => {
                 // The date only, so the prompt stays cache-friendly through the day.
                 const today = new Date().toISOString().slice(0, 10);
+                const platform = onComputer(input)
+                    ? "linux (the shared computer: a container that other bots use too)"
+                    : process.platform;
 
-                return `Working directory: ${cwdOf(input)}\nPlatform: ${process.platform}\nToday: ${today}`;
+                return `Working directory: ${cwdOf(input)}\nPlatform: ${platform}\nToday: ${today}`;
             }),
         ],
     });

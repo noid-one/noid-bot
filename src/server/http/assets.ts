@@ -167,6 +167,54 @@ export function serveFile(response: ServerResponse, file: string, fallbackType?:
     );
 }
 
+/**
+ * noid: an image from a session's folder elsewhere (the shared computer): answered from its etag when the browser has
+ * it, else read, checked, and sent as `serveImage` sends a file of this machine.
+ */
+export async function serveRemoteImage(
+    request: IncomingMessage,
+    response: ServerResponse,
+    image: { file: string; etag: string; read: () => Promise<Uint8Array> },
+): Promise<void> {
+    if (!IMAGE_EXTENSIONS.has(extname(image.file).toLowerCase())) {
+        throw new HttpError(415, "Only image files can be shown");
+    }
+
+    const headers = {
+        etag: image.etag,
+        "cache-control": "private, no-cache",
+        "content-security-policy": IMAGE_CSP,
+    };
+
+    if (request.headers["if-none-match"] === image.etag) {
+        response.writeHead(304, headers);
+        response.end();
+
+        return;
+    }
+
+    const bytes = await image.read().catch(() => {
+        throw new HttpError(404, "Image not found");
+    });
+    const body = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const type = sniffImage(body.subarray(0, 1024));
+
+    if (type === undefined) {
+        throw new HttpError(415, "That file is not an image");
+    }
+
+    if (body.length > MAX_IMAGE_FILE) {
+        throw new HttpError(413, "Image too large to show");
+    }
+
+    response.writeHead(200, {
+        ...headers,
+        "content-type": type,
+        "content-length": String(body.length),
+    });
+    response.end(body);
+}
+
 /** An image file from this machine, for `![alt](path)` in replies and for uploaded attachments. */
 export function serveImage(request: IncomingMessage, response: ServerResponse, file: string): void {
     if (!IMAGE_EXTENSIONS.has(extname(file).toLowerCase())) {

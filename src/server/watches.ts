@@ -332,6 +332,14 @@ export class Watches {
             throw new HttpError(400, "Only sessions can watch a pull request.");
         }
 
+        // noid: a watch reads the session's repository with this machine's git and gh.
+        if (!app.onHost(id)) {
+            throw new HttpError(
+                409,
+                "Pull request watches work for sessions on this machine for now.",
+            );
+        }
+
         const person = app.config.userById(personId ?? meta.createdBy ?? "");
 
         if (person === undefined || person.role === "viewer") {

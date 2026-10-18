@@ -7,7 +7,7 @@ import type { ConversationId } from "@earendil-works/pi-durable";
 import type { Attachment, SubmitRequest } from "../commands.ts";
 import { HttpError } from "../errors.ts";
 import type { CommandRequest } from "../extension-commands.ts";
-import { serveImage, TYPES } from "./assets.ts";
+import { serveImage, serveRemoteImage, TYPES } from "./assets.ts";
 import { type ApiRequest, json, readJson, send } from "./io.ts";
 
 const MAX_UPLOAD = 50 * 1024 * 1024;
@@ -371,6 +371,15 @@ export async function conversationRoutes(
 
         if (requested.trim() === "") {
             throw new HttpError(400, "path is required");
+        }
+
+        // noid: a session on the shared computer has its files there, not on this machine.
+        if (!app.onHost(id)) {
+            return serveRemoteImage(
+                request,
+                response,
+                await app.workspace.remoteImage(id, user, requested),
+            );
         }
 
         return serveImage(request, response, app.workspace.conversationFile(user, id, requested));

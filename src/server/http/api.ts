@@ -545,10 +545,10 @@ export function createApi(options: HttpOptions, auth: Auth) {
             }
 
             dirs.sort((a, b) => a.name.localeCompare(b.name));
-            const recent = [...new Set(app.sessions(user).map((session) => session.cwd))].slice(
-                0,
-                8,
-            );
+            // noid: folders on the shared computer are not this machine's to browse.
+            const recent = [...new Set(app.sessions(user).map((session) => session.cwd))]
+                .filter((cwd) => !app.claims(cwd))
+                .slice(0, 8);
 
             return json(response, 200, {
                 path,

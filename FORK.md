@@ -10,10 +10,18 @@ noid started as a copy of [Pi Pocket](https://github.com/TannerMidd/pi-pocket) (
 
 Our own features go in `src/server/extensions/noid-*.ts`, with `x.noid.*` document, task and tool names. Changes to Pi Pocket's core files are listed here, one line each with the reason.
 
-| File                                                      | Why                                                                                                                |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `src/server/memory.ts`, `src/server/extensions/memory.ts` | Memory auto-saves: Pi's lessons for the owner apply at once (guests' still wait). Tests and docs updated to match. |
-| `web/style.css`                                           | Styles for bot faces (`web/faces/`), appended at the end.                                                          |
+| File                                                                                             | Why                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/server/memory.ts`, `src/server/extensions/memory.ts`                                        | Memory auto-saves: Pi's lessons for the owner apply at once (guests' still wait). Tests and docs updated to match.                                                  |
+| `web/style.css`                                                                                  | Styles for bot faces (`web/faces/`), appended at the end.                                                                                                           |
+| `src/server/app.ts`, `src/server/host.ts`                                                        | The shared computer is part of the app (`app.computer`, claims `/home/noid/…` always, fails closed); environment providers (`envFor`, `envAt`, `claims`, `onHost`). |
+| `src/server/workspace.ts`, `src/server/http/conversation-routes.ts`, `src/server/http/assets.ts` | Viewer, `@` list, and images of a computer session through its environment; git features refuse it; folders made there.                                             |
+| `src/server/commands.ts`                                                                         | Computer sessions: folders made there, no worktrees, `@` mentions read there, attachments copied there.                                                             |
+| `src/server/extensions/prompt.ts`                                                                | Computer sessions: AGENTS.md read there; no host skills or Pi Pocket docs; platform says so.                                                                        |
+| `src/server/http/api.ts`, `src/server/watches.ts`                                                | Folder picker skips computer folders; PR watches refuse computer sessions (they use host git/gh).                                                                   |
+| `test/public-types.ts`                                                                           | `onHost` is an internal host member.                                                                                                                                |
+| `src/server/extensions/codemode.ts`                                                              | Its overflow file goes through the call's environment, so a computer session can read it.                                                                           |
+| Built-in extensions and tests (`content` → `output`)                                             | Pi Durable 1.2+ tool results.                                                                                                                                       |
 
 ## Node version
 

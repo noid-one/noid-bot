@@ -43,7 +43,8 @@ type Internal =
     | "schedules"
     | "goals"
     | "browsers"
-    | "memory";
+    | "memory"
+    | "onHost";
 
 type PublicHost = Pick<PocketHost, keyof Host>;
 

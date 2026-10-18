@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
-import { basename, extname, join } from "node:path";
+import { basename, extname, join, posix } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -54,6 +54,8 @@ import {
 import { describe, HttpError, optionalText } from "./errors.ts";
 import { homePath } from "./paths.ts";
 import { mentionedPaths, viewFile } from "./files.ts";
+import { normalFolder } from "./noid/computer.ts";
+import { viewFileIn } from "./noid/env-files.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
 import { writePiSession } from "./pi-sessions.ts";
 import { snippet } from "./projection.ts";
@@ -156,7 +158,12 @@ function entryIdOf(value: unknown): number {
  * a conversation holds many, and then every request fails until they leave its context.
  */
 async function modelImage(path: string, mimeType: string): Promise<ImageContent> {
-    const image = await resizeImage(readFileSync(path), mimeType);
+    return modelImageOf(readFileSync(path), mimeType);
+}
+
+/** As `modelImage`, for an image already read (noid: one from the shared computer). */
+async function modelImageOf(bytes: Buffer, mimeType: string): Promise<ImageContent> {
+    const image = await resizeImage(bytes, mimeType);
 
     if (image === null) {
         throw new Error("it could not be made small enough for the model");
@@ -362,9 +369,18 @@ export class Commands {
 
         const given = optionalText(request.title, "title");
         const title = (given === undefined ? undefined : oneLine(given)) || undefined;
-        const folder = app.workspace.checkDirectory(
-            optionalText(request.cwd, "cwd") ?? app.defaultCwd,
-        );
+        const requested = optionalText(request.cwd, "cwd") ?? app.defaultCwd;
+        // noid: a folder on the shared computer is made there; worktrees are of this machine's repositories.
+        const remote = app.claims(normalFolder(requested));
+
+        if (remote && request.worktree === true) {
+            throw new HttpError(
+                400,
+                "Worktrees are for folders on this machine, not the shared computer.",
+            );
+        }
+
+        const folder = await app.workspace.prepareFolder(requested);
         const now = Date.now();
 
         return this.#inPlace(
@@ -373,7 +389,10 @@ export class Commands {
             title ?? basename(folder),
             async ({ cwd, worktree }) => {
                 // An internal caller about to apply a person's explicit model keeps its previous starting pair.
-                const initial = this.#defaultModel(undefined, projectDefaults ? cwd : undefined);
+                const initial = this.#defaultModel(
+                    undefined,
+                    projectDefaults && !remote ? cwd : undefined,
+                );
                 const conversation = await app.harness.createConversation(
                     {
                         ownership: { kind: "ownerless" },
@@ -470,6 +489,14 @@ export class Commands {
     ): Promise<T> {
         if (!isolated) {
             return create({ cwd, skipped: [] });
+        }
+
+        // noid: a worktree is made by this machine's git, of a repository on this machine.
+        if (this.#app.claims(cwd)) {
+            throw new HttpError(
+                400,
+                "Worktrees are for folders on this machine, not the shared computer.",
+            );
         }
 
         const made = await createWorktree(cwd, join(this.#app.dataDir, "worktrees"), label);
@@ -733,9 +760,12 @@ export class Commands {
 
         app.spend.check(user, id);
 
+        const where = app.onHost(id)
+            ? attachments.map((file) => file.path)
+            : await this.#copyToComputer(id, attachments);
         const lines = attachments.map(
-            (file) =>
-                `- ${file.path} (${file.name}, ${file.mime || "unknown type"}, ${file.size} bytes)`,
+            (file, index) =>
+                `- ${where[index]} (${file.name}, ${file.mime || "unknown type"}, ${file.size} bytes)`,
         );
         // The heading whole, with files alone too: what reads the message splits it there.
         const written =
@@ -948,6 +978,11 @@ export class Commands {
         const parts: (TextContent | ImageContent)[] = [];
         let total = 0;
 
+        // noid: a session on the shared computer reads the files there, never this machine's of the same name.
+        if (!app.onHost(id)) {
+            return this.#mentionedRemoteFiles(id, user, text, images);
+        }
+
         for (const mention of mentionedPaths(text).slice(0, MAX_MENTIONED)) {
             let file: string | undefined;
 
@@ -1004,6 +1039,113 @@ export class Commands {
         }
 
         return parts;
+    }
+
+    /** noid: `#mentionedFiles` for a session on the shared computer, read through its environment. */
+    async #mentionedRemoteFiles(
+        id: ConversationId,
+        user: User,
+        text: string,
+        images: boolean,
+    ): Promise<(TextContent | ImageContent)[]> {
+        const app = this.#app;
+        const env = app.envFor(id);
+        const parts: (TextContent | ImageContent)[] = [];
+        let total = 0;
+
+        for (const mention of mentionedPaths(text).slice(0, MAX_MENTIONED)) {
+            let file: string | undefined;
+            let size = 0;
+
+            for (const candidate of mention.candidates) {
+                try {
+                    const resolved = await app.workspace.remotePath(id, user, candidate);
+                    const info = await env.fileInfo(resolved, context);
+
+                    if (info.ok && info.value.kind === "file") {
+                        file = resolved;
+                        size = info.value.size;
+                        break;
+                    }
+                } catch {
+                    // Not there, or not this person's to load.
+                }
+            }
+
+            if (file === undefined) {
+                continue;
+            }
+
+            try {
+                const mime = IMAGE_MIME[extname(file).toLowerCase()];
+
+                if (mime !== undefined) {
+                    if (images && size <= MAX_INLINE_IMAGE) {
+                        const bytes = await env.readBinaryFile(file, context);
+
+                        if (bytes.ok) {
+                            parts.push(await modelImageOf(Buffer.from(bytes.value), mime));
+                        }
+                    }
+
+                    continue;
+                }
+
+                const view = await viewFileIn(env, file, context);
+
+                if (view.kind !== "text" || total >= MAX_MENTIONED_TOTAL) {
+                    continue;
+                }
+
+                const room = Math.min(MAX_MENTIONED_FILE, MAX_MENTIONED_TOTAL - total);
+                const content = view.text.slice(0, room);
+
+                total += content.length;
+                const cut =
+                    view.truncated || view.text.length > room
+                        ? "\n… (the rest of the file is left out)"
+                        : "";
+
+                parts.push({
+                    type: "text",
+                    text: `${FILE_BLOCK}${file}">\n${content}${cut}\n</file>`,
+                });
+            } catch (error) {
+                app.notice("warning", `Could not send ${mention.written}: ${describe(error)}`, id);
+            }
+        }
+
+        return parts;
+    }
+
+    /**
+     * noid: uploads arrive on this machine; a session on the shared computer gets copies in its folder's `uploads/`,
+     * so Pi's tools there can open them. Returns where each one is on the computer.
+     */
+    async #copyToComputer(
+        id: ConversationId,
+        attachments: readonly Attachment[],
+    ): Promise<string[]> {
+        const env = this.#app.envFor(id);
+        const folder = posix.join(this.#app.cwdOf(id), "uploads");
+
+        await env.createDir(folder, { recursive: true }, context);
+
+        return Promise.all(
+            attachments.map(async (file) => {
+                const target = posix.join(folder, basename(file.path));
+                const written = await env.writeFile(target, readFileSync(file.path), context);
+
+                if (!written.ok) {
+                    throw new HttpError(
+                        409,
+                        `Could not copy ${file.name} to the computer: ${written.error.message}`,
+                    );
+                }
+
+                return target;
+            }),
+        );
     }
 
     /** A message to Pi as the model gets it: with more than one person on this server, it says who is talking. */
@@ -1229,7 +1371,7 @@ export class Commands {
             "off") as ModelThinkingLevel;
         const thinkingLevel = model === undefined ? wanted : clampThinkingLevel(model, wanted);
         const cwd =
-            request.cwd === undefined ? undefined : app.workspace.checkDirectory(request.cwd);
+            request.cwd === undefined ? undefined : await app.workspace.prepareFolder(request.cwd);
 
         const change = {
             ...(request.model === undefined

@@ -245,6 +245,8 @@ export interface PocketHost {
     heldBack(conversationId: ConversationId): string | undefined;
     /** Call `listener` whenever the owner changes a spend limit; returns how to stop. */
     onLimitsChanged(listener: () => void): () => void;
+    /** noid: whether a conversation's folder is on this machine (no environment claims it). */
+    onHost(conversationId: ConversationId): boolean;
     /**
      * Sessions that a session starts and messages (`linked-sessions.ts`): each one is an ordinary session, linked to the
      * one that started it. The checks of the person Pi works for apply, and a call repeated with its key acts once.
