@@ -1,0 +1,1522 @@
+/*
+ * Pi Pocket's site. Same theme as the app: Tokyo Night colors, Omarchy's square shapes and thin borders,
+ * JetBrains Mono throughout, and the cyan-to-green active gradient as the accent. It follows the system's
+ * light or dark setting; the screenshots of the app stay in Tokyo Night.
+ */
+@font-face {
+    font-family: "Pocket Mono";
+    src: url("fonts/JetBrainsMono.woff2") format("woff2");
+    font-weight: 100 800;
+    font-display: swap;
+}
+
+:root {
+    --bg: #13141c;
+    --panel: #16161e;
+    --card: #1a1b26;
+    --card-2: #1f2335;
+    --raised: #24283b;
+    --line: #292e42;
+    --line-strong: #3b4261;
+    --text: #c0caf5;
+    --body: #a9b1d6;
+    --muted: #7a82ad;
+    --accent: #7aa2f7;
+    --accent-ink: #0e0e14;
+    --accent-soft: rgba(122, 162, 247, 0.12);
+    --brand: #ff9e64;
+    --ok: #9ece6a;
+    --ok-soft: rgba(158, 206, 106, 0.1);
+    --warn: #e0af68;
+    --warn-soft: rgba(224, 175, 104, 0.08);
+    --warn-line: rgba(224, 175, 104, 0.6);
+    --err: #f7768e;
+    --err-soft: rgba(247, 118, 142, 0.1);
+    --purple: #bb9af7;
+    --code-bg: #0e0e14;
+    --on-accent: #0e0e14;
+    --nav-bg: rgba(19, 20, 28, 0.94);
+    --focus: #33ccff;
+    --active: linear-gradient(45deg, #33ccff, #00ff99);
+    /* Text in the gradient: the same colors where they read, darker ones on a light page. */
+    --active-text: var(--active);
+    --mono: "Pocket Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --max: 1160px;
+    color-scheme: dark;
+}
+
+/* Light: the same layout on paper. Every text color keeps a contrast of 4.5:1 or more on these backgrounds. */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #f5f6fa;
+        --panel: #eceef4;
+        --card: #ffffff;
+        --card-2: #e8ebf2;
+        --raised: #e1e5ef;
+        --line: #d4d9e5;
+        --line-strong: #b4bccf;
+        --text: #1f2335;
+        --body: #3b4261;
+        --muted: #5c6383;
+        --accent: #2a56c6;
+        --accent-soft: rgba(42, 86, 198, 0.1);
+        --brand: #a64f00;
+        --ok: #33701c;
+        --ok-soft: rgba(51, 112, 28, 0.1);
+        --warn: #7d5300;
+        --warn-soft: rgba(196, 140, 40, 0.1);
+        --warn-line: rgba(125, 83, 0, 0.5);
+        --err: #b8204a;
+        --err-soft: rgba(184, 32, 74, 0.07);
+        --purple: #7139c4;
+        --code-bg: #eef0f5;
+        --on-accent: #ffffff;
+        --nav-bg: rgba(245, 246, 250, 0.94);
+        --focus: #0b6bb8;
+        --active-text: linear-gradient(45deg, #0a74b5, #0b7d50);
+        color-scheme: light;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 76px;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--body);
+    font: 15px/1.7 var(--mono);
+    font-variant-ligatures: none;
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* Links inside running text are underlined, so they do not rely on color alone. */
+:is(p, small, .term-foot, figcaption) a:not(.btn) {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+}
+
+img,
+svg {
+    display: block;
+}
+
+h1,
+h2,
+h3 {
+    color: var(--text);
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+p {
+    margin: 0;
+}
+
+code {
+    font-family: inherit;
+    color: var(--text);
+    background: var(--card-2);
+    border: 1px solid var(--line);
+    padding: 0 0.3em;
+    font-size: 0.9em;
+}
+
+:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+}
+
+kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 0 0.35em;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    background: var(--card);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9em;
+    line-height: 1.5;
+    text-align: center;
+}
+
+.wrap {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+.skip {
+    position: absolute;
+    left: -9999px;
+}
+
+.skip:focus {
+    left: 16px;
+    top: 12px;
+    z-index: 20;
+    background: var(--card);
+    padding: 8px 12px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    height: 44px;
+    padding: 0 20px;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--text);
+    font: 600 14px var(--mono);
+    cursor: pointer;
+    transition:
+        border-color 0.15s,
+        background 0.15s,
+        filter 0.15s;
+}
+
+.btn:hover {
+    border-color: var(--accent);
+    text-decoration: none;
+}
+
+.btn-primary {
+    border: 0;
+    background: var(--active);
+    color: var(--accent-ink);
+}
+
+.btn-primary:hover {
+    filter: brightness(1.1);
+}
+
+.btn-sm {
+    height: 34px;
+    padding: 0 13px;
+    font-size: 13px;
+}
+
+.btn svg {
+    width: 17px;
+    height: 17px;
+    flex: none;
+}
+
+/* ── Navigation ──────────────────────────────────────────── */
+
+.nav {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--nav-bg);
+    border-bottom: 1px solid var(--line);
+}
+
+.nav .wrap {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: 62px;
+}
+
+.logo {
+    display: flex;
+    flex: none;
+    white-space: nowrap;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.logo:hover {
+    text-decoration: none;
+}
+
+.logo img {
+    width: 28px;
+    height: 28px;
+}
+
+.nav-links {
+    display: flex;
+    gap: 18px;
+    margin-left: auto;
+    font-size: 13px;
+}
+
+.nav-links a {
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.nav-links a:hover {
+    color: var(--text);
+    text-decoration: none;
+}
+
+/* The guides are separate pages, so they follow a divider after the section links. */
+.nav-links .nav-guide {
+    color: var(--text);
+    white-space: nowrap;
+}
+
+.nav-sep {
+    width: 1px;
+    background: var(--line);
+}
+
+/* ── Hero ────────────────────────────────────────────────── */
+
+.hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+}
+
+.hero::before,
+.page-head::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity: 0.45;
+    -webkit-mask-image: radial-gradient(ellipse 75% 65% at 72% 45%, #000 20%, transparent 72%);
+    mask-image: radial-gradient(ellipse 75% 65% at 72% 45%, #000 20%, transparent 72%);
+    pointer-events: none;
+}
+
+.hero .wrap {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+    gap: 56px;
+    align-items: center;
+    padding-top: 84px;
+    padding-bottom: 92px;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    padding: 5px 12px 5px 6px;
+    font-size: 12px;
+    color: var(--body);
+}
+
+.badge:hover {
+    border-color: var(--accent);
+    text-decoration: none;
+}
+
+.badge b {
+    background: var(--active);
+    color: var(--accent-ink);
+    padding: 1px 7px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+}
+
+.hero h1 {
+    margin: 24px 0 22px;
+    font-size: clamp(32px, 4.6vw, 54px);
+    line-height: 1.06;
+    letter-spacing: -0.045em;
+}
+
+.grad {
+    background: var(--active-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.lead {
+    font-size: 17px;
+    line-height: 1.7;
+    max-width: 34em;
+}
+
+.cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 34px;
+}
+
+.install {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 26px;
+    max-width: 460px;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    padding: 6px 6px 6px 16px;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.install .prompt {
+    color: var(--ok);
+    user-select: none;
+}
+
+.install code {
+    all: unset;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.copy {
+    flex: none;
+    height: 32px;
+    padding: 0 11px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--muted);
+    font: 12px var(--mono);
+    cursor: pointer;
+}
+
+.copy:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+}
+
+.copy.done {
+    color: var(--ok);
+    border-color: var(--ok);
+}
+
+.facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.facts span::before {
+    content: "■ ";
+    color: var(--ok);
+    font-size: 9px;
+    vertical-align: 2px;
+}
+
+/* ── Screenshots of the app ─────────────────────────────── */
+
+/* A phone screenshot in the active gradient's frame. */
+.device {
+    position: relative;
+    width: 100%;
+    max-width: 372px;
+    margin: 0 auto;
+    padding: 2px;
+    background: var(--active);
+}
+
+/* A glow behind the hero's phone. The hero clips it; other sections would grow wider with it. */
+.hero .device::before {
+    content: "";
+    position: absolute;
+    inset: -40px;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(51, 204, 255, 0.16), transparent);
+}
+
+.device img,
+.shot img {
+    width: 100%;
+    height: auto;
+    background: #13141c;
+}
+
+/* A wide screenshot, with a caption under it. The image links to itself, to see it whole on a phone. */
+.shot {
+    margin: 0 0 40px;
+}
+
+.shot a {
+    display: block;
+}
+
+.shot img {
+    border: 1px solid var(--line-strong);
+}
+
+.shot figcaption {
+    max-width: 52em;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+/* ── Sections ────────────────────────────────────────────── */
+
+.section {
+    padding: 104px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.section.alt {
+    background: var(--panel);
+}
+
+.kicker {
+    display: inline-block;
+    margin-bottom: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+.kicker::before {
+    content: "// ";
+    color: var(--muted);
+}
+
+.section h2 {
+    font-size: clamp(28px, 3.6vw, 40px);
+    line-height: 1.15;
+    letter-spacing: -0.035em;
+}
+
+.section-head {
+    max-width: 680px;
+    margin-bottom: 52px;
+}
+
+.section-head p,
+.split-copy > p {
+    margin-top: 16px;
+    font-size: 16px;
+}
+
+.split-copy > .note {
+    margin-top: 28px;
+    font-size: 13.5px;
+}
+
+/* Feature grid */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+}
+
+.card {
+    padding: 30px 28px 32px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    transition: background 0.2s;
+}
+
+.card:hover {
+    background: var(--card);
+}
+
+.icon {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    margin-bottom: 20px;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--accent);
+}
+
+.icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.card h3 {
+    margin-bottom: 9px;
+    font-size: 16px;
+}
+
+.card p {
+    font-size: 13.5px;
+    line-height: 1.7;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 28px;
+}
+
+.tag {
+    border: 1px solid var(--line);
+    background: var(--card);
+    padding: 4px 11px;
+    font-size: 12px;
+    color: var(--body);
+}
+
+/* Smaller features, each with a sentence on what it does. */
+
+.more {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+}
+
+.more li {
+    padding: 16px 20px 18px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.more b {
+    color: var(--text);
+}
+
+/* Split sections: copy beside an illustration */
+
+.split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 72px;
+    align-items: center;
+}
+
+.split.flip .split-copy {
+    order: 2;
+}
+
+.points {
+    list-style: none;
+    margin: 30px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 18px;
+}
+
+.points li {
+    position: relative;
+    padding-left: 28px;
+    font-size: 14px;
+}
+
+.points li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 0.55em;
+    width: 10px;
+    height: 10px;
+    background: var(--active);
+}
+
+.points b {
+    color: var(--text);
+}
+
+/* Panels used for illustrations */
+
+.panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+}
+
+.panel-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--muted);
+}
+
+.panel-head b {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.panel-head .right {
+    margin-left: auto;
+}
+
+/* Durable timeline */
+
+.timeline {
+    list-style: none;
+    margin: 0;
+    padding: 10px 0;
+    font-size: 13px;
+}
+
+.timeline li {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 18px;
+}
+
+.timeline .mark {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border: 1px solid var(--ok);
+    color: var(--ok);
+    font-size: 11px;
+}
+
+.timeline .what {
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.timeline .what em {
+    font-style: normal;
+    color: var(--muted);
+}
+
+.timeline .state {
+    font-size: 11.5px;
+    color: var(--muted);
+}
+
+.timeline .crash {
+    background: var(--err-soft);
+    border-top: 1px dashed rgba(247, 118, 142, 0.5);
+    border-bottom: 1px dashed rgba(247, 118, 142, 0.5);
+}
+
+.timeline .crash .mark {
+    border-color: var(--err);
+    color: var(--err);
+}
+
+.timeline .crash .state {
+    color: var(--err);
+}
+
+.timeline .resume .mark {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.timeline .resume .state {
+    color: var(--accent);
+}
+
+/* Live-edit band */
+
+.flow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    border: 1px solid var(--line);
+}
+
+.step {
+    position: relative;
+    padding: 28px 26px 30px;
+    border-right: 1px solid var(--line);
+    background: var(--bg);
+}
+
+.step:last-child {
+    border-right: 0;
+}
+
+.step code {
+    display: inline-block;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: var(--brand);
+}
+
+.step h3 {
+    font-size: 15px;
+    margin-bottom: 6px;
+}
+
+.step p {
+    font-size: 13.5px;
+}
+
+/* Access cards */
+
+.access {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.mode {
+    padding: 24px 22px 26px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--line-strong);
+}
+
+.mode.featured {
+    position: relative;
+    border-top-color: transparent;
+}
+
+.mode.featured::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: -2px;
+    height: 2px;
+    background: var(--active);
+}
+
+.mode > code {
+    font-size: 12px;
+    color: var(--body);
+}
+
+.mode h3 {
+    margin: 12px 0 8px;
+    font-size: 15px;
+}
+
+.mode p {
+    font-size: 13px;
+}
+
+/* Pi Durable: what each part of the harness becomes in Pi Pocket */
+
+#pi-durable .split-copy code {
+    white-space: nowrap;
+}
+
+.map-head {
+    margin: 80px 0 24px;
+    font-size: 18px;
+}
+
+.map .card > code {
+    display: inline-block;
+    margin-bottom: 16px;
+    font-size: 12.5px;
+    color: var(--brand);
+}
+
+.note {
+    margin-top: 28px;
+    font-size: 13.5px;
+    color: var(--muted);
+}
+
+/* Guard approval, as the app draws it */
+
+.approval {
+    border: 1px solid var(--warn);
+    border-left-width: 3px;
+    background: var(--warn-soft);
+    padding: 16px 18px 18px;
+}
+
+.approval-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--warn);
+    font-weight: 700;
+}
+
+.approval-head svg {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+.approval-reason {
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+.approval pre {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    color: var(--ok);
+    font: 13px/1.6 var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.approval-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.approval-actions .btn {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+}
+
+.btn-allow {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: 0;
+}
+
+.btn-deny {
+    background: var(--card);
+}
+
+.approval-actions small {
+    margin-right: auto;
+    font-size: 11.5px;
+    color: var(--body);
+}
+
+.callout {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 14px;
+    margin-top: 28px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--err);
+    background: var(--err-soft);
+    font-size: 13.5px;
+}
+
+.callout b {
+    color: var(--err);
+}
+
+/* Get started */
+
+.start {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 64px;
+    align-items: start;
+}
+
+.steps {
+    list-style: none;
+    margin: 30px 0 0;
+    padding: 0;
+    counter-reset: step;
+    display: grid;
+    gap: 22px;
+}
+
+.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 14px;
+    font-size: 14px;
+}
+
+.steps li::before {
+    content: counter(step);
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--text);
+    font-weight: 700;
+}
+
+.steps b {
+    color: var(--text);
+}
+
+.steps b:first-child {
+    display: block;
+}
+
+.term {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+}
+
+.term-tabs {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+}
+
+.term-tablist {
+    display: flex;
+}
+
+.term-tabs button {
+    padding: 12px 18px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    background: none;
+    color: var(--muted);
+    font: 13px var(--mono);
+    cursor: pointer;
+}
+
+.term-tabs button[aria-selected="true"] {
+    color: var(--text);
+    background: var(--code-bg);
+    border-bottom-color: var(--focus);
+}
+
+.term-tabs .copy {
+    margin: 7px 8px 7px auto;
+}
+
+.term pre {
+    margin: 0;
+    padding: 20px 22px;
+    overflow-x: auto;
+    font: 13.5px/1.85 var(--mono);
+    color: var(--text);
+}
+
+.term .c {
+    color: var(--muted);
+}
+
+.term .p {
+    color: var(--ok);
+    user-select: none;
+}
+
+.term-foot {
+    padding: 12px 22px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--muted);
+}
+
+/* ── Engineering page ────────────────────────────────────── */
+
+.page-head {
+    position: relative;
+    overflow: hidden;
+    padding: 88px 0 80px;
+    border-bottom: 1px solid var(--line);
+}
+
+.page-head .wrap {
+    position: relative;
+}
+
+.page-head h1 {
+    margin: 0 0 22px;
+    font-size: clamp(32px, 4.6vw, 54px);
+    line-height: 1.06;
+    letter-spacing: -0.045em;
+}
+
+/* The architecture: the request stack, top to bottom, with what runs beside it. */
+
+.arch {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    gap: 24px;
+    margin: 0 0 56px;
+}
+
+.arch-stack,
+.arch-side {
+    display: flex;
+    flex-direction: column;
+}
+
+.arch-side {
+    gap: 16px;
+}
+
+.layer {
+    padding: 16px 18px;
+    background: var(--card);
+    border: 1px solid var(--line);
+}
+
+.layer.core {
+    position: relative;
+    border-color: var(--line-strong);
+}
+
+.layer.core::before {
+    content: "";
+    position: absolute;
+    left: -1px;
+    top: -1px;
+    bottom: -1px;
+    width: 2px;
+    background: var(--active);
+}
+
+.layer.store {
+    background: var(--code-bg);
+}
+
+.layer-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+}
+
+.layer-head b {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.layer-head code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 12px;
+    color: var(--brand);
+}
+
+.layer p {
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+.parts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.parts span {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    padding: 2px 9px;
+    font-size: 12px;
+}
+
+/* What crosses between two layers, on the line that joins them. */
+.wire {
+    position: relative;
+    padding: 10px 0 10px 30px;
+    font-size: 11.5px;
+    color: var(--muted);
+}
+
+.wire::before {
+    content: "";
+    position: absolute;
+    left: 18px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--line-strong);
+}
+
+/* The path of a message: numbered steps down a line. */
+
+.trace {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: step;
+    border-left: 1px solid var(--line-strong);
+}
+
+.trace li {
+    position: relative;
+    counter-increment: step;
+    padding: 0 0 34px 44px;
+}
+
+.trace li:last-child {
+    padding-bottom: 0;
+}
+
+.trace li::before {
+    content: counter(step);
+    position: absolute;
+    left: -14px;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: 27px;
+    height: 27px;
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.trace li > code:first-child {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 12.5px;
+    color: var(--brand);
+}
+
+.trace h3 {
+    margin: 4px 0 6px;
+    font-size: 15px;
+}
+
+.trace p {
+    max-width: 44em;
+    font-size: 13.5px;
+}
+
+/* Pi Pocket's documents. */
+
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+}
+
+.docs {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.docs th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--card);
+}
+
+.docs th,
+.docs td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+}
+
+.docs tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.docs td:first-child {
+    white-space: nowrap;
+}
+
+.docs td:last-child {
+    white-space: nowrap;
+    color: var(--muted);
+}
+
+.tag b {
+    color: var(--text);
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+/* Extensions, in install order. */
+
+.ext {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+}
+
+.ext li {
+    display: grid;
+    grid-template-columns: 150px 120px minmax(0, 1fr);
+    gap: 16px;
+    align-items: baseline;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13.5px;
+}
+
+.ext code {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--brand);
+}
+
+.ext .kinds {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+
+.footer {
+    padding: 48px 0 56px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.footer .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 28px;
+}
+
+.footer .logo {
+    margin-bottom: 10px;
+}
+
+.footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 22px;
+}
+
+.footer-links a {
+    color: var(--body);
+}
+
+.footer small {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 1000px) {
+    .hero .wrap,
+    .split,
+    .start {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 56px;
+    }
+
+    .split.flip .split-copy {
+        order: 0;
+    }
+
+    .grid,
+    .more {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .access {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .arch {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero .wrap {
+        padding-top: 64px;
+        padding-bottom: 72px;
+    }
+}
+
+/* The section links and the guides need the full width of the page. Narrower screens show only
+   the guides and scroll to the sections. */
+@media (max-width: 1239px) {
+    .nav-links a:not(.nav-guide),
+    .nav-sep {
+        display: none;
+    }
+}
+
+@media (max-width: 900px) {
+    .nav-long {
+        display: none;
+    }
+}
+
+/* With the section links, the guides and the docs need their short names to fit beside them. */
+@media (min-width: 1240px) {
+    .nav-long {
+        display: none;
+    }
+}
+
+/* On a phone, the logo and the GitHub button show only their icons. */
+@media (max-width: 520px) {
+    .nav .wrap {
+        gap: 14px;
+    }
+
+    .nav-links {
+        gap: 14px;
+    }
+
+    .nav .logo,
+    .nav .btn {
+        font-size: 0;
+        gap: 0;
+    }
+
+    .nav .btn {
+        padding: 0 9px;
+    }
+
+    .nav-links a {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 720px) {
+    body {
+        font-size: 14px;
+    }
+
+    .wrap {
+        padding: 0 18px;
+    }
+
+    .lead {
+        font-size: 15.5px;
+    }
+
+    .cta .btn {
+        flex: 1 1 auto;
+    }
+
+    .section {
+        padding: 72px 0;
+    }
+
+    .section-head {
+        margin-bottom: 36px;
+    }
+
+    .grid,
+    .more,
+    .access,
+    .flow {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .step {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .step:last-child {
+        border-bottom: 0;
+    }
+
+    .timeline li {
+        padding: 9px 14px;
+        gap: 10px;
+    }
+
+    .timeline .state {
+        display: none;
+    }
+
+    .page-head {
+        padding: 64px 0 56px;
+    }
+
+    .ext li {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 4px 12px;
+    }
+
+    .ext li p {
+        grid-column: 1 / -1;
+    }
+
+    .docs th,
+    .docs td {
+        padding: 9px 10px;
+    }
+
+    .docs td:first-child,
+    .docs td:last-child {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .approval-actions small {
+        display: none;
+    }
+
+    .term pre {
+        padding: 16px;
+        font-size: 12.5px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}
