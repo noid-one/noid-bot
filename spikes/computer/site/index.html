@@ -1,0 +1,32 @@
+<!doctype html>
+<title>noid test</title>
+<style>
+    body {
+        font: 32px sans-serif;
+        background: #111;
+        color: #eee;
+    }
+    .spin {
+        width: 80px;
+        height: 80px;
+        background: #7aa2f7;
+        animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>
+<div class="spin"></div>
+<p id="frame">0</p>
+<p id="cookie"></p>
+<script>
+    let frame = 0;
+    const tick = () => {
+        document.getElementById("frame").textContent = String((frame += 1));
+        requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    document.getElementById("cookie").textContent = document.cookie || "(no cookie)";
+</script>
