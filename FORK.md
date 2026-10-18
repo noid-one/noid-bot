@@ -10,10 +10,10 @@ noid started as a copy of [Pi Pocket](https://github.com/TannerMidd/pi-pocket) (
 
 Our own features go in `src/server/extensions/noid-*.ts`, with `x.noid.*` document, task and tool names. Changes to Pi Pocket's core files are listed here, one line each with the reason.
 
-| File | Why |
-|---|---|
+| File                                                      | Why                                                                                                                |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `src/server/memory.ts`, `src/server/extensions/memory.ts` | Memory auto-saves: Pi's lessons for the owner apply at once (guests' still wait). Tests and docs updated to match. |
-| `web/style.css` | Styles for bot faces (`web/faces/`), appended at the end. |
+| `web/style.css`                                           | Styles for bot faces (`web/faces/`), appended at the end.                                                          |
 
 ## Node version
 

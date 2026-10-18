@@ -16,7 +16,7 @@ const wordCount = defineTool({
     parameters: Type.Object({ text: Type.String({ description: "The text to count" }) }),
     replay: "safe",
     execute: async (args) => ({
-        content: [{ type: "text" as const, text: `${countWords(args.text)} words` }],
+        output: [{ type: "text" as const, text: `${countWords(args.text)} words` }],
     }),
 });
 

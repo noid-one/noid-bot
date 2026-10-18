@@ -46,7 +46,7 @@ const clock = defineTool({
             throw new Error(`There is no time zone ${zone}.`);
         }
 
-        return { content: [{ type: "text" as const, text: `${now} (${zone})` }] };
+        return { output: [{ type: "text" as const, text: `${now} (${zone})` }] };
     },
 });
 

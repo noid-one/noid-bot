@@ -36,7 +36,7 @@ export default () =>
 				name: "shout",
 				description: "Shout",
 				parameters: Type.Object({ text: Type.String() }),
-				execute: async (args) => ({ content: [{ type: "text", text: args.text.toUpperCase() + "${suffix}" }] }),
+				execute: async (args) => ({ output: [{ type: "text", text: args.text.toUpperCase() + "${suffix}" }] }),
 			}),
 		],
 		hooks: [hook(ToolTask, { beforeTool: (call) => (call.name === "bash" ? { block: "no shell while shouting" } : undefined) })],
@@ -199,7 +199,7 @@ export default () =>
 		tools: [${
             tool === undefined
                 ? ""
-                : `defineTool({ name: "${tool}", description: "x", parameters: Type.Object({}), execute: async () => ({ content: [{ type: "text", text: "${extension}" }] }) })`
+                : `defineTool({ name: "${tool}", description: "x", parameters: Type.Object({}), execute: async () => ({ output: [{ type: "text", text: "${extension}" }] }) })`
         }],
 	});
 `;

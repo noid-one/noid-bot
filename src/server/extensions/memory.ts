@@ -11,7 +11,7 @@ import { flat, MAX_LESSON, MEMORY_EXTENSION, type Project } from "../memory.ts";
 
 /** A reply naming the lesson it is about, so the app can offer approving it right under the call. */
 const reply = (text: string, lesson?: string) => ({
-    content: [{ type: "text" as const, text }],
+    output: [{ type: "text" as const, text }],
     ...(lesson === undefined ? {} : { details: { lesson } }),
 });
 const WAITS = "it waits for the owner's approval (a tap under this call, or in Menu → Memory)";

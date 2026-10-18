@@ -13,7 +13,7 @@ const wordCount = defineTool({
     parameters: Type.Object({ text: Type.String({ description: "The text to count" }) }),
     replay: "safe",
     execute: async (args) => ({
-        content: [{ type: "text" as const, text: `${countWords(args.text)} words` }],
+        output: [{ type: "text" as const, text: `${countWords(args.text)} words` }],
     }),
 });
 
@@ -29,7 +29,7 @@ export default function createMyWords() {
 
 ## Return a result
 
-- Return `{ content: [{ type: "text", text }] }`. The model reads the text.
+- Return `{ output: [{ type: "text", text }] }`. The model reads the text.
 - To give the model an error, throw an `Error`. The model gets its message as an error result.
 - `api.output(text)` streams output while the tool runs. When `execute` returns no `content`, this output becomes the result.
 

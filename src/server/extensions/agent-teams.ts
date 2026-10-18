@@ -65,7 +65,7 @@ export default function createAgentTeams(host: PocketHost, web?: ExtensionWeb) {
         }),
         replay: "safe",
         execute: async (args, api) => {
-            const reply = (said: string) => ({ content: [{ type: "text" as const, text: said }] });
+            const reply = (said: string) => ({ output: [{ type: "text" as const, text: said }] });
             const key = `${api.taskId}:${api.callId}`;
 
             if (args.action === "list") {

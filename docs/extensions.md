@@ -73,7 +73,7 @@ const clock = defineTool({
     parameters: Type.Object({ zone: Type.Optional(Type.String()) }),
     replay: "safe",
     execute: async (args) => ({
-        content: [
+        output: [
             {
                 type: "text" as const,
                 text: new Date().toLocaleString("en-US", { timeZone: args.zone }),

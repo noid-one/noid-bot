@@ -22,7 +22,7 @@ import type { RepoWatchView } from "../repo-watches.ts";
 import { endedText } from "../watches.ts";
 import { describeMoment, describeRepeat, WHEN_HELP } from "../when.ts";
 
-const reply = (text: string) => ({ content: [{ type: "text" as const, text }] });
+const reply = (text: string) => ({ output: [{ type: "text" as const, text }] });
 /** What a repository watch can look for (`repo-watches.ts`). */
 const EVENTS: readonly RepoEvent[] = ["issues", "pulls", "ci", "releases", "mentions"];
 
