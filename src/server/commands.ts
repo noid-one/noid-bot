@@ -54,6 +54,7 @@ import {
 import { describe, HttpError, optionalText } from "./errors.ts";
 import { homePath } from "./paths.ts";
 import { mentionedPaths, viewFile } from "./files.ts";
+import type { BotProfile } from "./noid/bots.ts";
 import { normalFolder } from "./noid/computer.ts";
 import { viewFileIn } from "./noid/env-files.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
@@ -137,7 +138,8 @@ const PLAN_EXTENSION = "pocket-plan";
 const PLAN_APPROVED = "The plan is approved. Go ahead and carry it out.";
 /** Longest handoff note for a new context, and longest instructions for Pi. */
 const MAX_HANDOFF = 20_000;
-const MAX_INSTRUCTIONS = 8000;
+
+export const MAX_INSTRUCTIONS = 8000;
 
 /** Where a new session works: a folder, and the worktree it is in when the session has one of its own. */
 type Place = { cwd: string; worktree?: Worktree; skipped: string[] };
@@ -357,7 +359,11 @@ export class Commands {
     async createSession(
         user: User,
         request: { cwd?: string; title?: string; worktree?: unknown },
-        { projectDefaults = true }: { projectDefaults?: boolean } = {},
+        {
+            projectDefaults = true,
+            bot,
+            instructions,
+        }: { projectDefaults?: boolean; bot?: BotProfile; instructions?: string } = {},
     ): Promise<{ id: ConversationId }> {
         const app = this.#app;
 
@@ -380,7 +386,7 @@ export class Commands {
             );
         }
 
-        const folder = await app.workspace.prepareFolder(requested);
+        const folder = app.workspace.prepareFolder(requested);
         const now = Date.now();
 
         return this.#inPlace(
@@ -402,6 +408,7 @@ export class Commands {
                             ...(initial.thinkingLevel === undefined
                                 ? {}
                                 : { thinkingLevel: initial.thinkingLevel }),
+                            ...(instructions === undefined ? {} : { instructions }),
                         },
                         init: async (tx, id) => {
                             const sessions = await tx.doc(SessionsDoc);
@@ -413,6 +420,7 @@ export class Commands {
                                 createdBy: user.id,
                                 ...(title === undefined ? {} : { title }),
                                 ...(worktree === undefined ? {} : { worktree }),
+                                ...(bot === undefined ? {} : { bot }),
                             };
                         },
                     },
@@ -670,6 +678,10 @@ export class Commands {
 
         if (patch.archived !== undefined && typeof patch.archived !== "boolean") {
             throw new HttpError(400, "archived must be true or false");
+        }
+
+        if (patch.archived === true && app.sessionMeta(id)?.bot?.main === true) {
+            throw new HttpError(400, "Noid, the main bot, stays.");
         }
 
         const before = app.sessionMeta(id);
@@ -1371,7 +1383,7 @@ export class Commands {
             "off") as ModelThinkingLevel;
         const thinkingLevel = model === undefined ? wanted : clampThinkingLevel(model, wanted);
         const cwd =
-            request.cwd === undefined ? undefined : await app.workspace.prepareFolder(request.cwd);
+            request.cwd === undefined ? undefined : app.workspace.prepareFolder(request.cwd);
 
         const change = {
             ...(request.model === undefined

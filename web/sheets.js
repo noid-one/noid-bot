@@ -5,6 +5,7 @@ import { ExtensionSheet, onExtensionsGone } from "./extension-ui.js";
 import { NotificationsSheet } from "./notify.js";
 import { ShareSheet } from "./share.js";
 import { AppearanceSheet } from "./sheets/appearance.js";
+import { BotSheet } from "./sheets/bot.js";
 import { BranchPicker } from "./sheets/branch.js";
 import { ExtensionsSheet } from "./sheets/extensions.js";
 import { FileSheet } from "./sheets/file.js";
@@ -331,6 +332,9 @@ function sheetBody(sheet) {
                 button="Start a new context"
                 submit=${(value) => actions.reset(value)}
             />`;
+            break;
+        case "bot":
+            body = html`<${BotSheet} id=${sheet.id} />`;
             break;
         case "instructions":
             body = html`<${TextSheet}

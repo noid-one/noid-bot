@@ -72,6 +72,7 @@ export function openApp(
     model: ReturnType<typeof scriptedModel>,
     dataDir = join(root, "data"),
     now?: () => number,
+    { mainBot = false }: { mainBot?: boolean } = {},
 ): Promise<App> {
     return PocketApp.open({
         dataDir,
@@ -80,6 +81,7 @@ export function openApp(
         log: () => {},
         configureModels: (models) => models.registerNativeProvider(model.provider),
         home,
+        mainBot,
         ...(now === undefined ? {} : { now }),
     });
 }

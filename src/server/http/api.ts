@@ -2,6 +2,7 @@
  * `/api`: the routes the web app calls. Each needs a signed-in person, and each but a GET needs the `X-Pocket` header,
  * which a form on another site cannot send. A conversation's routes are in `conversation-routes.ts`.
  */
+import type { BotRequest } from "../noid/bots.ts";
 import { readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir, networkInterfaces } from "node:os";
@@ -488,6 +489,27 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return json(response, 200, { ok: true });
         }
 
+        // noid: bots. A bot is a session (its list item carries `bot`), so listing and archiving are the sessions' own.
+        if (first === "bots" && second === undefined && method === "POST") {
+            return json(
+                response,
+                200,
+                await app.bots.create(user, await readJson<BotRequest>(request)),
+            );
+        }
+
+        if (first === "bots" && second !== undefined && method === "POST") {
+            return json(
+                response,
+                200,
+                await app.bots.update(
+                    user,
+                    conversationId(second),
+                    await readJson<BotRequest>(request),
+                ),
+            );
+        }
+
         if (first === "c" && second !== undefined) {
             const id = conversationId(second);
 
@@ -501,11 +523,18 @@ export function createApi(options: HttpOptions, auth: Auth) {
         }
 
         if (first === "approvals" && second !== undefined && method === "POST") {
-            const body = await readJson<{ allow?: boolean }>(request);
+            const body = await readJson<{ allow?: boolean; always?: boolean }>(request);
 
             // An id may hold a slash, which the path decoded into a part of its own: a codemode script's calls are
             // named `<call>/<n>`.
-            if (!(await app.answerApproval(parts.slice(1).join("/"), body.allow === true, user))) {
+            if (
+                !(await app.answerApproval(
+                    parts.slice(1).join("/"),
+                    body.allow === true,
+                    user,
+                    body.always === true,
+                ))
+            ) {
                 throw new HttpError(404, "That approval is no longer pending");
             }
 

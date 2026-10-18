@@ -1,0 +1,408 @@
+// noid's bots: Noid made on first open and kept, bots made with a profile and a place to work, edited, archived (never
+// Noid), told who they are, and their approvals: a host bot asks before changing this machine (allow, deny, always),
+// a computer bot does not, and sessions that are not bots never ask.
+import {
+    type App,
+    cleanUp,
+    context,
+    lastText,
+    openApp,
+    owner,
+    root,
+    scriptedModel,
+    until,
+    work,
+} from "./helpers.ts";
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
+import type { FauxResponseStep } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import type { ConversationId } from "@earendil-works/pi-durable";
+import { SessionsDoc } from "../src/server/docs.ts";
+import { ApprovalRulesDoc, classify } from "../src/server/noid/approvals.ts";
+import type { BotProfile } from "../src/server/noid/bots.ts";
+import { slugOf } from "../src/server/noid/bots.ts";
+
+/** "run COMMAND" calls bash; "write FILE TEXT" calls write; "check WORD" says whether Pi was given WORD. */
+const route: FauxResponseStep = (request) => {
+    const { role, text } = lastText(request as never);
+
+    if (role === "toolResult") {
+        return fauxAssistantMessage([fauxText(`tool: ${text}`)]);
+    }
+
+    const [verb = "", ...rest] = text.split(" ");
+
+    if (verb === "run") {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: rest.join(" ") })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    if (verb === "write") {
+        return fauxAssistantMessage(
+            [fauxToolCall("write", { path: rest[0] ?? "", content: rest.slice(1).join(" ") })],
+            { stopReason: "toolUse" },
+        );
+    }
+
+    if (verb === "check") {
+        const { messages, systemPrompt } = request as {
+            messages: unknown[];
+            systemPrompt?: string;
+        };
+        const given = JSON.stringify({ systemPrompt, messages: messages.slice(0, -1) });
+
+        return fauxAssistantMessage([
+            fauxText(`has ${rest.join(" ")}: ${given.includes(rest.join(" "))}`),
+        ]);
+    }
+
+    return fauxAssistantMessage([fauxText(`echo: ${text}`)]);
+};
+
+const data = join(root, "bots-data");
+let app: App;
+
+before(async () => {
+    app = await openApp(scriptedModel(route), data, undefined, { mainBot: true });
+    app.config.lastModel ??= { provider: "faux", modelId: "faux-1", thinkingLevel: "off" };
+});
+
+after(async () => {
+    await app?.close();
+    cleanUp();
+});
+
+async function answer(id: ConversationId): Promise<string> {
+    const entries = await app.transcripts.allEntries(id, true);
+    const last = entries.findLast((entry) => entry.kind === "assistant");
+
+    return last?.kind === "assistant"
+        ? last.blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+}
+
+/** Send a message and wait for its whole run. */
+async function send(id: ConversationId, text: string): Promise<void> {
+    const { submissionId } = await app.commands.submit(id, owner(app), {
+        text,
+        requestId: crypto.randomUUID(),
+    });
+
+    await (await app.harness.submission(submissionId, context))!.wait(context);
+}
+
+/** Send a message whose run will wait for an approval; returns the approval's id once it asks. */
+async function sendAndWaitForQuestion(id: ConversationId, text: string) {
+    const { submissionId } = await app.commands.submit(id, owner(app), {
+        text,
+        requestId: crypto.randomUUID(),
+    });
+
+    await until(() => app.approvals.forConversation(id).length > 0, "the approval question");
+
+    const question = app.approvals.forConversation(id)[0]!;
+
+    return {
+        question,
+        done: async () => (await app.harness.submission(submissionId, context))!.wait(context),
+    };
+}
+
+async function hostBot(name: string) {
+    const made = await app.bots.create(owner(app), {
+        name,
+        role: "Works here",
+        kind: "host",
+        folder: work,
+    });
+
+    await app.commands.configure(made.id, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+        thinkingLevel: "off",
+    });
+
+    return made;
+}
+
+test("Noid is made on first open, on the shared computer, and a restart keeps the same one", async () => {
+    const noid = app.bots.list().find((each) => each.bot.main === true);
+
+    assert.ok(noid);
+    assert.equal(noid.bot.name, "Noid");
+    assert.equal(noid.bot.kind, "computer");
+    assert.equal(app.cwdOf(noid.conversationId), "/home/noid/bots/noid");
+    assert.equal(app.onHost(noid.conversationId), false);
+    assert.ok(!existsSync("/home/noid"), "nothing is made on this machine");
+
+    await app.close();
+    app = await openApp(scriptedModel(route), data, undefined, { mainBot: true });
+    assert.equal(app.bots.list().filter((each) => each.bot.main === true).length, 1);
+    assert.equal(
+        app.bots.list().find((each) => each.bot.main)!.conversationId,
+        noid.conversationId,
+    );
+});
+
+test("Noid cannot be archived; other bots can", async () => {
+    const noid = app.bots.list().find((each) => each.bot.main)!;
+
+    await assert.rejects(
+        app.commands.updateSession(noid.conversationId, owner(app), { archived: true }),
+        /Noid, the main bot, stays/,
+    );
+
+    const { id } = await app.bots.create(owner(app), { name: "Temp" });
+
+    await app.commands.updateSession(id, owner(app), { archived: true });
+    assert.ok(!app.bots.list().some((each) => each.bot.name === "Temp"));
+});
+
+test("bots are made with a profile and a folder of their own, and checked", async () => {
+    const researcher = await app.bots.create(owner(app), {
+        name: "Researcher",
+        role: "Finds things out",
+        instructions: "Cite every source.",
+        color: "#9ECE6A",
+        skin: "clay",
+        eyes: "visor",
+    });
+
+    assert.equal(researcher.bot.kind, "computer");
+    assert.equal(researcher.bot.color, "#9ece6a");
+    assert.equal(app.cwdOf(researcher.id), "/home/noid/bots/researcher");
+    assert.equal((await app.agentState(researcher.id))?.instructions, "Cite every source.");
+    assert.equal(
+        app.sessions().find((each) => each.id === Number(researcher.id))?.bot?.skin,
+        "clay",
+    );
+
+    // Another name that makes the same folder name gets a folder of its own.
+    const other = await app.bots.create(owner(app), { name: "Re-searcher!" });
+
+    assert.equal(app.cwdOf(other.id), "/home/noid/bots/re-searcher");
+    assert.equal(slugOf("Re searcher"), "re-searcher");
+
+    const clash = await app.bots.create(owner(app), { name: "re searcher" });
+
+    assert.equal(app.cwdOf(clash.id), "/home/noid/bots/re-searcher-2");
+
+    await assert.rejects(app.bots.create(owner(app), { name: "researcher" }), /already/);
+    await assert.rejects(app.bots.create(owner(app), { name: "" }), /Give the bot a name/);
+    await assert.rejects(app.bots.create(owner(app), { name: "Bad", color: "red" }), /#rrggbb/);
+    await assert.rejects(
+        app.bots.create(owner(app), { name: "Bad", skin: "plaid" }),
+        /Unknown skin/,
+    );
+    await assert.rejects(
+        app.bots.create(owner(app), { name: "Bad", kind: "host", folder: "/home/noid/bots/x" }),
+        /folder of this machine/,
+    );
+    await assert.rejects(
+        app.bots.create(owner(app), { name: "Bad", kind: "host", folder: join(root, "nowhere") }),
+        /isn't there/,
+    );
+});
+
+test("a bot's name, role, face, and instructions change", async () => {
+    const { id } = await app.bots.create(owner(app), { name: "Writer", role: "Writes" });
+    const changed = await app.bots.update(owner(app), id, {
+        name: "Editor",
+        role: "Edits drafts",
+        skin: "pixel",
+        instructions: "Keep it short.",
+    });
+
+    assert.equal(changed.name, "Editor");
+    assert.equal(changed.skin, "pixel");
+    assert.equal(app.sessionMeta(id)?.title, "Editor");
+    assert.equal((await app.agentState(id))?.instructions, "Keep it short.");
+    await assert.rejects(app.bots.update(owner(app), id, { name: "Researcher" }), /already/);
+});
+
+test("a bot is told who it is, what it is for, and where it works", async () => {
+    const { id } = await hostBot("Scout");
+
+    await send(id, "check You are Scout");
+    assert.equal(await answer(id), "has You are Scout: true");
+    await send(id, "check Your role: Works here");
+    assert.equal(await answer(id), "has Your role: Works here: true");
+    await send(id, `check You work on the owner's own machine, in ${work}`);
+    assert.match(await answer(id), /: true$/);
+});
+
+test("a host bot asks before it changes this machine: allow, deny, and always allow", async () => {
+    const { id, bot } = await hostBot("Builder");
+    const file = join(work, "builder.txt");
+
+    // Reading runs at once.
+    await send(id, "run ls");
+    assert.equal(app.approvals.forConversation(id).length, 0);
+
+    // A write waits; allowed, it runs.
+    const allowed = await sendAndWaitForQuestion(id, "write builder.txt first");
+
+    assert.equal(allowed.question.tool, "write");
+    assert.match(allowed.question.reason, /Builder writes a file on your machine/);
+    assert.ok(!existsSync(file), "nothing happens before the answer");
+    assert.ok(await app.answerApproval(allowed.question.id, true, owner(app)));
+    await allowed.done();
+    assert.equal(readFileSync(file, "utf8"), "first");
+
+    // Denied, it does not run, and Pi is told.
+    const denied = await sendAndWaitForQuestion(id, "run rm builder.txt");
+
+    assert.ok(await app.answerApproval(denied.question.id, false, owner(app)));
+    await denied.done();
+    assert.ok(existsSync(file));
+    assert.match(await answer(id), /denied this bash call/);
+
+    // Always allow: the next write of this bot runs without asking.
+    const always = await sendAndWaitForQuestion(id, "write builder.txt second");
+
+    assert.ok(await app.answerApproval(always.question.id, true, owner(app), true));
+    await always.done();
+    await send(id, "write builder.txt third");
+    assert.equal(readFileSync(file, "utf8"), "third");
+    assert.equal(app.approvals.forConversation(id).length, 0);
+
+    // Only for that bot.
+    assert.deepEqual(classify(bot, "host", "write", { path: "x" }).ask, true);
+});
+
+test("the rules: where a bot runs decides; on this machine, anything that is not read-only asks", () => {
+    const computer: BotProfile = {
+        id: "c",
+        name: "C",
+        role: "",
+        color: "#000000",
+        kind: "computer",
+    };
+
+    assert.equal(
+        classify(undefined, "host", "bash", { command: "rm -rf /" }).ask,
+        false,
+        "Pi's own sessions never ask",
+    );
+    // On the shared computer the container is the boundary.
+    assert.equal(classify(computer, "computer", "bash", { command: "rm -rf /tmp/x" }).ask, false);
+    assert.equal(classify(computer, "computer", "write", { path: "x" }).ask, false);
+    assert.equal(classify(computer, "computer", "memory", { action: "add", text: "x" }).ask, false);
+    assert.equal(
+        classify(computer, "computer", "memory", { action: "remove", id: "a1" }).ask,
+        true,
+    );
+    // The same bot moved onto this machine asks: its folder decides, not the kind it was made as.
+    assert.equal(classify(computer, "host", "bash", { command: "git push" }).ask, true);
+    assert.equal(
+        classify(computer, "host", "bash", { command: "git status && cat README.md" }).ask,
+        false,
+    );
+    assert.equal(
+        classify(computer, "host", "bash", { command: "cat x > y" }).ask,
+        true,
+        "a redirect writes",
+    );
+    assert.equal(classify(computer, "host", "edit", { path: "x" }).ask, true);
+    assert.equal(classify(computer, "host", "read", { path: "x" }).ask, false);
+    // Any other tool that may change things asks too: a list of what only looks, not of what is dangerous.
+    assert.equal(classify(computer, "host", "browser", { action: "click", ref: "e1" }).ask, true);
+    assert.equal(classify(computer, "host", "browser", { action: "snapshot" }).ask, false);
+    assert.equal(classify(computer, "host", "some_extension_tool", {}).ask, true);
+    assert.equal(
+        classify(computer, "host", "some_extension_tool", {}, true).ask,
+        false,
+        "marked read-only",
+    );
+    assert.equal(
+        classify(computer, "host", "schedule", { action: "add" }).ask,
+        false,
+        "its own state",
+    );
+});
+
+test("a session a bot started counts as that bot, so it cannot slip its rules", async () => {
+    const { id } = await hostBot("Starter");
+    const linked = await app.commands.createSession(owner(app), { cwd: work });
+
+    await app.harness.commit(async (tx) => {
+        (await tx.doc(SessionsDoc)).items[String(linked.id)]!.linkedFrom = { id: Number(id) };
+    }, context);
+    assert.equal(app.bots.of(linked.id)?.name, "Starter");
+});
+
+test("Always allow keeps a rule only for noid's own questions", async () => {
+    const { id } = await hostBot("Guarded");
+
+    // A question someone else asked in the bot's session (Lancet Guard's ids have no noid: prefix).
+    const asked = app.approvals.request(
+        {
+            id: "lancet-like:1",
+            conversationId: id,
+            taskId: 1 as never,
+            tool: "bash",
+            subject: "rm x",
+            reason: "risky",
+            createdAt: Date.now(),
+        },
+        context,
+    );
+
+    assert.ok(await app.answerApproval("lancet-like:1", true, owner(app), true));
+    await asked;
+    assert.equal(
+        ((await app.harness.snapshot(ApprovalRulesDoc, context))?.rules ?? []).filter(
+            (rule) => rule.tool === "bash",
+        ).length,
+        0,
+    );
+});
+
+test("a bot's edits check before they change anything; its face can go back to its name's", async () => {
+    const { id } = await app.bots.create(owner(app), {
+        name: "Careful",
+        skin: "clay",
+        eyes: "dots",
+    });
+
+    await assert.rejects(
+        app.bots.update(owner(app), id, { name: "Renamed", instructions: "x".repeat(9000) }),
+        /limited to 8000/,
+    );
+    assert.equal(app.sessionMeta(id)?.bot?.name, "Careful", "nothing changed");
+
+    const reset = await app.bots.update(owner(app), id, { skin: "", eyes: "" });
+
+    assert.equal(reset.skin, undefined);
+    assert.equal(reset.eyes, undefined);
+    await assert.rejects(
+        app.bots.create(owner(app), { name: "Long", instructions: "x".repeat(9000) }),
+        /8000/,
+    );
+    await assert.rejects(
+        app.bots.create(owner(app), { name: "Odd", instructions: 123 }),
+        /must be text/,
+    );
+});
+
+test("each bot keeps memories of its own, and everywhere's reach them all", async () => {
+    const one = await app.bots.create(owner(app), { name: "Memo One" });
+    const two = await app.bots.create(owner(app), { name: "Memo Two" });
+
+    await app.memory.remember(one.id, owner(app), { text: "One-only-walrus." });
+    await app.memory.remember(two.id, owner(app), { text: "Everyone-llama.", scope: "everywhere" });
+
+    const seenByOne = (await app.memory.view(one.id, owner(app))).lessons.map(
+        (lesson) => lesson.text,
+    );
+    const seenByTwo = (await app.memory.view(two.id, owner(app))).lessons.map(
+        (lesson) => lesson.text,
+    );
+
+    assert.ok(seenByOne.includes("One-only-walrus.") && seenByOne.includes("Everyone-llama."));
+    assert.ok(!seenByTwo.includes("One-only-walrus.") && seenByTwo.includes("Everyone-llama."));
+    assert.equal((await app.memory.view(one.id, owner(app))).project?.name, "memo-one");
+});

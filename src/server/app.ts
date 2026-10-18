@@ -77,6 +77,8 @@ import { type ApprovalRequest, Approvals, type PocketHost, type WebAccess } from
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
+import { ApprovalRulesDoc, createApprovals, NOID_APPROVAL } from "./noid/approvals.ts";
+import { Bots } from "./noid/bots.ts";
 import { Computer, onComputer } from "./noid/computer.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
@@ -242,6 +244,8 @@ export interface OpenOptions {
     browser?: string | null;
     /** The home folder, whose `.agents/skills/` every session has. Undefined is Pi's: `$HOME`. Tests use their own. */
     home?: string;
+    /** noid: make Noid, the main bot, when there is none (default true; tests that do not test bots leave it out). */
+    mainBot?: boolean;
 }
 
 /** How long noid's shared computer may sit idle before it stops (NOID_COMPUTER_IDLE_MINUTES; 0 never stops it). */
@@ -306,6 +310,8 @@ export class PocketApp {
     readonly hooks = new Hooks(this);
     /** Lessons Pi keeps across sessions, for a project or everywhere. */
     readonly memory = new Memory(this);
+    /** noid's bots: sessions with a name, a role, a face, and a place to work. */
+    readonly bots = new Bots(this);
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Other people's drop-ins, from a reviewed index: found, installed off, read, updated, removed (`gallery.ts`). */
@@ -363,12 +369,14 @@ export class PocketApp {
     readonly #log: (line: string) => void;
     readonly #configureModels: ((models: ModelRuntime) => void) | undefined;
     readonly #home: string;
+    readonly #mainBot: boolean;
     /** The clock durable work runs by. */
     readonly now: () => number;
 
     private constructor(options: OpenOptions) {
         this.#configureModels = options.configureModels;
         this.#home = options.home ?? (process.env.HOME || homedir());
+        this.#mainBot = options.mainBot ?? true;
         this.now = options.now ?? Date.now;
         this.dataDir = options.dataDir;
         this.defaultCwd = options.defaultCwd;
@@ -527,6 +535,8 @@ export class PocketApp {
         const registry = createRegistry();
 
         registry.install(CodingTools);
+        // noid: approvals are a guard, so they are part of the app, not a module someone can turn off.
+        registry.install(createApprovals(this));
         // Durable work of the app itself, whatever extension modules are on.
         registry.install(
             defineExtension({
@@ -562,6 +572,7 @@ export class PocketApp {
             heldBack: (conversationId) => this.spend.heldBack(conversationId),
             onLimitsChanged: (listener) => this.spend.onLimitsChanged(listener),
             onHost: (conversationId) => this.onHost(conversationId),
+            botOf: (conversationId) => this.bots.of(conversationId),
             linkedSessions: this.linkedSessions,
             schedules: this.schedules,
             goals: this.goals,
@@ -672,6 +683,11 @@ export class PocketApp {
 
         if (this.guardOn()) {
             void this.guard.warm().catch(() => {});
+        }
+
+        // noid: Noid is there from the first open. Its folder on the computer is made when it first works.
+        if (this.#mainBot) {
+            await this.bots.ensureNoid();
         }
 
         // Work a previous process left unfinished continues now.
@@ -2091,7 +2107,7 @@ export class PocketApp {
             : undefined;
     }
 
-    async answerApproval(id: string, allow: boolean, user: User): Promise<boolean> {
+    async answerApproval(id: string, allow: boolean, user: User, always = false): Promise<boolean> {
         this.requireSteer(user);
         const request = this.approvals.all().find((each) => each.id === id);
 
@@ -2107,6 +2123,30 @@ export class PocketApp {
 
         if (!this.approvals.answer(id, { allow, by: user.name })) {
             return false;
+        }
+
+        // noid: "Always allow" keeps a rule for this bot and tool; only the owner makes rules.
+        const bot = this.bots.of(request.conversationId);
+
+        if (
+            allow &&
+            always &&
+            bot !== undefined &&
+            user.role === "owner" &&
+            id.startsWith(NOID_APPROVAL)
+        ) {
+            await this.harness.commit(async (tx) => {
+                const doc = await tx.doc(ApprovalRulesDoc);
+
+                if (!doc.rules.some((rule) => rule.bot === bot.id && rule.tool === request.tool)) {
+                    doc.rules.push({
+                        bot: bot.id,
+                        tool: request.tool,
+                        at: Date.now(),
+                        by: user.id,
+                    });
+                }
+            }, context);
         }
 
         const conversationId = request.conversationId;

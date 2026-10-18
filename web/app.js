@@ -30,7 +30,15 @@ import {
     togglePeeks,
 } from "./peeks.js";
 import { closePip, openPip, PipHost, pipAvailable, togglePip } from "./pip.js";
-import { Drawer, RailNav, ResizeHandle, SessionList, toSessions } from "./sessions.js";
+import { Face } from "./faces/face.js";
+import {
+    botFaceState,
+    Drawer,
+    RailNav,
+    ResizeHandle,
+    SessionList,
+    toSessions,
+} from "./sessions.js";
 // Loaded for what it does: it gives replies' Markdown the component for pages, images, and diffs in code blocks.
 import "./rich.js";
 import { takeShare } from "./share.js";
@@ -122,6 +130,10 @@ function Topbar() {
     ).length;
     // How far down it reaches: PiP's window on a short wide screen stops below its buttons.
     const edge = useEdge("--topbar-h", (rect) => rect.bottom);
+    // noid: a bot's session shows its face, which opens the bot to edit.
+    const botSession = store.state.sessions.find(
+        (session) => session.id === conversationId && session.bot !== undefined,
+    );
 
     return html`<header class="topbar" data-part="topbar" ref=${edge}>
         <button
@@ -133,6 +145,25 @@ function Topbar() {
             <${Icon} name="back" size=${22} />
             ${waiting > 0 && html`<span class="badge warn">${waiting}</span>`}
         </button>
+        ${
+            botSession &&
+            html`<button
+                class="topbar-face"
+                aria-label=${`Edit ${botSession.bot.name}`}
+                title=${`${botSession.bot.name}: edit`}
+                onClick=${() => openSheet({ type: "bot", id: conversationId })}
+            >
+                <${Face}
+                    id=${botSession.bot.id}
+                    color=${botSession.bot.color}
+                    skin=${botSession.bot.skin}
+                    eyes=${botSession.bot.eyes}
+                    state=${botFaceState(botSession)}
+                    size=${32}
+                    label=${botSession.bot.name}
+                />
+            </button>`
+        }
         <div class="title">
             <button
                 class="title-open"

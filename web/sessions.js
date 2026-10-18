@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar, folderColor, initials } from "./avatar.js";
 import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
+import { Face } from "./faces/face.js";
 import { useDragToClose } from "./gestures.js";
 import { PeeksRailButton } from "./peeks.js";
 import { PipRailButton } from "./pip.js";
@@ -534,6 +535,82 @@ const TABS = [
  */
 const listKept = { query: "", scroll: 0 };
 
+/** A bot's face shows how it is: at work, waiting for you, failed, or idle. */
+const FACE_STATES = { waiting: "waiting", working: "working", failed: "error" };
+
+/** The face state of a bot's session, from its list item. */
+export function botFaceState(session) {
+    return FACE_STATES[sessionMark(session).shape.split(" ")[0]] ?? "idle";
+}
+
+/** noid: the bots, above the sessions: Noid first, then by name. */
+function BotList({ compact, canStart }) {
+    const { sessions, conversationId } = store.state;
+    const bots = sessions
+        .filter((session) => session.bot !== undefined && !session.archived)
+        .sort(
+            (a, b) =>
+                Number(b.bot.main === true) - Number(a.bot.main === true) ||
+                a.bot.name.localeCompare(b.bot.name),
+        );
+
+    if (bots.length === 0 && !canStart) {
+        return null;
+    }
+
+    return html`<div class="bots" data-part="bot-list">
+        <div class="sessions-head">
+            <span class="sessions-name" data-part="bot-list-title">Bots</span>
+            <span class="sessions-count">${bots.length}</span>
+            ${
+                canStart &&
+                html`<button class="new-button" title="New bot" onClick=${() => openSheet({ type: "bot" })}>
+                    <${Icon} name="plus" size=${14} />
+                    New
+                </button>`
+            }
+        </div>
+        <div class="bot-items">
+            ${bots.map(
+                (session) => html`<${BotRow}
+                    key=${session.id}
+                    session=${session}
+                    active=${session.id === conversationId}
+                    size=${compact ? 26 : 30}
+                />`,
+            )}
+        </div>
+    </div>`;
+}
+
+function BotRow({ session, active, size }) {
+    const { bot } = session;
+    const mark = sessionMark(session);
+
+    return html`<button
+        class=${`bot-row ${active ? "active" : ""}`}
+        data-part="bot-row"
+        data-state=${botFaceState(session)}
+        aria-current=${active ? "page" : undefined}
+        title=${bot.role || bot.name}
+        onClick=${() => navigate(session.id)}
+    >
+        <${Face}
+            id=${bot.id}
+            color=${bot.color}
+            skin=${bot.skin}
+            eyes=${bot.eyes}
+            state=${botFaceState(session)}
+            size=${size}
+            label=${bot.name}
+        />
+        <span class="bot-text">
+            <span class="bot-name">${bot.name}</span>
+            <span class="bot-role">${mark.label || bot.role}</span>
+        </span>
+    </button>`;
+}
+
 export function SessionList({ compact = false }) {
     const { sessions, sessionsLoaded, server, pinned } = store.state;
     const canStart = canSteer() && !scoped();
@@ -615,9 +692,11 @@ export function SessionList({ compact = false }) {
         }
     };
 
+    // noid: bots are listed above, in their own list; an archived one shows here, to bring it back.
     const shown = sessions.filter(
         (session) =>
             Boolean(session.archived) === archived &&
+            (session.bot === undefined || archived) &&
             (needle === "" ||
                 `${session.title ?? ""} ${session.cwd} ${shortPath(session.cwd, server?.home)} ${session.model ?? ""}`
                     .toLowerCase()
@@ -1000,10 +1079,13 @@ export function SessionList({ compact = false }) {
     };
 
     const tabBar = useSlide(tabs, "button.on", "x");
-    const count = sessions.filter((session) => !session.archived).length;
+    const count = sessions.filter(
+        (session) => !session.archived && session.bot === undefined,
+    ).length;
     let index = 0;
 
     return html`<div class=${`sessions ${compact ? "compact" : ""}`} data-part="session-list">
+        <${BotList} compact=${compact} canStart=${canStart} />
         <div class="sessions-head">
             <span class="sessions-name" data-part="session-list-title">Sessions</span>
             <span class="sessions-count">${sessionsLoaded ? count : ""}</span>

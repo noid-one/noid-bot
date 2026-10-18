@@ -61,6 +61,9 @@ const toVirtual = (value: unknown): unknown => {
 
 /** An environment whose paths are under /remote: what this machine's disk does not have, as on the shared computer. */
 function mappedEnv(cwd: string): ExecutionEnv {
+    // As the shared computer does on a folder's first use: its environment makes it.
+    mkdirSync(toReal(cwd), { recursive: true });
+
     const env = new LocalExecutionEnv({ cwd: toReal(cwd), connection: daemon });
 
     return new Proxy(env, {
@@ -154,16 +157,12 @@ async function answer(id: ConversationId): Promise<string> {
         : "";
 }
 
-test("a session in a claimed folder is made there, and Pi's tools run there", async () => {
+test("a session in a claimed folder works there: Pi's tools run there, nothing on this machine", async () => {
     assert.ok(!existsSync(VIRTUAL), "the test needs /remote to be absent on this machine");
 
     const id = await newSession(app, `${VIRTUAL}/bots/alpha`);
 
     assert.equal(app.cwdOf(id), `${VIRTUAL}/bots/alpha`);
-    assert.ok(
-        existsSync(join(real, "bots", "alpha")),
-        "the folder was made through the environment",
-    );
     assert.equal(app.onHost(id), false);
 
     await say(app, id, "run pwd > where.txt && echo done");
@@ -177,6 +176,8 @@ test("a session in a claimed folder is made there, and Pi's tools run there", as
 test("the viewer, the @ list, and images read the claimed folder", async () => {
     const id = await newSession(app, `${VIRTUAL}/bots/beta`);
     const folder = join(real, "bots", "beta");
+
+    mkdirSync(folder, { recursive: true });
 
     writeFileSync(join(folder, "notes.md"), "# Plan\nship it\n");
     mkdirSync(join(folder, "img"), { recursive: true });
@@ -224,6 +225,8 @@ test("the viewer, the @ list, and images read the claimed folder", async () => {
 test("@ mentions and attachments reach Pi from the claimed folder", async () => {
     const id = await newSession(app, `${VIRTUAL}/bots/gamma`);
     const folder = join(real, "bots", "gamma");
+
+    mkdirSync(folder, { recursive: true });
 
     writeFileSync(join(folder, "todo.txt"), "buy-llama-food\n");
 
@@ -292,7 +295,7 @@ test("a session moves onto and off a claimed folder", async () => {
     assert.equal(app.onHost(id), true);
     await app.commands.configure(id, owner(app), { cwd: `${VIRTUAL}/bots/moved` });
     assert.equal(app.onHost(id), false);
-    assert.ok(existsSync(join(real, "bots", "moved")));
+    assert.equal(app.cwdOf(id), `${VIRTUAL}/bots/moved`);
 });
 
 test("a folder is judged once `..` and a final slash are resolved, never by its spelling", async () => {
@@ -318,6 +321,8 @@ test("a folder is judged once `..` and a final slash are resolved, never by its 
 test("someone other than the owner reaches only the session's folder, links included", async () => {
     const id = await newSession(app, `${VIRTUAL}/bots/theta`);
     const folder = join(real, "bots", "theta");
+
+    mkdirSync(folder, { recursive: true });
 
     writeFileSync(join(real, "secret.txt"), "the-owner-only\n");
     writeFileSync(join(folder, "shared.txt"), "for-everyone\n");
@@ -434,5 +439,27 @@ test("the computer stops only after its idle time, never while held", async () =
     await computer.stop({ ifIdle: true });
     assert.ok(calls.includes("stop --time"));
     assert.equal(await computer.state(), "stopped");
+    await computer.close(context);
+});
+
+test("closing the computer cleans up its environments (they are proxies over pi-env's)", async () => {
+    const { docker } = fakeDocker({ state: "running", image: true });
+    const computer = new Computer({}, docker);
+
+    computer.env("/home/noid/bots/one");
+    computer.env("/home/noid/bots/two/");
+    await computer.close(context);
+});
+
+test("a computer that cannot start gives an error result, not a throw", async () => {
+    const broken: Docker = async (args) => {
+        throw new Error(args[0] === "build" ? "no docker here" : "No such object");
+    };
+
+    const computer = new Computer({}, broken);
+    const result = await computer.env("/home/noid/bots/down").exec("true", undefined, context);
+
+    assert.equal(result.ok, false);
+    assert.match(!result.ok ? result.error.message : "", /Could not make \/home\/noid\/bots\/down/);
     await computer.close(context);
 });

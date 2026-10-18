@@ -15,11 +15,28 @@ import {
 import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
 import { APP_ROOT } from "../config.ts";
 import type { PocketHost } from "../host.ts";
+import type { BotProfile } from "../noid/bots.ts";
+import { COMPUTER_HOME } from "../noid/computer.ts";
 import { contextFilesIn } from "../noid/env-files.ts";
 
 const PREAMBLE = `You are Pi, a coding agent running inside Pi Pocket: a durable, multiplayer web app built on Pi Durable. People talk to you from a browser, often a phone, and several people can share one conversation. When more than one person uses this server, each message starts with [from: Name].
 
 You work in the conversation's working directory with the tools you are given. Your work is durable: if the server restarts, you continue where you left off. A tool call cut off by a restart comes back as an "interrupted" error when it was not safe to repeat; check what actually happened before you retry it.`;
+
+/** noid: a bot's preamble: who it is, what it is for, and where it works. */
+function botPreamble(bot: BotProfile, cwd: string): string {
+    const role = bot.role === "" ? "" : ` Your role: ${bot.role}.`;
+    const place =
+        bot.kind === "computer"
+            ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin).`
+            : `You work on the owner's own machine, in ${cwd}. Commands and edits that change something wait for the owner's approval.`;
+
+    return `You are ${bot.name}, one of the owner's bots in noid: a persistent teammate with one continuous conversation, your own memory, and routines.${role} People talk to you from a browser, often a phone. When more than one person uses this server, each message starts with [from: Name].
+
+${place}
+
+Your work is durable: if the server restarts, you continue where you left off. A tool call cut off by a restart comes back as an "interrupted" error when it was not safe to repeat; check what actually happened before you retry it.`;
+}
 
 const GUIDELINES = `- Keep replies short and easy to read on a small screen. Lead with the answer; use short paragraphs, lists, and small code blocks.
 - Use read to look at files instead of cat or sed. Use edit for precise changes and write for new files or full rewrites.
@@ -175,7 +192,15 @@ export default function createPrompt(host: PocketHost) {
     return defineExtension({
         name: "pocket-prompt",
         sections: [
-            section("preamble", () => PREAMBLE, { tag: false }),
+            section(
+                "preamble",
+                (input) => {
+                    const bot = host.botOf(input.conversationId);
+
+                    return bot === undefined ? PREAMBLE : botPreamble(bot, cwdOf(input));
+                },
+                { tag: false },
+            ),
             section("guidelines", () => GUIDELINES),
             // noid: Pi Pocket's docs and this machine's skills are files of this machine, which tools on the shared
             // computer cannot read; sessions there get neither (skills on the computer come later).

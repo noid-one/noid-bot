@@ -11,6 +11,7 @@ import type {
     Tx,
 } from "@earendil-works/pi-durable";
 import type { Browsers } from "./browser.ts";
+import type { BotProfile } from "./noid/bots.ts";
 import type { Gallery } from "./gallery.ts";
 import type { Role, User } from "./config.ts";
 import type { Goals } from "./goals.ts";
@@ -247,6 +248,8 @@ export interface PocketHost {
     onLimitsChanged(listener: () => void): () => void;
     /** noid: whether a conversation's folder is on this machine (no environment claims it). */
     onHost(conversationId: ConversationId): boolean;
+    /** noid: the bot a conversation works for (a subagent's is its session's), if it is one. */
+    botOf(conversationId: ConversationId): BotProfile | undefined;
     /**
      * Sessions that a session starts and messages (`linked-sessions.ts`): each one is an ordinary session, linked to the
      * one that started it. The checks of the person Pi works for apply, and a call repeated with its key acts once.

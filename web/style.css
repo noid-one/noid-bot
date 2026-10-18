@@ -14946,3 +14946,118 @@ pre.gallery-code {
         animation: none;
     }
 }
+
+/* ─── noid: bots (sessions.js BotList, app.js top bar, sheets/bot.js) ─────────────────────── */
+
+.bots {
+    flex: none;
+    margin-bottom: 10px;
+}
+
+.bot-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.bot-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0 10px;
+    width: 100%;
+    padding: 5px 10px 5px 6px;
+    border-radius: var(--r-row);
+    border: 1px solid transparent;
+    text-align: left;
+    transition: background-color var(--t-hover) var(--ease-out);
+}
+
+@media (hover: hover) {
+    .bot-row:hover {
+        background: var(--hover);
+    }
+}
+
+.bot-row:focus-visible {
+    outline-offset: -1px;
+}
+
+.bot-row.active {
+    background: var(--accent-soft);
+}
+
+.bot-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.bot-name {
+    overflow: hidden;
+    color: var(--text);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bot-row.active .bot-name {
+    font-weight: 600;
+}
+
+.bot-role {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bot-row[data-state="waiting"] .bot-role {
+    color: var(--warn);
+}
+
+.bot-row[data-state="error"] .bot-role {
+    color: var(--err);
+}
+
+.topbar-face {
+    display: grid;
+    flex: none;
+    place-items: center;
+    margin-right: 6px;
+    border-radius: 50%;
+}
+
+.bot-preview {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 14px;
+}
+
+.bot-face-picks {
+    display: grid;
+    flex: 1;
+    gap: 8px;
+}
+
+.bot-pick {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+}
+
+.bot-pick input[type="color"] {
+    width: 44px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--r-control);
+    background: none;
+}
+
+.bot-kinds {
+    display: flex;
+    gap: 8px;
+}

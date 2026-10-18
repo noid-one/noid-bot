@@ -1340,12 +1340,18 @@ function stepLive(step, results, slots, approvals, busy) {
 }
 
 function ApprovalCard({ approval }) {
-    const { me, server } = store.state;
+    const { me, server, sessions, conversationId } = store.state;
     const [busy, setBusy] = useState(false);
+    // noid: a bot's question can be answered for good (its rule), by the owner.
+    // Only noid's own questions are the bot's (Lancet Guard asks with ids of its own).
+    const bot = approval.id.startsWith("noid:")
+        ? sessions.find((session) => session.id === conversationId)?.bot
+        : undefined;
+    const canAlways = bot !== undefined && me?.role === "owner";
 
-    const answer = (allow) => {
+    const answer = (allow, always = false) => {
         setBusy(true);
-        attempt(() => actions.approve(approval.id, allow)).finally(() => setBusy(false));
+        attempt(() => actions.approve(approval.id, allow, always)).finally(() => setBusy(false));
     };
 
     // With approvals that need someone else, a guest cannot allow a call their own message led to (the server checks too).
@@ -1358,7 +1364,9 @@ function ApprovalCard({ approval }) {
         <div class="approval-head">
             <span class="approval-shield" aria-hidden="true"><${Icon} name="shield" size=${16} /></span>
             <div class="approval-title">
-                <span class="approval-ask">Lancet Guard asks before this ${approval.tool} call</span>
+                <span class="approval-ask"
+                    >${bot === undefined ? "Lancet Guard" : bot.name} asks before this ${approval.tool} call</span
+                >
                 <span class="approval-reason">${approval.reason}</span>
             </div>
         </div>
@@ -1376,6 +1384,18 @@ function ApprovalCard({ approval }) {
                     <button class="button deny" disabled=${busy} onClick=${() => answer(false)}>
                         Deny
                     </button>
+                    ${
+                        !ownCall &&
+                        canAlways &&
+                        html`<button
+                            class="button"
+                            disabled=${busy}
+                            title=${`Let ${bot.name} make ${approval.tool} calls without asking`}
+                            onClick=${() => answer(true, true)}
+                        >
+                            Always allow
+                        </button>`
+                    }
                     ${
                         !ownCall &&
                         html`<button

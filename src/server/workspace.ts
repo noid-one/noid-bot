@@ -212,24 +212,15 @@ export class Workspace {
     }
 
     /**
-     * noid: a folder to start a session in or move one to. One an environment runs (the shared computer) is made there
-     * when it is missing; any other is a folder of this machine, which must be there (`checkDirectory`).
+     * noid: a folder to start a session in or move one to. One an environment runs (the shared computer) is that
+     * environment's to make, on its first use, so nothing wakes the computer now; any other is a folder of this
+     * machine, which must be there (`checkDirectory`).
      */
-    async prepareFolder(path: string): Promise<string> {
+    prepareFolder(path: string): string {
         // `..` resolved first: a path that only looks like the computer's must not be made on this machine.
         const folder = normalFolder(path);
 
-        if (!this.#app.claims(folder)) {
-            return this.checkDirectory(path.trim());
-        }
-
-        const made = await this.#app.envAt(folder).createDir(folder, { recursive: true }, context);
-
-        if (!made.ok) {
-            throw new HttpError(409, `Could not make ${folder}: ${made.error.message}`);
-        }
-
-        return folder;
+        return this.#app.claims(folder) ? folder : this.checkDirectory(path.trim());
     }
 
     /**

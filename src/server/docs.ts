@@ -4,6 +4,7 @@
  *
  * Kinds are part of the stored data: rename one and old sessions lose it.
  */
+import type { BotProfile } from "./noid/bots.ts";
 import type { JsonValue } from "@earendil-works/chord";
 import {
     type ConversationId,
@@ -37,6 +38,8 @@ export type SessionMeta = {
      * kept out of the session list; an older Pi Pocket, which does not know this field, lists it as a session.
      */
     pip?: string;
+    /** noid: the bot this session is, with one continuous thread (`noid/bots.ts`). */
+    bot?: BotProfile;
 };
 
 /** The catalogue of user-facing sessions: ownerless conversations created by the app. Subagents are not listed. */

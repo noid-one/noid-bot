@@ -198,3 +198,35 @@ test(
         }
     },
 );
+
+test(
+    "two bots share the computer: one leaves a file in shared/, the other reads it",
+    { skip },
+    async () => {
+        const made = async (name: string) => {
+            const { id } = await app!.bots.create(owner(app!), { name: `${name} ${run}` });
+
+            await app!.commands.configure(id, owner(app!), {
+                model: { provider: "faux", modelId: "faux-1" },
+                thinkingLevel: "off",
+            });
+
+            return id;
+        };
+
+        const writer = await made("Writer");
+        const reader = await made("Reader");
+
+        await say(
+            app!,
+            writer,
+            `run pwd && echo from-the-writer > /home/noid/shared/handoff-${run}.txt`,
+        );
+        assert.match(await answer(writer), new RegExp(`/home/noid/bots/writer-${run}`));
+        await say(app!, reader, `run pwd && cat ../../shared/handoff-${run}.txt`);
+        assert.match(
+            await answer(reader),
+            new RegExp(`/home/noid/bots/reader-${run}\\s+from-the-writer`),
+        );
+    },
+);

@@ -6,7 +6,13 @@
  */
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
+import {
+    err,
+    ExecutionError,
+    type ExecutionEnv,
+    FileError,
+    toError,
+} from "@earendil-works/pi-durable/env";
 import { Connection, packagedDaemon, RemoteExecutionEnv } from "@earendil-works/pi-env";
 import { spawn } from "node:child_process";
 import { cpSync, mkdtempSync, rmSync } from "node:fs";
@@ -105,7 +111,9 @@ export class Computer {
     readonly #now: () => number;
     readonly #buildContext: string;
     readonly #log: (message: string) => void;
-    readonly #envs = new Map<string, RemoteExecutionEnv>();
+    readonly #envs = new Map<string, ExecutionEnv>();
+    /** Folders made on the computer (or being made) since this server started: each is made once, on first use. */
+    readonly #made = new Map<string, Promise<void>>();
     readonly connection: Connection;
     #starting: Promise<void> | undefined;
     #stopping: Promise<void> | undefined;
@@ -139,21 +147,84 @@ export class Computer {
         this.#countRequests();
     }
 
-    /** The environment for a folder on the computer. Every folder shares one id: one computer, one set of files. */
+    /**
+     * The environment for a folder on the computer. Every folder shares one id: one computer, one set of files. The
+     * folder is made on its first use, so a new bot wakes nothing until it works.
+     */
     env(cwd: string): ExecutionEnv {
         const folder = normalFolder(cwd);
         let env = this.#envs.get(folder);
 
         if (env === undefined) {
-            env = new RemoteExecutionEnv({
+            const remote = new RemoteExecutionEnv({
                 connection: this.connection,
                 id: "noid:computer",
                 cwd: folder,
+            });
+
+            env = new Proxy(remote, {
+                get: (target, key) => {
+                    const value = Reflect.get(target, key, target) as unknown;
+
+                    if (typeof value !== "function") {
+                        return value;
+                    }
+
+                    // Bound to the real environment: its private fields are not the proxy's.
+                    if (key === "cleanup") {
+                        return value.bind(target);
+                    }
+
+                    return async (...args: unknown[]) => {
+                        try {
+                            await this.#make(folder);
+                        } catch (error) {
+                            // As every ExecutionEnv method: an expected failure is a result, not a throw.
+                            const message = `Could not make ${folder} on the shared computer: ${toError(error).message}`;
+
+                            return err(
+                                key === "exec"
+                                    ? new ExecutionError("spawn_error", message)
+                                    : new FileError("unknown", message, folder),
+                            );
+                        }
+
+                        return (value as (...a: unknown[]) => unknown).apply(target, args);
+                    };
+                },
             });
             this.#envs.set(folder, env);
         }
 
         return env;
+    }
+
+    #make(folder: string): Promise<void> {
+        let made = this.#made.get(folder);
+
+        if (made === undefined) {
+            made = (async () => {
+                const home = new RemoteExecutionEnv({
+                    connection: this.connection,
+                    id: "noid:computer",
+                    cwd: COMPUTER_HOME,
+                });
+                const result = await home.createDir(
+                    folder,
+                    { recursive: true },
+                    BACKGROUND_CONTEXT,
+                );
+
+                if (!result.ok) {
+                    throw result.error;
+                }
+            })();
+            // A failure (the computer could not start) is tried again on the next use.
+            made.catch(() => this.#made.delete(folder));
+            this.#made.set(folder, made);
+        }
+
+        return made;
     }
 
     async state(): Promise<ComputerState> {
