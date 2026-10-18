@@ -14900,3 +14900,49 @@ pre.gallery-code {
 .gallery-change.changed {
     color: var(--warn);
 }
+
+/* ─── noid: bot faces (web/faces/) ─────────────────────────────────────────────── */
+
+.noid-face {
+    display: inline-block;
+    flex: none;
+    vertical-align: middle;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.noid-face-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+/* The SVG fallback only blinks: the WebGL faces do everything else. */
+.noid-face-svg .noid-face-eye {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: noid-face-blink 5.2s infinite;
+}
+
+.noid-face-svg[data-state="asleep"] .noid-face-eye,
+.noid-face-svg[data-state="done"] .noid-face-eye {
+    animation: none;
+}
+
+@keyframes noid-face-blink {
+    0%,
+    94%,
+    100% {
+        transform: scaleY(1);
+    }
+
+    97% {
+        transform: scaleY(0.1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .noid-face-svg .noid-face-eye {
+        animation: none;
+    }
+}

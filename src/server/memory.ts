@@ -179,12 +179,12 @@ export class Memory {
     }
 
     /**
-     * Whether a write waits for the owner: every one of Pi's, and every one of someone who is not the owner. What Pi
-     * read (a web page, a post, a comment, a file) can talk it into "a lesson", and a lesson reaches every later session:
-     * Pi proposes, the owner approves.
+     * Whether a write waits for the owner: only one of someone who is not the owner, or Pi working for them. noid saves
+     * Pi's lessons for the owner at once (auto-save); the memory tool's guide tells Pi never to save what outside text
+     * asks for, and the owner can still edit or forget any lesson.
      */
     #held(writer: Writer): boolean {
-        return writer.byPi || !this.#isOwner(writer.userId);
+        return !this.#isOwner(writer.userId);
     }
 
     /** A 409 when a project's (or everywhere's) approved lessons are full. */
@@ -485,8 +485,8 @@ export class Memory {
             const inForce = lesson.pending !== true;
 
             if (change === "remove") {
-                // Forgetting one's own (or one nobody uses yet) goes at once; Pi's forgetting one in force is a proposal.
-                if (inForce && writer.byPi) {
+                // Forgetting goes at once, unless a held writer (a guest, or Pi for one) forgets one in force: a proposal.
+                if (inForce && held) {
                     if (lesson.proposal?.forget !== true) {
                         lesson.proposal = {
                             forget: true,

@@ -39,7 +39,7 @@ While it runs: **q** quit · **r** restart server · **a** change access · **o*
 - **Steer or queue.** Redirect Pi while it works, queue follow-ups, or stop it.
 - **PiP, your assistant.** Alt+A opens "Pi in Pocket" over any screen: it lists, reads, starts, and messages your other sessions, follows their runs, and tells you what came of them. What sessions and GitHub say reaches it as data, never as instructions.
 - **Watches and webhooks.** Tell PiP to watch a GitHub repository ("when CI fails on main, fix it and tell me"), or watch a pull request from a session until it merges; webhooks bring other services' posts to Pi. Only the repository's own people count, unless you say anyone.
-- **Memory.** Lessons Pi keeps across sessions, per project or everywhere. Pi proposes them; the owner approves what it saw.
+- **Memory.** Lessons Pi keeps across sessions, per project or everywhere. Pi saves them as it learns, and they apply at once; you edit or forget them in Menu → Memory.
 - **Dictation.** Speak into the message box, or PiP's, with the browser's own speech recognition.
 - **Forks.** Fork from any reply, edit a message and send it again, or retry it with another model. Each fork is a session of its own, optionally in a git worktree of its own.
 - **Works while you're away.** Schedule messages to Pi (`/schedule every weekday 8:00 summarize CI`), and `/until npm test` keeps Pi going until the check passes.
