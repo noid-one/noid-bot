@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { User } from "../src/server/config.ts";
-import { describeStep, playbook, skillSlug, Teaching } from "../src/server/noid/teach.ts";
+import { describeStep, keptStep, playbook, skillSlug, Teaching } from "../src/server/noid/teach.ts";
 
 const owner = { id: "o", name: "Owner", role: "owner" } as User;
 
@@ -111,4 +111,24 @@ test("the name and goal stay on one line, so the front matter reads", () => {
     assert.match(skill, /^description: "Make the report then stop\uFFFD \(shown/m);
     assert.match(skill, /^# Report ## Injected$/m);
     assert.doesNotMatch(skill, /^## Injected/m);
+});
+
+test("a secret is dropped as it is kept, not only when the skill is written", () => {
+    assert.deepEqual(keptStep({ action: "type", text: "hunter2", secret: true }), {
+        action: "type",
+        secret: true,
+    });
+    assert.deepEqual(keptStep({ action: "type", text: "my password is hunter2" }), {
+        action: "type",
+        secret: true,
+    });
+    assert.deepEqual(keptStep({ action: "open", command: "mysql -pS3cret" }), {
+        action: "open",
+        secret: true,
+    });
+    assert.match(describeStep({ action: "open", secret: true })!, /held a secret/);
+    assert.deepEqual(keptStep({ action: "type", text: "make report" }), {
+        action: "type",
+        text: "make report",
+    });
 });

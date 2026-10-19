@@ -61,3 +61,11 @@ test("only tools that read pass", () => {
         "tools their extension marks read-only pass",
     );
 });
+
+test("uniq writes its second file name, also after --", () => {
+    assert.equal(readOnlyCommand("uniq a"), true);
+    assert.equal(readOnlyCommand("uniq -c a"), true);
+    assert.equal(readOnlyCommand("uniq a b"), false);
+    assert.equal(readOnlyCommand("uniq -- a"), true);
+    assert.equal(readOnlyCommand("uniq -- a -b"), false);
+});

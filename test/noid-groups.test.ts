@@ -119,6 +119,16 @@ test("only the owner makes groups, of two or more of their bots", async () => {
         app.groups.create(owner(app), { name: "Ghost", members: [a.botId, "nobody"] }),
         /one of your bots/,
     );
+
+    // Nor does anyone else delete them.
+    const b = await bot("Bravo");
+    const kept = await app.groups.create(owner(app), { name: "Kept", members: [a.botId, b.botId] });
+
+    await assert.rejects(app.groups.remove(guest, kept.id), { status: 403 });
+    assert.ok((await app.groups.list(owner(app))).some((group) => group.id === kept.id));
+    await app.groups.remove(owner(app), kept.id);
+    await app.groups.remove(owner(app), kept.id);
+    assert.ok(!(await app.groups.list(owner(app))).some((group) => group.id === kept.id));
 });
 
 test("each bot answers in turn and reads what the others said; @ picks who answers", async () => {

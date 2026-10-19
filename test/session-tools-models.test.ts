@@ -232,6 +232,11 @@ test("Noid acts on a session only after it looked at it, and sees how it stands 
     // A session it started is one it knows.
     const started = await app.sessionTools.start(id, {});
 
+    // A call run again after a restart finds the session it started, by the call's key.
+    const keyed = await app.sessionTools.start(id, {}, "session-replayed-call");
+
+    assert.equal(await app.sessionTools.start(id, {}, "session-replayed-call"), keyed);
+
     await app.sessionTools.send(id, Number(started), "first task", false, "started-1");
 
     // Following a session's own run is acting too: a report starts a run of Noid's.
