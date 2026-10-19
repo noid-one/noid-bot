@@ -14,7 +14,13 @@
  */
 import type { Context } from "@earendil-works/chord";
 import type { ToolAnnotations } from "@earendil-works/pi-coding-agent";
-import { defineDoc, defineExtension, hook, ToolTask } from "@earendil-works/pi-durable";
+import {
+    CompactionTask,
+    defineDoc,
+    defineExtension,
+    hook,
+    ToolTask,
+} from "@earendil-works/pi-durable";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
@@ -215,11 +221,19 @@ function waitMs(): number {
     return (minutes > 0 ? minutes : 60) * 60_000;
 }
 
-/** The hook: always on, as approvals are a guard, not an option (pi-pocket's core-or-extension rule C1). */
+/**
+ * The hooks: always on, as approvals are a guard, not an option (pi-pocket's core-or-extension rule C1). A bot's
+ * summaries are guarded here too, whether its session tools are on or off: written with what came from outside left
+ * out (`noid-compact.ts`), never Pi Durable's, which reads it as it is.
+ */
 export function createApprovals(app: PocketApp) {
     return defineExtension({
         name: "noid-approvals",
         hooks: [
+            hook(CompactionTask, {
+                beforeCompact: (compaction, api, context) =>
+                    app.noidCompaction.summarize(compaction, api, context),
+            }),
             hook(ToolTask, {
                 beforeTool: async (call, api, context: Context) => {
                     const bot = app.bots.of(api.conversationId);

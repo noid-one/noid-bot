@@ -34,7 +34,6 @@ import type {
  */
 type Internal =
     | "sessionTools"
-    | "noidCompaction"
     | "gallery"
     | "watches"
     | "repoWatches"

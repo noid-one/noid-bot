@@ -2097,9 +2097,9 @@ export class Commands {
                 ? undefined
                 : (app.bots.of(id)?.name ?? "Noid");
 
-        // Without the hook (the session tools off), Pi Durable's summary would read what came from outside as it is.
-        if (bot !== undefined && !app.sessionTools.available(user)) {
-            throw new HttpError(409, `${bot}'s session tools are turned off in Extensions.`);
+        // Noid takes nothing while its session tools are off, a compaction neither.
+        if (app.sessionTools.ownerOf(id) !== undefined && !app.sessionTools.available(user)) {
+            throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
         }
 
         // Compacting asks the model for a summary, which costs like any other request.

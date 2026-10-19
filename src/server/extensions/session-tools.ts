@@ -6,11 +6,9 @@
  */
 import { Type } from "@earendil-works/pi-ai";
 import {
-    CompactionTask,
     type ConversationId,
     defineExtension,
     defineTool,
-    hook,
     section,
 } from "@earendil-works/pi-durable";
 import type { PrWatch, RepoEvent, Schedule } from "../docs.ts";
@@ -692,17 +690,7 @@ export default function createSessionTools(host: PocketHost) {
             approvals,
             ...(github ? [repoWatch, watchPr] : []),
         ],
-        // Noid's summaries are its own: written with what came from outside left out (`noid-compact.ts`).
-        hooks: [
-            hook(CompactionTask, {
-                // A server that has not restarted since this module came has no summaries of Noid's yet: none at all,
-                // then, rather than Pi Durable's, which reads what came from outside as it is.
-                beforeCompact: (compaction, api, context) =>
-                    (host as Partial<PocketHost>).noidCompaction === undefined
-                        ? { decline: true }
-                        : host.noidCompaction.summarize(compaction, api, context),
-            }),
-        ],
+        // Bots' summaries are written by the approvals' hook (`noid/approvals.ts`), which is always on.
         sections: [
             section(
                 "session_tools",

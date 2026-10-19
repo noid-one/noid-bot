@@ -641,7 +641,6 @@ export class PocketApp {
             goals: this.goals,
             browsers: this.browsers,
             sessionTools: this.sessionTools,
-            noidCompaction: this.noidCompaction,
             watches: this.watches,
             repoWatches: this.repoWatches,
             memory: this.memory,

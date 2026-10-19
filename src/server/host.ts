@@ -18,7 +18,6 @@ import type { Goals } from "./goals.ts";
 import type { LancetGuard } from "./lancet.ts";
 import type { Memory } from "./memory.ts";
 import type { SessionTools } from "./session-tools.ts";
-import type { NoidCompaction } from "./noid-compact.ts";
 import type { Schedules } from "./schedules.ts";
 import type { RepoWatches } from "./repo-watches.ts";
 import type { Watches } from "./watches.ts";
@@ -297,8 +296,6 @@ export interface PocketHost {
         | "repoWatches"
         | "removeRepoWatch"
     >;
-    /** Noid's compactions: its extension's hook has Noid write its own summaries. */
-    readonly noidCompaction: Pick<NoidCompaction, "summarize">;
     /** Sessions' watches of their pull requests: Pi's watch_pr tool starts and stops them. */
     readonly watches: Pick<Watches, "task" | "start" | "stop" | "get">;
     /** Repository watches: the triggers extension runs their task; the session tools' repo_watch sets them up. */
