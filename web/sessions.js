@@ -621,7 +621,7 @@ function BotList({ compact, canStart, folded, onFold }) {
                     key=${session.id}
                     session=${session}
                     active=${session.id === conversationId}
-                    size=${compact ? 42 : 44}
+                    size=${compact ? 52 : 56}
                 />`,
             )}
         </div>
@@ -646,13 +646,17 @@ function BotList({ compact, canStart, folded, onFold }) {
     </div>`;
 }
 
-/** What a bot's row says under its name: what it is doing when that matters, else what it last said, else its role. */
-function botLine(session) {
+/** What a bot is doing, when that matters: working, waiting for approval, or failed; else undefined. */
+export function botDoing(session) {
     const mark = sessionMark(session);
-    const busy = ["working", "waiting", "failed"].includes(mark.shape.split(" ")[0]);
 
-    return busy ? mark.label : (session.said ?? session.bot.role);
+    return ["working", "waiting", "failed"].includes(mark.shape.split(" ")[0])
+        ? mark.label
+        : undefined;
 }
+
+/** What a bot's row says under its name: what it is doing when that matters, else what it last said, else its role. */
+const botLine = (session) => botDoing(session) ?? session.said ?? session.bot.role;
 
 /** noid: Noid, the main bot, at the top of the list: a big face and its name. */
 function MainBot({ session, active, size }) {

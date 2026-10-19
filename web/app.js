@@ -32,6 +32,7 @@ import {
 import { mainBot, toNoid } from "./noid.js";
 import { Face } from "./faces/face.js";
 import {
+    botDoing,
     botFaceState,
     Drawer,
     RailNav,
@@ -134,6 +135,11 @@ function Topbar() {
     const botSession = store.state.sessions.find(
         (session) => session.id === conversationId && session.bot !== undefined,
     );
+    // A bot on the shared computer works in a folder named for it: just its name, and what it is doing while it works.
+    const botLine =
+        botSession !== undefined && botSession.bot.kind !== "host"
+            ? (botDoing(botSession) ?? "")
+            : undefined;
 
     return html`<header class="topbar" data-part="topbar" ref=${edge}>
         <button
@@ -176,6 +182,7 @@ function Topbar() {
             <span class="title-sub" data-part="topbar-sub">
                 ${
                     folder &&
+                    botLine === undefined &&
                     html`<span
                         class="folder-mark"
                         style=${`--folder:${folderColor(cwd)}`}
@@ -187,10 +194,12 @@ function Topbar() {
                         ? html`<span class="title-folder title-parent">
                               subagent of ${conversation.parent?.title ?? "?"}
                           </span>`
-                        : html`${
-                              folder &&
-                              html`<span class="title-folder" aria-hidden="true">${folder}</span>`
-                          }
+                        : botLine !== undefined
+                          ? botLine && html`<span class="title-folder title-role">${botLine}</span>`
+                          : html`${
+                                folder &&
+                                html`<span class="title-folder" aria-hidden="true">${folder}</span>`
+                            }
                           ${
                               branch &&
                               (branchAvailable()
