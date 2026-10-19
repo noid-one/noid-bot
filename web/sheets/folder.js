@@ -122,6 +122,8 @@ export function CwdSheet({ mode }) {
     const changing = mode === "change";
     // Where it opens: the folder of the session you are in (New session here), else the server's own. Issue #96.
     const initial = view.agent?.cwd ?? server?.defaultCwd ?? "~";
+    // noid: where it opens when that folder is not on this machine (a bot's, on the shared computer).
+    const fallback = server?.defaultCwd ?? "~";
     const [listing, setListing] = useState(null);
     const [failed, setFailed] = useState(null);
     // The folder a click selected (mouse only): Open takes it over the one you are in.
@@ -169,6 +171,14 @@ export function CwdSheet({ mode }) {
             },
             (error) => {
                 if (ask !== asked.current) {
+                    return;
+                }
+
+                // noid: the folder it opened on is not here (a bot's, on the shared computer): it opens on the
+                // server's own instead, rather than on nothing.
+                if (!listing && path === initial && initial !== fallback) {
+                    load(fallback, { showHidden });
+
                     return;
                 }
 
