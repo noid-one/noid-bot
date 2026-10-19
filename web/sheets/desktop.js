@@ -1,7 +1,7 @@
 // noid: the shared computer's desktop, for the owner: what it shows, refreshed while it is in view, and the owner's own
 // clicks and typing, which take it over from any bot for a while.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { api, attempt, closeSheet } from "../store.js";
+import { api, attempt, closeSheet, store } from "../store.js";
 import { html, Sheet } from "../ui.js";
 
 const WIDTH = 1280;
@@ -16,7 +16,19 @@ export function DesktopSheet() {
     const [error, setError] = useState(undefined);
     const [text, setText] = useState("");
     const [restarting, setRestarting] = useState(false);
+    // A demonstration: under way (from the server), the form to start one, and where the last one was saved.
+    const [teaching, setTeaching] = useState(null);
+    const [lesson, setLesson] = useState(undefined);
+    const [saved, setSaved] = useState(undefined);
+    // While showing: what is typed now is a secret, typed but never kept in the skill.
+    const [secret, setSecret] = useState(false);
     const image = useRef(null);
+    const computerBots = store.state.sessions.filter(
+        (session) =>
+            session.bot !== undefined &&
+            !session.archived &&
+            (session.cwd === "/home/noid" || session.cwd?.startsWith("/home/noid/")),
+    );
 
     useEffect(() => {
         let gone = false;
@@ -38,6 +50,7 @@ export function DesktopSheet() {
 
                     setShot(`data:image/png;base64,${view.image}`);
                     setHolder(view.holder);
+                    setTeaching(view.teaching);
                     setError(undefined);
                 } catch (failure) {
                     setError({ status: failure.status, message: failure.message });
@@ -76,8 +89,9 @@ export function DesktopSheet() {
             return;
         }
 
-        void act({ action: "type", text });
+        void act({ action: "type", text, ...(teaching && secret ? { secret: true } : {}) });
         setText("");
+        setSecret(false);
     };
 
     const restart = () =>
@@ -91,6 +105,21 @@ export function DesktopSheet() {
             }
         });
 
+    const begin = () =>
+        attempt(async () => {
+            await api("desktop/teach", lesson);
+            setTeaching({ name: lesson.name, steps: 0 });
+            setLesson(undefined);
+            setSaved(undefined);
+        });
+    const finish = (save) =>
+        attempt(async () => {
+            const result = await api("desktop/learned", { save });
+
+            setTeaching(null);
+            setSaved(result.folder);
+        });
+
     return html`<${Sheet} title="Computer desktop" onClose=${closeSheet} wide>
         <p class="muted small">
             Programs with windows that bots run on the shared computer.
@@ -98,6 +127,58 @@ export function DesktopSheet() {
             takes it over from any bot for two minutes.
         </p>
         ${error && html`<p class="muted small" role="status">${error.message}</p>`}
+        ${
+            teaching &&
+            html`<div class="row teach-banner">
+                <span class="grow small">
+                    Showing “${teaching.name}”: ${teaching.steps} step${teaching.steps === 1 ? "" : "s"} so far.
+                    What you do here is kept, and the screen before and after is saved with the skill:
+                    close anything private before you save.
+                </span>
+                <button class="button primary small" onClick=${() => finish(true)}>
+                    Save as a skill
+                </button>
+                <button class="button ghost small" onClick=${() => finish(false)}>Drop it</button>
+            </div>`
+        }
+        ${
+            !teaching &&
+            lesson !== undefined &&
+            html`<div class="teach-form">
+                <input
+                    placeholder="Skill name, such as Export the weekly report"
+                    value=${lesson.name}
+                    onInput=${(event) => setLesson({ ...lesson, name: event.currentTarget.value })}
+                />
+                <input
+                    placeholder="What it does, and when to use it"
+                    value=${lesson.goal}
+                    onInput=${(event) => setLesson({ ...lesson, goal: event.currentTarget.value })}
+                />
+                <div class="row">
+                    <select
+                        aria-label="Who learns it"
+                        value=${lesson.bot}
+                        onChange=${(event) => setLesson({ ...lesson, bot: event.currentTarget.value })}
+                    >
+                        <option value="">Every bot</option>
+                        ${computerBots.map(
+                            (session) =>
+                                html`<option value=${session.bot.id}>${session.bot.name}</option>`,
+                        )}
+                    </select>
+                    <button
+                        class="button primary"
+                        disabled=${lesson.name.trim() === "" || lesson.goal.trim() === ""}
+                        onClick=${begin}
+                    >
+                        Start showing
+                    </button>
+                    <button class="button ghost" onClick=${() => setLesson(undefined)}>Cancel</button>
+                </div>
+            </div>`
+        }
+        ${saved && html`<p class="muted small">Saved in ${saved}. Bots find it with their skills; a routine can ask for it by name.</p>`}
         ${
             error?.status === 409 &&
             html`<div class="row">
@@ -125,6 +206,17 @@ export function DesktopSheet() {
                 onInput=${(event) => setText(event.currentTarget.value)}
                 onKeyDown=${(event) => event.key === "Enter" && type()}
             />
+            ${
+                teaching &&
+                html`<label class="group-member small">
+                    <input
+                        type="checkbox"
+                        checked=${secret}
+                        onChange=${() => setSecret(!secret)}
+                    />
+                    Secret
+                </label>`
+            }
             <button class="button" onClick=${type}>Type</button>
             <button class="button" onClick=${() => act({ action: "key", keys: "Return" })}>
                 Enter
@@ -132,6 +224,16 @@ export function DesktopSheet() {
             <button class="button ghost" onClick=${() => act({ action: "release" })}>
                 Give back
             </button>
+            ${
+                !teaching &&
+                lesson === undefined &&
+                html`<button
+                    class="button ghost"
+                    onClick=${() => setLesson({ name: "", goal: "", bot: "" })}
+                >
+                    Teach a skill
+                </button>`
+            }
         </div>
     <//>`;
 }

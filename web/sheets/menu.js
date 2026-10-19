@@ -418,6 +418,10 @@ export function MenuSheet({ places = true }) {
             }
             ${
                 me?.role === "owner" &&
+                item("Group threads", () => openSheet({ type: "groups" }), "you and several bots")
+            }
+            ${
+                me?.role === "owner" &&
                 item(
                     "Computer desktop",
                     () => openSheet({ type: "desktop" }),

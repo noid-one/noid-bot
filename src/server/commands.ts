@@ -231,8 +231,8 @@ function settle(
  * went on, which then failed, waits for the next one someone sends, if anyone does: its follow ends then, and the
  * message stays where it is. Its known request id gives back the message sent, as it is now: nothing is sent again.
  */
-async function followed(
-    runtime: TaskRuntime<Followed, { phase: "wait" }, null, object>,
+export async function followed<I, S>(
+    runtime: TaskRuntime<I, S, null, object>,
     id: ConversationId,
     requestId: string,
     context: Context,

@@ -1,0 +1,187 @@
+/**
+ * noid's teach by demonstration (rakazo's teach recording and playbook, Apache-2.0): the owner shows a task on the
+ * computer's desktop, and it becomes a skill. While teaching, each of the owner's own actions there (a program opened,
+ * a click, typing, a key, a scroll) is kept; at the end they become a playbook, a SKILL.md with the steps, saved with
+ * how the screen looked before and after, where the computer's skills are found: one bot's folder, or the folder every
+ * bot shares. A bot finds it with its other skills and repeats it with the desktop tool; a routine can ask for it.
+ */
+import type { User } from "../config.ts";
+import { HttpError } from "../errors.ts";
+
+/** One of the owner's actions on the desktop, as it was asked for. */
+export type TaughtStep = Record<string, unknown>;
+
+/**
+ * Text that looks like a secret is never written into a skill: words that name one, long card-like numbers, a password
+ * on a command line (`-pS3cret`, `--password=…`, `-u me:pw`, `https://me:pw@host`), or a bearer token. What the owner
+ * marks secret as they type it is never written either: a word list cannot know a password.
+ */
+const SECRET =
+    /password|passwd|secret|token|api[_-]?key|bearer\s|\b\d{12,19}\b|(^|\s)-p\S|--pass\w*=|(^|\s)-u\s+\S+:\S|:\/\/[^\s/@:]+:[^\s/@]+@/i;
+
+/** A recorded value as plain words in a skill: one line, no control characters, quoted so nothing in it reads as markdown. */
+const quoted = (value: unknown) => JSON.stringify(oneLine(String(value)));
+
+/** One line of text without control characters or broken surrogates, which front matter and markdown cannot hold. */
+const oneLine = (text: string) =>
+    text
+        .toWellFormed()
+        .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+/** A playbook step for one action, in words a bot follows with the desktop tool. */
+export function describeStep(step: TaughtStep): string | undefined {
+    const at = `(${String(step.x)}, ${String(step.y)})`;
+
+    switch (step.action) {
+        case "open":
+            return SECRET.test(String(step.command))
+                ? "Open the program the task needs (its command held a secret, so it was not recorded; ask the owner)."
+                : `Open the program ${quoted(step.command)} (desktop open).`;
+        case "click":
+            return `Click at ${at}.`;
+        case "double_click":
+            return `Double-click at ${at}.`;
+        case "right_click":
+            return `Right-click at ${at}.`;
+        case "drag":
+            return `Drag from ${at} to (${String(step.to_x)}, ${String(step.to_y)}).`;
+        case "scroll":
+            return `Scroll ${Number(step.dy) < 0 ? "up" : "down"} ${Math.abs(Number(step.dy))} at ${at}.`;
+
+        case "type": {
+            const text = String(step.text);
+
+            return step.secret === true || SECRET.test(text)
+                ? "Type the secret the task needs here (it was not recorded; ask the owner for it, never guess)."
+                : `Type ${quoted(text)}.`;
+        }
+
+        case "key":
+            return `Press ${quoted(step.keys)}.`;
+        default:
+            return undefined;
+    }
+}
+
+/** A skill's folder name: lowercase words joined by dashes. */
+export function skillSlug(name: string): string {
+    return (
+        name
+            .normalize("NFKD")
+            .replace(/\p{M}+/gu, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .slice(0, 48)
+            .replace(/^-+|-+$/g, "") || "taught-skill"
+    );
+}
+
+/** The SKILL.md for what was shown. */
+export function playbook(input: {
+    name: string;
+    goal: string;
+    steps: TaughtStep[];
+    at: number;
+}): string {
+    const lines = input.steps.flatMap((step) => {
+        const line = describeStep(step);
+
+        return line === undefined ? [] : [line];
+    });
+    const steps =
+        lines.length === 0
+            ? [
+                  "Nothing was recorded: look at start.png and end.png, and ask the owner how to get from one to the other.",
+              ]
+            : lines;
+    const description = `${oneLine(input.goal)} (shown by the owner on the computer's desktop)`;
+
+    return [
+        "---",
+        `name: ${skillSlug(input.name)}`,
+        `description: ${JSON.stringify(description)}`,
+        "---",
+        `# ${oneLine(input.name).replace(/^#+\s*/, "")}`,
+        "",
+        `The owner showed this on the shared computer's desktop (1280×800) on ${new Date(input.at).toISOString().slice(0, 10)}. Repeat it with the desktop tool: take a screenshot first, and after each step.`,
+        "",
+        "## When to use",
+        "",
+        oneLine(input.goal),
+        "",
+        "## Steps",
+        "",
+        ...steps.map((step, index) => `${index + 1}. ${step}`),
+        "",
+        "Positions are where things were when it was shown: if a window or button moved, find the same thing in your screenshot and use where it is now.",
+        "",
+        "## How to check",
+        "",
+        "start.png in this folder is how the screen looked before, end.png how it looked after. Compare your last screenshot with end.png, and say the task is done only when it matches the goal.",
+        "",
+        "## Boundaries",
+        "",
+        "- Do not send messages, spend money, publish, or delete anything the owner did not show here without asking first.",
+        "- If a step fails or the screen does not look as expected, stop and say what you see; do not guess.",
+        "",
+    ].join("\n");
+}
+
+/** A demonstration under way: its goal, where it goes, the screen before, and the steps so far. */
+export type Lesson = {
+    name: string;
+    goal: string;
+    /** The folder its skill goes in, on the computer. */
+    folder: string;
+    by: string;
+    startedAt: number;
+    start: string;
+    steps: TaughtStep[];
+};
+
+const MAX_STEPS = 200;
+
+/** The one lesson under way (one desktop, one owner). */
+export class Teaching {
+    #lesson: Lesson | undefined;
+
+    get lesson(): Lesson | undefined {
+        return this.#lesson;
+    }
+
+    begin(user: User, lesson: Omit<Lesson, "by" | "steps">): void {
+        if (this.#lesson !== undefined) {
+            throw new HttpError(
+                409,
+                `You are already showing “${this.#lesson.name}”: finish it or stop it first.`,
+            );
+        }
+
+        this.#lesson = { ...lesson, by: user.id, steps: [] };
+    }
+
+    /** Keep one of the owner's actions, while a lesson is under way. */
+    record(user: User, step: TaughtStep): void {
+        if (
+            this.#lesson?.by === user.id &&
+            step.action !== "release" &&
+            this.#lesson.steps.length < MAX_STEPS
+        ) {
+            this.#lesson.steps.push(step);
+        }
+    }
+
+    end(): Lesson {
+        const lesson = this.#lesson;
+
+        if (lesson === undefined) {
+            throw new HttpError(409, "Nothing is being shown.");
+        }
+
+        this.#lesson = undefined;
+
+        return lesson;
+    }
+}

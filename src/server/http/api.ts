@@ -499,6 +499,42 @@ export function createApi(options: HttpOptions, auth: Auth) {
             });
         }
 
+        // noid: group threads, the owner and several bots in one room.
+        if (first === "groups" && second === undefined) {
+            return method === "POST"
+                ? json(response, 200, await app.groups.create(user, await readJson(request)))
+                : json(response, 200, { groups: await app.groups.list(user) });
+        }
+
+        if (first === "groups" && second !== undefined && third === undefined && method === "GET") {
+            return json(response, 200, await app.groups.get(user, second));
+        }
+
+        if (
+            first === "groups" &&
+            second !== undefined &&
+            third === "messages" &&
+            method === "POST"
+        ) {
+            return json(
+                response,
+                200,
+                await app.groups.send(user, second, await readJson(request)),
+            );
+        }
+
+        if (first === "groups" && second !== undefined && third === "stop" && method === "POST") {
+            await app.groups.stop(user, second);
+
+            return json(response, 200, { ok: true });
+        }
+
+        if (first === "groups" && second !== undefined && third === "delete" && method === "POST") {
+            await app.groups.remove(user, second);
+
+            return json(response, 200, { ok: true });
+        }
+
         // noid: the computer's desktop, which the owner watches and can take over.
         if (first === "desktop" && second === undefined && method === "GET") {
             return json(response, 200, await app.desktop.view(user));
@@ -513,6 +549,19 @@ export function createApi(options: HttpOptions, auth: Auth) {
             await app.computer.restart();
 
             return json(response, 200, { ok: true });
+        }
+
+        // The owner shows a task on the desktop, and it becomes a skill.
+        if (first === "desktop" && second === "teach" && method === "POST") {
+            await app.desktop.teach(user, await readJson(request));
+
+            return json(response, 200, { ok: true });
+        }
+
+        if (first === "desktop" && second === "learned" && method === "POST") {
+            const { save } = await readJson<{ save?: unknown }>(request);
+
+            return json(response, 200, await app.desktop.learned(user, save === true));
         }
 
         if (first === "desktop" && second === "input" && method === "POST") {

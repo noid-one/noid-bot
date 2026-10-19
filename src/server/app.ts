@@ -88,6 +88,7 @@ import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
 import { Desktop, DESKTOP_EXTENSION } from "./noid/desktop.ts";
+import { Groups } from "./noid/groups.ts";
 import { Terminals } from "./noid/terminal.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
@@ -347,6 +348,8 @@ export class PocketApp {
         idleMs: idleMinutes() * 60_000,
         log: (message) => this.#log(`computer: ${message}`),
     });
+    /** Group threads: the owner and several bots in one room. */
+    readonly groups = new Groups(this);
     /** The shared computer's desktop, and the lease of its one mouse. */
     readonly desktop = new Desktop(this);
     /** The owner's shells on the shared computer. */
@@ -566,6 +569,7 @@ export class PocketApp {
         registry.install(this.botMail.extension);
         registry.install(this.botMail.overseer);
         registry.install(this.desktop.extension);
+        registry.install(this.groups.extension);
         // Durable work of the app itself, whatever extension modules are on.
         registry.install(
             defineExtension({

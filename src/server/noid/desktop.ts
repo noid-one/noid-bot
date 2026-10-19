@@ -22,7 +22,8 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
-import { COMPUTER_HOME } from "./computer.ts";
+import { COMPUTER_HOME, onComputer } from "./computer.ts";
+import { playbook, skillSlug, Teaching } from "./teach.ts";
 
 export const DESKTOP_EXTENSION = "noid-desktop";
 export const DESKTOP_DISPLAY = ":100";
@@ -30,6 +31,9 @@ export const DESKTOP_DISPLAY = ":100";
 export const DESKTOP_SIZE = { width: 1280, height: 800 };
 /** How long a lease lasts after its holder last acted. */
 export const LEASE_MS = 2 * 60_000;
+/** How long the owner keeps it while showing a task, without acting: a lesson is not cut by a pause to think. */
+const LESSON_MS = 60 * 60_000;
+
 /** How long one holder may keep it in a row while another bot is waiting for it. */
 export const MAX_HOLD_MS = 10 * 60_000;
 /** The most text one `type` types: xdotool types it a key at a time. */
@@ -62,7 +66,7 @@ export class DesktopLease {
      * Take or keep the lease. The owner always gets it. A bot gets it when it is free, its own, or a bot has kept it
      * ten minutes in a row; never from the owner.
      */
-    take(who: Holder, owner = false): { ok: true } | { ok: false; holder: Held } {
+    take(who: Holder, owner = false, ms = LEASE_MS): { ok: true } | { ok: false; holder: Held } {
         const holder = this.holder;
         const now = this.#now();
 
@@ -80,7 +84,7 @@ export class DesktopLease {
             ...who,
             owner,
             since: this.#holder?.id === who.id ? this.#holder.since : now,
-            until: now + LEASE_MS,
+            until: now + ms,
         };
 
         return { ok: true };
@@ -301,6 +305,10 @@ export class Desktop {
     readonly #app: PocketApp;
     readonly lease: DesktopLease;
     readonly extension;
+    /** The owner's demonstration under way, if any: its steps become a skill. */
+    readonly teaching = new Teaching();
+    /** The owner's actions, one after another. */
+    #ownerTurn: Promise<unknown> = Promise.resolve();
     /** The programs each holder opened, by process id: closed when the desktop leaves it. */
     readonly #opened = new Map<string, number[]>();
 
@@ -319,8 +327,8 @@ export class Desktop {
     }
 
     /** Take the desktop for a holder; the programs others opened close, so it starts on a clear screen. */
-    #take(who: Holder, owner = false): ReturnType<DesktopLease["take"]> {
-        const taken = this.lease.take(who, owner);
+    #take(who: Holder, owner = false, ms = LEASE_MS): ReturnType<DesktopLease["take"]> {
+        const taken = this.lease.take(who, owner, ms);
 
         if (taken.ok) {
             for (const id of this.#opened.keys()) {
@@ -466,19 +474,172 @@ export class Desktop {
         }
     }
 
-    /** The owner's view: the screen, and who holds it. */
-    async view(user: User): Promise<{ image: string; holder: string | null }> {
+    /** The owner's view: the screen, who holds it, and the demonstration under way. */
+    async view(user: User): Promise<{
+        image: string;
+        holder: string | null;
+        teaching: { name: string; steps: number } | null;
+    }> {
         this.#owner(user);
         await this.#require(this.#env(), BACKGROUND_CONTEXT);
+        const lesson = this.teaching.lesson;
 
         return {
             image: await screenshot(this.#env(), BACKGROUND_CONTEXT),
             holder: this.lease.holder?.name ?? null,
+            teaching:
+                lesson === undefined ? null : { name: lesson.name, steps: lesson.steps.length },
         };
     }
 
+    /**
+     * Start showing a task: for one bot on the computer (its folder's skills), or for every bot (the shared ones). What
+     * the owner does on the desktop from now on is kept, with how the screen looks now.
+     */
+    async teach(
+        user: User,
+        request: { name?: unknown; goal?: unknown; bot?: unknown },
+    ): Promise<void> {
+        this.#owner(user);
+        const name = typeof request.name === "string" ? request.name.trim().slice(0, 80) : "";
+        const goal = typeof request.goal === "string" ? request.goal.trim().slice(0, 1000) : "";
+
+        if (name === "" || goal === "") {
+            throw new HttpError(400, "Say what the skill is called, and what it does.");
+        }
+
+        let base = `${COMPUTER_HOME}/.agents/skills`;
+
+        if (request.bot !== undefined && request.bot !== null && request.bot !== "") {
+            const bot = this.#app.bots.list().find((each) => each.bot.id === request.bot);
+            const cwd = bot === undefined ? undefined : this.#app.cwdOf(bot.conversationId);
+
+            if (bot === undefined || cwd === undefined || !onComputer(cwd)) {
+                throw new HttpError(
+                    400,
+                    "Only a bot on the shared computer can learn from the desktop.",
+                );
+            }
+
+            base = `${cwd}/.agents/skills`;
+        }
+
+        const folder = `${base}/${skillSlug(name)}`;
+
+        await this.#require(this.#env(), BACKGROUND_CONTEXT);
+        await this.#freeFolder(folder);
+
+        if (this.teaching.lesson !== undefined) {
+            throw new HttpError(409, `You are already showing “${this.teaching.lesson.name}”.`);
+        }
+
+        // The owner holds the desktop for the whole lesson: no bot acts on it meanwhile, and what bots had open closes
+        // now, so the screen before is the one the steps start from.
+        const who = { id: `owner:${user.id}`, name: user.name };
+
+        this.#take(who, true, LESSON_MS);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        this.teaching.begin(user, {
+            name,
+            goal,
+            folder,
+            startedAt: this.#app.now(),
+            start: await screenshot(this.#env(), BACKGROUND_CONTEXT),
+        });
+    }
+
+    /**
+     * Refuse a skill folder that is there already (another skill of that name) or that goes through a link: bots have
+     * a shell on the computer, and could have put one where the owner's skill is about to be written.
+     */
+    async #freeFolder(folder: string): Promise<void> {
+        const env = this.#env();
+        const skills = folder.slice(0, folder.lastIndexOf("/"));
+
+        for (const path of [skills.slice(0, skills.lastIndexOf("/")), skills, folder]) {
+            const info = await env.fileInfo(path, BACKGROUND_CONTEXT);
+
+            if (info.ok && info.value.kind === "symlink") {
+                throw new HttpError(409, `${path} is a link: the skill is not saved through it.`);
+            }
+
+            if (info.ok && path === folder) {
+                throw new HttpError(
+                    409,
+                    `A skill is in ${folder} already: give this one another name.`,
+                );
+            }
+        }
+    }
+
+    /** Finish showing: save it as a skill (with the screen before and after), or drop it. Where it went, when saved. */
+    async learned(user: User, save: boolean): Promise<{ folder: string } | { dropped: true }> {
+        this.#owner(user);
+        const lesson = this.teaching.lesson;
+        const who = { id: `owner:${user.id}`, name: user.name };
+
+        if (lesson === undefined) {
+            throw new HttpError(409, "Nothing is being shown.");
+        }
+
+        if (!save) {
+            this.teaching.end();
+            this.lease.release(who);
+
+            return { dropped: true };
+        }
+
+        // Kept until it is saved: a save that fails (the computer stopped) can be tried again.
+        await this.#freeFolder(lesson.folder);
+
+        const env = this.#env();
+
+        const write = async (path: string, content: string | Uint8Array) => {
+            const written = await env.writeFile(path, content, BACKGROUND_CONTEXT);
+
+            if (!written.ok) {
+                throw new HttpError(500, `Could not save the skill: ${written.error.message}`);
+            }
+        };
+
+        const made = await env.createDir(lesson.folder, { recursive: true }, BACKGROUND_CONTEXT);
+
+        if (!made.ok) {
+            throw new HttpError(500, `Could not save the skill: ${made.error.message}`);
+        }
+
+        await write(
+            `${lesson.folder}/SKILL.md`,
+            playbook({
+                name: lesson.name,
+                goal: lesson.goal,
+                steps: lesson.steps,
+                at: lesson.startedAt,
+            }),
+        );
+        await write(`${lesson.folder}/start.png`, Buffer.from(lesson.start, "base64"));
+        await write(
+            `${lesson.folder}/end.png`,
+            Buffer.from(await screenshot(env, BACKGROUND_CONTEXT), "base64"),
+        );
+        this.teaching.end();
+        this.lease.release(who);
+
+        return { folder: lesson.folder };
+    }
+
     /** The owner's own click, typing, or program: it takes the desktop from any bot, for the lease's time. */
-    async act(user: User, input: Record<string, unknown>): Promise<void> {
+    act(user: User, input: Record<string, unknown>): Promise<void> {
+        // One at a time, in the order they came: typing and the Enter after it must not overlap, and a lesson keeps
+        // the steps in the order they were done.
+        const turn = this.#ownerTurn.then(() => this.#act(user, input));
+
+        this.#ownerTurn = turn.catch(() => undefined);
+
+        return turn;
+    }
+
+    async #act(user: User, input: Record<string, unknown>): Promise<void> {
         this.#owner(user);
         const who = { id: `owner:${user.id}`, name: user.name };
 
@@ -498,10 +659,11 @@ export class Desktop {
         }
 
         await this.#require(this.#env(), BACKGROUND_CONTEXT);
-        this.#take(who, true);
+        this.#take(who, true, this.teaching.lesson?.by === user.id ? LESSON_MS : LEASE_MS);
 
         if (argv !== undefined) {
             await this.#run(who, argv, this.#env(), BACKGROUND_CONTEXT);
+            this.teaching.record(user, input);
         }
     }
 

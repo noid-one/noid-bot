@@ -458,3 +458,46 @@ test(
         await onComputer(`rm -f /tmp/${mark}`);
     },
 );
+
+test(
+    "the owner shows a task on the desktop, and every bot gets it as a skill",
+    { skip },
+    async () => {
+        const desktop = app!.desktop;
+        const name = `Stamp ${run}`;
+        const slug = `stamp-${run}`;
+        const skillDir = `/home/noid/.agents/skills/${slug}`;
+
+        await onComputer(`pkill -x xterm; rm -rf ${skillDir}; true`);
+        await desktop.teach(owner(app!), { name, goal: `Write a stamp file for run ${run}` });
+        await desktop.act(owner(app!), { action: "open", command: "xterm -geometry 80x24+0+0" });
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await desktop.act(owner(app!), { action: "click", x: 100, y: 100 });
+        await desktop.act(owner(app!), { action: "type", text: `touch /tmp/${slug}` });
+        await desktop.act(owner(app!), { action: "key", keys: "Return" });
+        assert.equal((await desktop.view(owner(app!))).teaching?.steps, 4);
+
+        // While the owner shows it, no bot acts on the desktop.
+        assert.equal(desktop.lease.holder?.name, owner(app!).name);
+
+        const saved = await desktop.learned(owner(app!), true);
+
+        assert.deepEqual(saved, { folder: skillDir });
+        assert.match(await onComputer(`cat ${skillDir}/SKILL.md`), /3\. Type "touch \/tmp\/stamp-/);
+        assert.match(
+            await onComputer(`ls ${skillDir}`),
+            /end\.png[\s\S]*start\.png|start\.png[\s\S]*end\.png/,
+        );
+
+        // A second lesson of the same name would overwrite it: refused.
+        await assert.rejects(desktop.teach(owner(app!), { name, goal: "again" }), /already/);
+
+        // A bot on the computer finds it with its skills.
+        const id = await newSession(app!, folder("skill-user"));
+
+        await say(app!, id, `prompt has ${skillDir}/SKILL.md`);
+        assert.equal(await answer(id), `has ${skillDir}/SKILL.md: true`);
+        await desktop.act(owner(app!), { action: "release" });
+        await onComputer(`rm -rf ${skillDir} /tmp/${slug}; pkill -x xterm; true`);
+    },
+);
