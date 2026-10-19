@@ -2090,17 +2090,16 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
-        // Noid's summaries are its own, written by the session tools' hook with outside text left out: while they are
-        // off, there is no hook, and Pi Durable's summary would read what came from outside as it is.
-        const noid = app.sessionTools.ownerOf(id) !== undefined;
-        // Every bot's summary is its own (`noid-compact.ts`), and one that cannot be written says why.
+        // A bot's summaries are its own (`noid-compact.ts`), written by the session tools' hook with outside text left
+        // out, and one that cannot be written says why.
         const bot =
             app.sessionTools.actsFor(id) === undefined
                 ? undefined
                 : (app.bots.of(id)?.name ?? "Noid");
 
-        if (noid && !app.sessionTools.available(user)) {
-            throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
+        // Without the hook (the session tools off), Pi Durable's summary would read what came from outside as it is.
+        if (bot !== undefined && !app.sessionTools.available(user)) {
+            throw new HttpError(409, `${bot}'s session tools are turned off in Extensions.`);
         }
 
         // Compacting asks the model for a summary, which costs like any other request.

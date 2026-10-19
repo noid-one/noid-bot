@@ -98,6 +98,11 @@ export class DesktopLease {
         this.#holder = undefined;
     }
 
+    /** Put back a hold as it was (`holder`, read before a take that then came to nothing), or none. */
+    restore(previous: Held | undefined): void {
+        this.#holder = previous === undefined ? undefined : { ...previous };
+    }
+
     /** Give it back; only its holder can. */
     release(who: Holder): void {
         if (this.#holder?.id === who.id) {
@@ -657,8 +662,8 @@ export class Desktop {
         const start = `${COMPUTER_HOME}/.cache/noid-lessons/${randomUUID()}.png`;
         const env = this.#env();
 
-        // The owner may hold it already, using it before the lesson: a failed start leaves that as it was.
-        const held = this.lease.holder?.id === who.id;
+        // The owner may hold it already, using it before the lesson: a failed start leaves that as it was, to its end.
+        const before = this.lease.holder;
 
         this.#starting = true;
 
@@ -692,7 +697,9 @@ export class Desktop {
             });
         } catch (error) {
             // No lesson: the desktop is free again for the hour the lesson would have held it.
-            if (!held) {
+            if (before?.id === who.id) {
+                this.lease.restore(before);
+            } else {
                 this.lease.release(who);
             }
 

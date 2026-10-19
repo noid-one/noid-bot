@@ -691,3 +691,24 @@ test("the routes: viewers read, guests add (pending) and cannot remove the owner
         server.close();
     }
 });
+
+test("Pi working for the owner leaves a guest's waiting lesson to the owner", async () => {
+    await clear();
+    const id = await newSession(app, repo);
+    const guest = {
+        userId: app.config.addUser("Waiting guest", "guest").user.id,
+        byPi: false,
+        name: "G",
+    };
+    const pi = { userId: owner(app).id, byPi: true, name: "Pi" };
+    const added = await app.memory.add(id, repo, guest, { text: "Use tabs.", scope: "project" });
+
+    assert.equal((await lessons())[0]?.pending, true);
+    await assert.rejects(app.memory.change(id, repo, pi, added.id, { text: "Use tabs." }), {
+        status: 403,
+    });
+    await assert.rejects(app.memory.change(id, repo, pi, added.id, "remove"), { status: 403 });
+    assert.equal((await lessons())[0]?.pending, true, "not approved by a rewrite");
+    assert.equal((await lessons())[0]?.text, "Use tabs.");
+    await clear();
+});

@@ -185,3 +185,20 @@ test("programs carry their holder: the others' close when it changes hands, and 
     assert.deepEqual(closes().at(-1), ["only", "owner:o"]);
     assert.equal(desktop.lease.holder, undefined);
 });
+
+test("a hold put back is the one there was, to its end", () => {
+    let now = 0;
+    const lease = new DesktopLease(() => now);
+    const owner = { id: "owner:o", name: "Owner" };
+
+    lease.take(owner, true);
+    const before = lease.holder;
+
+    lease.take(owner, true, 60 * 60_000);
+    lease.restore(before);
+    assert.equal(lease.holder?.until, before?.until);
+    now = before!.until;
+    assert.equal(lease.holder, undefined, "it ends when it would have");
+    lease.restore(undefined);
+    assert.equal(lease.holder, undefined);
+});

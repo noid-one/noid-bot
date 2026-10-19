@@ -79,8 +79,10 @@ export function loadAgentFiles(folders: readonly string[]): AgentFile[] {
             continue;
         }
 
-        const named = typeof frontmatter.name === "string" ? frontmatter.name : "";
-        const name = (named.replace(/\s+/g, " ").trim() || basename(path, ".md"))
+        const named = typeof frontmatter.name === "string" ? frontmatter.name.trim() : "";
+        const name = (named || basename(path, ".md"))
+            .replace(/\s+/g, " ")
+            .trim()
             .slice(0, MAX_AGENT_NAME)
             .trim();
         const key = name.toLowerCase();

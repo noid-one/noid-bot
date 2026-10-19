@@ -966,7 +966,7 @@ export default function createSubagents(host: PocketHost) {
                 const names = files.map((each) => each.name);
 
                 throw new Error(
-                    `No agent file named ${args.agent}. ${names.length === 0 ? "There are none." : `There are: ${names.join(", ")}.`}`,
+                    `No agent file named ${args.agent}. ${names.length === 0 ? "There are none here: agent files are the owner's bots, for sessions that work for the owner." : `There are: ${names.join(", ")}.`}`,
                 );
             }
 

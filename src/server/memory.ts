@@ -482,6 +482,14 @@ export class Memory {
             const held = this.#held(writer) || (writer.byPi && lesson.by !== writer.userId);
             const inForce = lesson.pending !== true;
 
+            // Someone else's lesson waiting for the owner is the owner's to approve or turn down, as its author wrote it.
+            if (writer.byPi && lesson.by !== writer.userId && !inForce) {
+                throw new HttpError(
+                    403,
+                    "This lesson waits for the owner's approval; only the owner or whoever saved it changes it.",
+                );
+            }
+
             if (change === "remove") {
                 // Forgetting goes at once, unless a held writer (a guest, or Pi for one) forgets one in force: a proposal.
                 if (inForce && held) {

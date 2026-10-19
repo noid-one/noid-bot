@@ -775,7 +775,11 @@ export function SessionList({ compact = false }) {
     const tabs = useRef(null);
     const needle = query.trim().toLowerCase();
     const archived = tab === "archived";
-    const [pane, setPaneState] = useState(readPane);
+    const [chosenPane, setPaneState] = useState(readPane);
+    // Bots are the owner's alone: anyone else has only sessions, and no tabs to choose between.
+    const guest =
+        store.state.me !== undefined && store.state.me !== null && store.state.me.role !== "owner";
+    const pane = guest ? "sessions" : chosenPane;
     const conversationId = store.state.conversationId;
 
     const setPane = (next) => {
@@ -1249,7 +1253,7 @@ export function SessionList({ compact = false }) {
         (session) => !session.archived && session.bot === undefined,
     ).length;
     let index = 0;
-    const tabsHead = html`<${PaneTabs} pane=${pane} onPane=${setPane} />`;
+    const tabsHead = guest ? null : html`<${PaneTabs} pane=${pane} onPane=${setPane} />`;
 
     return html`<div
         class=${`sessions ${compact ? "compact" : ""} pane-${pane}`}
@@ -1259,11 +1263,7 @@ export function SessionList({ compact = false }) {
             <span class="wordmark">noid</span>
             ${tabsHead}
         </div>
-        ${
-            pane === "bots" &&
-            // Bots act as the owner: only the owner makes them.
-            html`<${BotList} compact=${compact} canStart=${canStart && store.state.me?.role === "owner"} />`
-        }
+        ${pane === "bots" && html`<${BotList} compact=${compact} canStart=${canStart} />`}
         ${
             pane === "sessions" &&
             html`<${SectionHead}

@@ -155,12 +155,9 @@ export class Alerts {
             tag: `done-${String(id)}`,
         };
 
+        // Even while Noid follows the session: its report need not say the routine failed (a message of its own waiting
+        // behind the routine is reported as not taken, and a run with no model has no answer to report).
         for (const userId of await this.participants(id)) {
-            // Noid follows this run and reports what came of it, the failure too: one notification, not two.
-            if (await app.sessionTools.reportsOn(id, userId).catch(() => false)) {
-                continue;
-            }
-
             void this.push(userId, id, "done", message, "high");
         }
     }
