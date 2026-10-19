@@ -15,6 +15,8 @@ import { MAX_INSTRUCTIONS } from "../commands.ts";
 import { HttpError } from "../errors.ts";
 import { ownerOf } from "./owner.ts";
 import { COMPUTER_HOME } from "./computer.ts";
+import { nameBot, type Naming } from "./naming.ts";
+import { recordUsage } from "../titles.ts";
 
 /** Faces: the skins and eyes `web/faces/params.js` draws. */
 export const SKINS = ["jelly", "clay", "chrome", "holo", "pixel"] as const;
@@ -183,7 +185,25 @@ export class Bots {
             throw new HttpError(403, "You were invited to one session and cannot make bots.");
         }
 
-        const name = text(request.name, "name", MAX_NAME, true)!;
+        const role = text(request.role, "role", MAX_ROLE, false) ?? "";
+        const instructions = instructionsOf(request.instructions);
+        // No name: a model names it for what it does, as a teammate's job title reads.
+        const given = text(request.name, "name", MAX_NAME, false);
+        let naming: Naming | undefined;
+
+        if (!given) {
+            if (role === "" && instructions === "") {
+                throw new HttpError(400, "Give it a name, or say what it does so it can be named.");
+            }
+
+            naming = await nameBot(
+                app,
+                { role, instructions },
+                this.list({ archived: true }).map((each) => each.bot.name),
+            );
+        }
+
+        const name = given || naming!.name;
         const kind = pick(request.kind, ["computer", "host"] as const, "kind") ?? "computer";
 
         if (this.list().some((each) => each.bot.name.toLowerCase() === name.toLowerCase())) {
@@ -207,14 +227,13 @@ export class Bots {
         const bot: BotProfile = {
             id: crypto.randomUUID().slice(0, 8),
             name,
-            role: text(request.role, "role", MAX_ROLE, false) ?? "",
+            role,
             color: color(request.color) ?? randomColor(name),
             ...optional("skin", pick(request.skin, SKINS, "skin")),
             ...optional("eyes", pick(request.eyes, EYES, "eyes")),
             kind,
             ...(request === NOID_REQUEST ? { main: true as const } : {}),
         };
-        const instructions = instructionsOf(request.instructions);
         const { id } = await app.commands.createSession(
             user,
             { cwd, title: name },
@@ -225,9 +244,44 @@ export class Bots {
             },
         );
 
+        // Naming it counts in its spend, as a session's title does.
+        if (naming !== undefined) {
+            await app.harness.commit(
+                (tx) => recordUsage(tx, id, naming.model, naming.usage),
+                context,
+            );
+        }
+
         await app.collab.activity(id, user, `made the bot ${name}`);
 
         return { id, bot };
+    }
+
+    /**
+     * A new name for a bot, written by a model from its role and instructions, and none any other bot has (nor its own
+     * now): for someone to use or not. What it costs counts in the bot's spend.
+     */
+    async suggestName(user: User, id: ConversationId): Promise<{ name: string }> {
+        const app = this.#app;
+
+        app.requireSee(user, id);
+        app.requireSteer(user);
+
+        const current = app.sessionMeta(id)?.bot;
+
+        if (current === undefined) {
+            throw new HttpError(404, "Not a bot.");
+        }
+
+        const naming = await nameBot(
+            app,
+            { role: current.role, instructions: (await app.agentState(id))?.instructions ?? "" },
+            this.list({ archived: true }).map((each) => each.bot.name),
+        );
+
+        await app.harness.commit((tx) => recordUsage(tx, id, naming.model, naming.usage), context);
+
+        return { name: naming.name };
     }
 
     /** Change a bot's name, role, face, or instructions. */

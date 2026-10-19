@@ -378,9 +378,14 @@ export class BotMail {
         return defineTool({
             name: "bot_create",
             description:
-                "Make a new bot for the owner: a name, a role, instructions, and where it works: the shared computer (the default), or a folder of the owner's machine (kind host, with folder), where it asks before it changes anything. Its model is the owner's to choose.",
+                "Make a new bot for the owner: a role, instructions, and where it works: the shared computer (the default), or a folder of the owner's machine (kind host, with folder), where it asks before it changes anything. Its name says what it does, as a teammate's job title reads (Researcher, Release Manager, Inbox Triage); leave it out and it is named for its role. Its model is the owner's to choose.",
             parameters: Type.Object({
-                name: Type.String(),
+                name: Type.Optional(
+                    Type.String({
+                        description:
+                            "What it does, as a job title (Researcher, Release Manager): never a made-up or random word",
+                    }),
+                ),
                 role: Type.String({ description: "What it is for, in a line" }),
                 instructions: Type.Optional(Type.String()),
                 kind: Type.Optional(Type.Union([Type.Literal("computer"), Type.Literal("host")])),
@@ -393,7 +398,7 @@ export class BotMail {
 
                 try {
                     const made = await this.#app.bots.create(this.#person(api.conversationId), {
-                        name: args.name,
+                        ...(args.name === undefined ? {} : { name: args.name }),
                         role: args.role,
                         ...(args.instructions === undefined
                             ? {}

@@ -191,7 +191,7 @@ test("bots are made with a profile and a folder of their own, and checked", asyn
     assert.equal(app.cwdOf(clash.id), "/home/noid/bots/re-searcher-2");
 
     await assert.rejects(app.bots.create(owner(app), { name: "researcher" }), /already/);
-    await assert.rejects(app.bots.create(owner(app), { name: "" }), /Give the bot a name/);
+    await assert.rejects(app.bots.create(owner(app), { name: "" }), /Give it a name/);
     await assert.rejects(app.bots.create(owner(app), { name: "Bad", color: "red" }), /#rrggbb/);
     await assert.rejects(
         app.bots.create(owner(app), { name: "Bad", skin: "plaid" }),

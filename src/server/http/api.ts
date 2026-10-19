@@ -621,6 +621,11 @@ export function createApi(options: HttpOptions, auth: Auth) {
             );
         }
 
+        // noid: a model's name for a bot, from what it does.
+        if (first === "bots" && second !== undefined && third === "name" && method === "POST") {
+            return json(response, 200, await app.bots.suggestName(user, conversationId(second)));
+        }
+
         if (first === "bots" && second !== undefined && method === "POST") {
             return json(
                 response,

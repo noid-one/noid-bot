@@ -14481,6 +14481,20 @@ pre.gallery-code {
     border-radius: 50%;
 }
 
+.bot-name-field {
+    display: flex;
+    gap: 8px;
+}
+
+.bot-name-field > input {
+    flex: 1;
+    min-width: 0;
+}
+
+.bot-name-field > .button {
+    flex: none;
+}
+
 .bot-preview {
     display: flex;
     align-items: center;

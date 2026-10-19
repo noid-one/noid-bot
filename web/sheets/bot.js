@@ -2,7 +2,7 @@
 import { useState } from "preact/hooks";
 import { Face } from "../faces/face.js";
 import { EYES, SKINS } from "../faces/params.js";
-import { actions, attempt, closeSheet, navigate, store } from "../store.js";
+import { actions, api, attempt, closeSheet, navigate, store } from "../store.js";
 import { html, Sheet } from "../ui.js";
 
 const COLORS = [
@@ -34,8 +34,21 @@ export function BotSheet({ id }) {
     const [skin, setSkin] = useState(bot?.skin ?? "");
     const [eyes, setEyes] = useState(bot?.eyes ?? "");
     const faceId = bot?.id ?? `new:${name || "bot"}`;
+    // A model at work: naming a new bot as it is made, or suggesting a name for this one.
+    const [naming, setNaming] = useState(false);
+    const named = name.trim() !== "";
+    const canMake = named || role.trim() !== "" || instructions.trim() !== "";
 
-    const save = () =>
+    // noid: a name a model writes from what the bot does, for the owner to keep or change.
+    const suggest = () => {
+        setNaming(true);
+        attempt(async () => setName((await api(`bots/${id}/name`, {})).name)).finally(() =>
+            setNaming(false),
+        );
+    };
+
+    const save = () => {
+        setNaming(!named);
         attempt(async () => {
             const body = { name, role, color, skin, eyes };
 
@@ -59,7 +72,8 @@ export function BotSheet({ id }) {
 
             closeSheet();
             navigate(made.id);
-        });
+        }).finally(() => setNaming(false));
+    };
 
     const field = (label, input) => html`<div class="field">
         <div class="label">${label}</div>
@@ -117,14 +131,27 @@ export function BotSheet({ id }) {
         </div>
         ${field(
             "Name",
-            html`<input
-                autofocus
-                aria-label="Name"
-                value=${name}
-                maxlength="40"
-                placeholder="e.g. Researcher"
-                onInput=${(event) => setName(event.currentTarget.value)}
-            />`,
+            html`<div class="bot-name-field">
+                <input
+                    autofocus
+                    aria-label="Name"
+                    value=${name}
+                    maxlength="40"
+                    placeholder=${bot === undefined ? "Leave it empty to name it for what it does" : "e.g. Researcher"}
+                    onInput=${(event) => setName(event.currentTarget.value)}
+                />
+                ${
+                    bot !== undefined &&
+                    html`<button
+                        class="button"
+                        disabled=${naming}
+                        title="A name for what it does, from its role and instructions"
+                        onClick=${suggest}
+                    >
+                        ${naming ? "Naming…" : "Name it for me"}
+                    </button>`
+                }
+            </div>`,
         )}
         ${field(
             "Role",
@@ -196,8 +223,12 @@ export function BotSheet({ id }) {
                 </button>`
             }
             <button class="button" onClick=${closeSheet}>Cancel</button>
-            <button class="button primary" disabled=${name.trim() === ""} onClick=${save}>
-                ${bot === undefined ? "Make the bot" : "Save"}
+            <button
+                class="button primary"
+                disabled=${naming || (bot === undefined ? !canMake : !named)}
+                onClick=${save}
+            >
+                ${bot === undefined ? (naming ? "Naming it…" : "Make the bot") : "Save"}
             </button>
         </div>
     <//>`;
