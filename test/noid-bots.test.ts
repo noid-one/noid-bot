@@ -376,7 +376,7 @@ test("Always allow keeps a rule only for noid's own questions", async () => {
 test("Always allow never answers for good what is asked every time", async () => {
     const { id } = await hostBot("Keeper of rules");
 
-    for (const tool of ["bot_archive", "bot_update"]) {
+    for (const tool of ["bot_archive", "bot_update", "bot_create"]) {
         const asked = app.approvals.request(
             {
                 id: `noid:${tool}:1`,
@@ -396,7 +396,7 @@ test("Always allow never answers for good what is asked every time", async () =>
 
     assert.deepEqual(
         ((await app.harness.snapshot(ApprovalRulesDoc, context))?.rules ?? []).filter((rule) =>
-            ["bot_archive", "bot_update"].includes(rule.tool),
+            ["bot_archive", "bot_update", "bot_create"].includes(rule.tool),
         ),
         [],
     );

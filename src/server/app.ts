@@ -2139,7 +2139,10 @@ export class PocketApp {
             user.role === "owner" &&
             id.startsWith(NOID_APPROVAL) &&
             !id.startsWith(AUTO_REVIEW_APPROVAL) &&
-            !alwaysAsks(request.tool, { action: "remove" })
+            !alwaysAsks(request.tool, { action: "remove" }) &&
+            // Asked every time when it makes a bot on this machine (its kind is not on the request): a rule would only
+            // turn auto review off for the bots it makes on the computer.
+            request.tool !== "bot_create"
         ) {
             await this.harness.commit(async (tx) => {
                 const doc = await tx.doc(ApprovalRulesDoc);
