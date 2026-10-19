@@ -48,6 +48,27 @@ at hairlines, a header line that runs across the whole width, quiet section head
   Omarchy palette is still in Appearance. Pi Pocket saved its defaults (the desktop's colors, tiles) as if chosen, so a
   browser drops those once for noid's; a palette its person picked stays.
 
+## What Pi did: tool calls
+
+After pi-web-desktop's process view. What Pi did between its words is one quiet line, not a card: what it did in words
+("Thought, wrote 2 files, read 2, ran 4 commands"), failures in red, how long, and a chevron. Opened, it is a timeline:
+
+- **A line per step, an icon for its kind.** Read, edit, write, search, list, run, message a bot, check on one, and so on,
+  each with its own icon on the rule. A call still running shows a spinner there; one that failed turns red. There is
+  no check mark for a call that went well: most do.
+- **A verb and what it acts on**, not the tool's name and its arguments as JSON (`web/steps.js`): "Read app.js", "Search
+  “export”", "Message Researcher", "Run node src/missing.js". A file shows as a small tag by its name (its path on
+  hover). Shell commands read by what they do: `cat`, `sed -n` read; `rg` and `grep` search; `ls` lists; `curl` fetches;
+  anything else runs. More words follow, dimmer: what a message said, a thought's first line.
+- **Calls of a kind in a row share a line**: "Write app.js, util.js", "Read app.js +2". It opens to each call's own
+  line, and each of those to its input and output. Calls that failed, wait for approval, made something (images, an
+  artifact), or are still running keep lines of their own.
+- **How long each call took**, from when the model finished the answer that asked for it (the server now sends that
+  time, `endedAt`) to its result, from a second on. Before, the only time to hand was when the answer began, which
+  counts the model's writing too.
+
+![Tool calls](tools-after.png)
+
 ## The logo
 
 The icon is one upright bar. Pi draws its logo as pixel art, each pixel two full blocks (`██`) so it is square in a

@@ -145,6 +145,13 @@ const DID = {
     ls: { verb: "listed", noun: "folder", by: "path" },
     browser: { verb: "used the browser" },
     artifact: { verb: "published", noun: "artifact", by: "id" },
+    // noid's bots.
+    bots: { verb: "looked over the bots" },
+    bot_message: { verb: "messaged", noun: "bot", by: "to" },
+    bot_brief: { verb: "checked on", noun: "bot", by: "name" },
+    bot_create: { verb: "created", noun: "bot", by: "name" },
+    bot_update: { verb: "updated", noun: "bot", by: "name" },
+    bot_archive: { verb: "archived", noun: "bot", by: "name" },
     // PiP's.
     sessions: { verb: "looked over sessions" },
     session_read: { verb: "read", noun: "session", by: "session" },
@@ -168,6 +175,7 @@ const ONE = {
     script: "a script",
     artifact: "an artifact",
     session: "a session",
+    bot: "a bot",
     message: "a message",
     reminder: "a reminder",
     call: "a call",

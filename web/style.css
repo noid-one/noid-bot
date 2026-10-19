@@ -163,9 +163,9 @@
     --transcript-gutter: 0px;
     /* The timeline in an activity group: where its rule and the centers of its marks are, the marks' size, and the gap
      * from a mark to its words (and to what a step shows under them). */
-    --timeline-x: 22.5px;
-    --step-mark-size: 19px;
-    --step-gap: 10px;
+    --timeline-x: 10px;
+    --step-mark-size: 18px;
+    --step-gap: 8px;
     /* Tiled windows' border, the one in focus, and the ring around that one. */
     --window-border: var(--hair);
     --window-border-active: var(--accent-line);
@@ -2064,13 +2064,10 @@ kbd {
 
 /* ─── Tool cards ───────────────────────────────────────────── */
 
-/* What Pi did between its words: a card with one line ("Read 2 files, ran 1 command · 18s") that opens into a
- * timeline. */
+/* What Pi did between its words, after pi-web-desktop's process view: a quiet line ("Read 2 files, ran 1 command ·
+ * 18s ›") that opens into a timeline, no card around it. */
 .activity {
     min-width: 0;
-    border: 1px solid var(--hair);
-    border-radius: var(--r-card);
-    overflow: hidden;
 }
 
 .entry-anchor {
@@ -2086,38 +2083,38 @@ kbd {
 .activity-head {
     display: flex;
     align-items: center;
-    gap: 10px;
-    width: 100%;
-    /* 40px, 35px, and 30px; a thumb's 34px at least on a touch screen. */
-    min-height: calc(22px + 18px * var(--space-y));
-    padding: 0 calc(12px * var(--space-x));
+    gap: 8px;
+    max-width: 100%;
+    min-height: calc(20px + 8px * var(--space-y));
+    padding: 0;
     text-align: left;
-    font-size: 13px;
+    font-size: 13.5px;
     line-height: 1.5;
     color: var(--muted);
-    transition:
-        color var(--t-hover) var(--ease-out),
-        background-color var(--t-hover) var(--ease-out);
-}
-
-.activity.open > .activity-head {
-    border-bottom: 1px solid var(--hair);
+    transition: color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
     .activity-head:hover {
         color: var(--text);
-        background: var(--hover);
     }
 }
 
-/* Inside a card that cuts off what is past it. */
-:is(.activity-head, .step-head):focus-visible {
-    outline-offset: -2px;
+.activity-head > .chev {
+    flex: none;
+    opacity: 0.45;
+    transition:
+        transform 0.3s var(--ease-out),
+        opacity var(--t-hover) var(--ease-out);
+}
+
+@media (hover: hover) {
+    .activity-head:hover > .chev {
+        opacity: 0.9;
+    }
 }
 
 .activity-summary {
-    flex: 1;
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -2126,11 +2123,14 @@ kbd {
 
 .activity-failed {
     flex: none;
-    padding: 1px 7px;
-    border-radius: var(--r-pill);
-    background: var(--err-soft);
     color: var(--err);
-    font: 500 11px var(--sans);
+    font: 500 12px var(--sans);
+}
+
+.activity-failed::before {
+    content: "·";
+    margin-right: 6px;
+    color: var(--faint);
 }
 
 .activity-time {
@@ -2144,16 +2144,17 @@ kbd {
     color: var(--accent);
 }
 
-/* The timeline: a line per call, each with its mark on a thin rule. */
+/* The timeline: a line per call, each with its icon on a thin rule, set in from the line above. */
 .timeline {
     position: relative;
-    padding: calc(6px * var(--space-y)) 0;
+    margin: 2px 0 0 4px;
+    padding: 2px 0;
     animation: unroll var(--t-in) var(--ease-out);
 }
 
 /* A group that is one thought alone: its words, under the line that names it. */
 .activity-thought {
-    padding: calc(10px * var(--space-y)) calc(12px * var(--space-x)) calc(12px * var(--space-y));
+    padding: calc(8px * var(--space-y)) 0 calc(4px * var(--space-y));
     animation: unroll var(--t-in) var(--ease-out);
 }
 
@@ -2161,8 +2162,8 @@ kbd {
     content: "";
     position: absolute;
     left: calc(var(--timeline-x) - 0.5px);
-    top: 20px;
-    bottom: 20px;
+    top: 16px;
+    bottom: 16px;
     width: 1px;
     background: var(--hair-2);
 }
@@ -2184,15 +2185,20 @@ kbd {
     display: flex;
     align-items: center;
     gap: var(--step-gap);
-    min-height: 34px;
-    padding: 0 14px 0 calc(var(--timeline-x) - var(--step-mark-size) / 2);
+    min-height: 30px;
+    padding: 0 8px 0 calc(var(--timeline-x) - var(--step-mark-size) / 2);
+    border-radius: var(--r-control);
     text-align: left;
-    transition: background-color var(--t-hover) var(--ease-out);
+    font-size: 13px;
+    color: var(--faint);
+    transition:
+        color var(--t-hover) var(--ease-out),
+        background-color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
     .step-head:hover {
-        background: var(--hover);
+        color: var(--muted);
     }
 }
 
@@ -2207,83 +2213,111 @@ kbd {
     }
 }
 
-/* How the call went, in a circle on the rule: its tint over the window's color, so the rule does not show through. */
+/* What kind of call, as an icon on the rule, in the color of how it went: over the window's color, so the rule does
+ * not show through. */
 .step-mark {
-    --tint: var(--card-2);
     flex: none;
     display: grid;
     place-items: center;
     width: var(--step-mark-size);
     height: var(--step-mark-size);
     border-radius: 50%;
-    background: linear-gradient(var(--tint), var(--tint)), var(--bg);
-    box-shadow: 0 0 0 3px var(--bg);
+    background: var(--bg);
     color: var(--muted);
-    font: 600 10px / 1 var(--mono);
-    transition:
-        background-color var(--t-border) var(--ease-out),
-        color var(--t-border) var(--ease-out);
+    transition: color var(--t-border) var(--ease-out);
 }
 
-.step-mark.done {
-    --tint: var(--ok-soft);
-    color: var(--ok);
+.step-mark :is(.icon, .spinner) {
+    display: block;
 }
 
 .step-mark.error {
-    --tint: var(--err-soft);
     color: var(--err);
 }
 
 .step-mark.approval {
-    --tint: var(--warn-soft);
     color: var(--warn);
-    box-shadow:
-        inset 0 0 0 1px var(--warn-line),
-        0 0 0 3px var(--bg);
 }
 
 .step-mark.running,
 .step-mark.agent {
-    --tint: var(--accent-soft);
     color: var(--accent);
 }
 
 .step-mark.thought {
-    --tint: color-mix(in srgb, var(--spark) 16%, transparent);
-    color: var(--spark);
-}
-
-/* Light themes' magenta can be faint as text on their ground: toward the foreground, as code's colors are. */
-:root[data-mode="light"] .step-mark.thought {
-    color: color-mix(in oklab, var(--spark) 60%, var(--body));
+    color: color-mix(in oklab, var(--spark) 70%, var(--muted));
 }
 
 .step-label {
     flex: none;
     max-width: 45%;
-    font: 600 12.5px var(--mono);
+    font: 500 13px var(--sans);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.step[data-status="error"] .step-label {
+    color: var(--err);
+}
+
+.step[data-status="approval"] .step-label {
+    color: var(--warn);
+}
+
+/* What the call acts on: words, or a file as a small tag. */
+.step-subject {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.step-file {
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 0 6px;
+    border-radius: var(--r-seg);
+    background: color-mix(in srgb, var(--body) 7%, transparent);
+    font: 12px / 20px var(--mono);
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.step-subject {
-    flex: 1;
-    min-width: 0;
+.step-subject.mono {
     font: 12.5px var(--mono);
-    color: var(--muted);
+}
+
+/* More about the call, dimmer: what it said, where it looked. */
+.step-more {
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--faint);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.step-count,
+.step-time {
+    flex: none;
+    font: 11.5px var(--mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--faint);
 }
 
 .step-meta {
     flex: none;
     max-width: 40%;
     font: 12px var(--mono);
-    color: var(--muted);
+    color: var(--faint);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2302,10 +2336,36 @@ kbd {
     color: var(--err);
 }
 
+/* A line opens: its chevron shows on hover, and stays turned while open. */
+.step-chev {
+    flex: none;
+    opacity: 0;
+    transition:
+        transform 0.3s var(--ease-out),
+        opacity var(--t-hover) var(--ease-out);
+}
+
+.step.open > .step-line > .step-head > .step-chev {
+    opacity: 0.7;
+    transform: rotate(90deg);
+}
+
+@media (hover: hover) {
+    .step-head:hover > .step-chev {
+        opacity: 0.7;
+    }
+}
+
+/* A run's own calls, set in under its line. */
+.step-run {
+    margin-left: calc(var(--timeline-x) + var(--step-mark-size) / 2);
+    animation: unroll var(--t-in) var(--ease-out);
+}
+
 /* A subagent's line goes to it. */
 .step-open {
     flex: none;
-    height: 28px;
+    height: 26px;
     margin-right: 8px;
     padding: 0 8px;
     border-radius: var(--r-seg);
@@ -2345,7 +2405,7 @@ kbd {
     flex-direction: column;
     gap: 8px;
     min-width: 0;
-    margin: 2px 14px 10px calc(var(--timeline-x) + var(--step-mark-size) / 2 + var(--step-gap));
+    margin: 2px 8px 10px calc(var(--timeline-x) + var(--step-mark-size) / 2 + var(--step-gap));
 }
 
 .step-extras + .step-body {
@@ -12429,7 +12489,7 @@ textarea.notes {
         min-height: 36px;
     }
     .activity-head {
-        min-height: max(34px, calc(22px + 18px * var(--space-y)));
+        min-height: 34px;
     }
     .browser-servers .chip,
     .dr-tools .chip {

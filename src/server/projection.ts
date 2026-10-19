@@ -52,6 +52,8 @@ export type ClientEntry =
           model?: string;
           provider?: string;
           at?: number;
+          /** noid: when the model finished writing it, where measured: its calls ran from then. */
+          endedAt?: number;
       }
     | {
           id: number;
@@ -263,6 +265,13 @@ function projectDetails(details: unknown, full: boolean): unknown {
     return undefined;
 }
 
+/** noid: when a model finished writing an answer (`timing.ts`), so its calls' lines can say how long each took. */
+function endedAt(message: { pocketTiming?: unknown } | undefined): { endedAt?: number } {
+    const timing = message?.pocketTiming as { endedAt?: unknown } | undefined;
+
+    return typeof timing?.endedAt === "number" ? { endedAt: timing.endedAt } : {};
+}
+
 /** When a message was made, as `{ at }`, or nothing when it does not say. */
 function madeAt(message: Record<string, unknown> | undefined): { at?: number } {
     const at = message?.timestamp;
@@ -325,6 +334,7 @@ export function projectEntry(entry: EntryRecord, full = false): ClientEntry | un
                 ...(typeof message?.model === "string" ? { model: message.model } : {}),
                 ...(typeof message?.provider === "string" ? { provider: message.provider } : {}),
                 ...madeAt(message),
+                ...endedAt(message),
             };
         }
 

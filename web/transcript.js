@@ -4,7 +4,7 @@ import { Component } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { initials, personColor } from "./avatar.js";
 import { browserAvailable, setBrowserOpen } from "./browser.js";
-import { describeCall, describersRevision } from "./calls.js";
+import { describersRevision } from "./calls.js";
 import { DiffBlock } from "./diff.js";
 import { Face } from "./faces/face.js";
 import { LinkedSessions } from "./linked-sessions.js";
@@ -24,6 +24,7 @@ import {
     TRANSCRIPT_ROWS,
     sessionBot,
 } from "./store.js";
+import { runLabel, runsOf, stepView } from "./steps.js";
 import { openSubagent, stateOf } from "./subagents.js";
 import { prefs } from "./theme.js";
 import {
@@ -34,7 +35,6 @@ import {
     plural,
     rowsBefore,
     says,
-    short,
     shortError,
     STOPPED,
     summarize,
@@ -500,73 +500,47 @@ function Collapsible({ text, limit = 600 }) {
 }
 
 // ─── What Pi did: its thinking and tool calls, a line each on a timeline ───────────────
+// noid: after pi-web-desktop's process view: quiet lines, each with an icon for its kind, a verb, and what it acts on.
 
-/** What a step's mark says, by how the call went; a call still running shows a spinner instead. */
-const MARKS = { done: "✓", error: "×", denied: "×", stopped: "–", approval: "!" };
-
-/** A step's mark: a small circle that says how it went. A thought is ✦, and a subagent's call ⑂ unless it failed. */
-function StepMark({ status, kind }) {
+/**
+ * A step's mark on the rule: the icon of its kind, in the color of how it went. A call still running shows a spinner
+ * instead; a subagent at work keeps its icon, as its line says how it is doing.
+ */
+function StepMark({ status, kind, icon }) {
     const agent = kind === "agent" && (status === "done" || status === "running");
     const spinning = kind !== "thought" && !agent && status === "running";
     const look = kind === "thought" ? "thought" : agent ? "agent" : status;
-    const mark = kind === "thought" ? "✦" : agent ? "⑂" : MARKS[status];
 
     return html`<span
         class=${`step-mark ${look}`}
         data-part="step-mark"
         aria-hidden=${spinning ? undefined : "true"}
     >
-        ${spinning ? html`<${Spinner} />` : mark}
+        ${spinning ? html`<${Spinner} />` : html`<${Icon} name=${icon} size=${14} />`}
     </span>`;
 }
 
-/** What Pi did with its memory tool, as a step's label. */
-const MEMORY_WORDS = {
-    add: "saved a lesson",
-    update: "changed a lesson",
-    remove: "forgot a lesson",
-    list: "read its lessons",
-};
-
-/** A call's line: its label (the tool, or a subagent's name) and what it acts on. */
-function stepWords(call) {
-    const args = call.args ?? {};
-
-    switch (call.name) {
-        case "grep":
-        case "find":
-            return {
-                label: call.name,
-                subject: [args.pattern, args.path].filter(Boolean).join("  "),
-            };
-        case "subagent":
-            return {
-                label: args.name ?? "subagent",
-                subject: args.message ? short(args.message) : (args.action ?? ""),
-            };
-        case "browser":
-            return {
-                label: "browser",
-                subject: `${args.action ?? ""} ${describeCall(call).subject}`.trim(),
-            };
-        case "memory":
-            return {
-                label: MEMORY_WORDS[args.action] ?? "memory",
-                subject: args.text ? short(args.text) : (args.id ?? ""),
-            };
-        case "watch_pr":
-            return { label: "watch PR", subject: [args.action, args.pr].filter(Boolean).join(" ") };
-
-        default: {
-            const described = describeCall(call);
-
-            // An extension's own words for its tool, or the tool's name.
-            return {
-                label: described.own ? described.label : call.name,
-                subject: described.subject,
-            };
-        }
+/** What a step acts on: a file as its name (its path on hover), anything else as words. */
+function StepTarget({ view }) {
+    if (view.target === "") {
+        return null;
     }
+
+    return view.path
+        ? html`<span class="step-file" title=${view.path}>${view.target}</span>`
+        : html`<span class=${`step-subject ${view.mono ? "mono" : ""}`} title=${view.target}>
+              ${view.target}
+          </span>`;
+}
+
+/**
+ * How long a call took, from when the model finished the answer that asked for it (`at`) to its result: on its line from
+ * a second on. An answer whose end was not measured says nothing.
+ */
+function callTime(at, result) {
+    const took = at !== undefined && result?.at !== undefined ? result.at - at : undefined;
+
+    return took !== undefined && took >= 1000 ? took : undefined;
 }
 
 /**
@@ -761,6 +735,13 @@ function callStatus({ result, slot, approval, decision, streaming, canRun, busy 
     return streaming || (busy && canRun) ? "running" : "stopped";
 }
 
+/** A thought's first words, after its line's name. */
+const firstLine = (text) =>
+    String(text ?? "")
+        .split("\n")
+        .map((each) => each.replace(/^[#*_\s]+|[*_]+$/g, "").trim())
+        .find((each) => each !== "") ?? "";
+
 /** A thought, on the timeline: open it to read it. */
 function ThoughtStep({ block, streaming, reading }) {
     // With Show thinking on, a thought once written shows its words (the live line shows the one being written).
@@ -779,12 +760,15 @@ function ThoughtStep({ block, streaming, reading }) {
                 aria-expanded=${open}
                 onClick=${() => setChosen(!open)}
             >
-                <${StepMark} status=${streaming ? "running" : "done"} kind="thought" />
+                <${StepMark} status=${streaming ? "running" : "done"} kind="thought" icon="sparkle" />
                 <span class="step-label" data-part="step-label">
                     ${streaming ? "Thinking" : block.redacted ? "Thought (redacted)" : "Thought"}
                 </span>
-                <span class="step-subject"></span>
-                ${streaming && html`<${Spinner} label="Thinking" />`}
+                ${
+                    !streaming &&
+                    html`<span class="step-more">${firstLine(block.text)}</span>
+                        <${Icon} name="chevron" size=${12} class="step-chev" />`
+                }
             </button>
         </div>
         ${
@@ -803,6 +787,7 @@ function ToolStep({
     slot,
     approval,
     entryId,
+    at,
     streaming,
     canRun,
     busy,
@@ -1000,7 +985,8 @@ function ToolStep({
             ? (details?.conversationId ??
               view.subagents.find((agent) => agent.name === args.name)?.conversationId)
             : undefined;
-    const { label, subject } = stepWords(call);
+    const look = stepView(call);
+    const took = callTime(at, result);
     // Counted from everything once it is loaded: a long write's lines, a long edit's whole diff.
     const said = outcome({
         call: full?.call ?? call,
@@ -1032,9 +1018,15 @@ function ToolStep({
                 aria-expanded=${open}
                 onClick=${() => setOpen(!open)}
             >
-                <${StepMark} status=${status} kind=${call.name === "subagent" ? "agent" : ""} />
-                <span class="step-label" data-part="step-label">${label}</span>
-                <span class="step-subject">${subject}</span>
+                <${StepMark}
+                    status=${status}
+                    kind=${call.name === "subagent" ? "agent" : ""}
+                    icon=${look.icon}
+                />
+                <span class="step-label" data-part="step-label">${look.verb}</span>
+                <${StepTarget} view=${look} />
+                ${look.detail && html`<span class="step-more">${look.detail}</span>`}
+                ${took !== undefined && html`<span class="step-time">${span(took)}</span>`}
                 ${
                     said &&
                     html`<span class=${`step-meta ${said.tone}`}>
@@ -1045,6 +1037,7 @@ function ToolStep({
                         }
                     </span>`
                 }
+                <${Icon} name="chevron" size=${12} class="step-chev" />
             </button>
             ${
                 child !== undefined &&
@@ -1114,6 +1107,39 @@ function ToolStep({
             </div>`
         }
         ${body}
+    </div>`;
+}
+
+/** Calls that keep a line of their own: what they made or started shows under it. */
+const ALONE = new Set(["artifact", "subagent", "memory", "browser"]);
+
+/**
+ * Calls of a kind one after another, done and gone well, as one line ("Read a.js +3", and how long they took); opened,
+ * each call's own line under it.
+ */
+function StepRun({ views, took, children }) {
+    const [open, setOpen] = useState(false);
+    const { verb, target, more } = runLabel(views);
+    const files = views.some((view) => view.path !== undefined);
+
+    return html`<div class=${`step run ${open ? "open" : ""}`} data-part="tool-call" data-state="ok" data-status="done">
+        <div class="step-line">
+            <button
+                class="step-head"
+                data-part="step-head"
+                aria-expanded=${open}
+                title=${views.map((view) => `${view.verb} ${view.path ?? view.target}`).join("\n")}
+                onClick=${() => setOpen(!open)}
+            >
+                <${StepMark} status="done" icon=${views[0].icon} />
+                <span class="step-label" data-part="step-label">${verb}</span>
+                ${target && html`<span class=${files ? "step-file" : `step-subject ${views[0].mono ? "mono" : ""}`}>${target}</span>`}
+                ${more && html`<span class="step-count">${more}</span>`}
+                ${took >= 1000 && html`<span class="step-time">${span(took)}</span>`}
+                <${Icon} name="chevron" size=${12} class="step-chev" />
+            </button>
+        </div>
+        ${open && html`<div class="step-run">${children}</div>`}
     </div>`;
 }
 
@@ -1281,6 +1307,77 @@ function ActivityGroup({
         return () => document.removeEventListener("pocket:reveal", reveal);
     }, [anchors, id]);
 
+    /** Whether a step may share a line with calls of its kind: a call that is done and went well, and made nothing. */
+    const joins = ({ block, entry }, newest) => {
+        if (block.type !== "toolCall" || entry === undefined || newest || ALONE.has(block.name)) {
+            return false;
+        }
+
+        const result = results.get(block.id);
+        const slot = slots.get(block.id);
+
+        return (
+            result !== undefined &&
+            !result.isError &&
+            !(result.images > 0) &&
+            !(
+                slot?.taskId !== undefined && approvals.some((each) => each.taskId === slot.taskId)
+            ) &&
+            decisionOf(store.state.view.decisions, block, result)?.allow !== false
+        );
+    };
+
+    const draw = ({ block, entry, streaming, canRun, index }) => {
+        // A call is named by its id, the same streamed and stored; a thought by the call before it. Not by
+        // place: earlier steps join the front when earlier messages show.
+        if (block.type === "thinking") {
+            return html`<${Memo} key=${`t:${lastCall}:${thoughts++}`} deps=${[block, streaming, reading]}>
+                            <${ThoughtStep} block=${block} streaming=${streaming} reading=${reading} />
+                        <//>`;
+        }
+
+        const slot = slots.get(block.id);
+        const approval =
+            slot?.taskId === undefined
+                ? undefined
+                : approvals.find((each) => each.taskId === slot.taskId);
+        let key = `c:${block.id || `#${index}`}`;
+
+        // A provider can use an id twice, or none.
+        if (keys.has(key)) {
+            key = `${key}#${index}`;
+        }
+
+        keys.add(key);
+        lastCall = key;
+        thoughts = 0;
+
+        return html`<${Memo}
+                        key=${key}
+                        deps=${[
+                            block,
+                            entry,
+                            canRun,
+                            busy,
+                            conversationId,
+                            ...callDeps(block, results, slots, approvals),
+                        ]}
+                    >
+                        <${ToolStep}
+                            call=${block}
+                            result=${results.get(block.id)}
+                            slot=${slot}
+                            approval=${approval}
+                            entryId=${entry?.id}
+                            at=${entry?.endedAt}
+                            streaming=${entry === undefined}
+                            canRun=${canRun}
+                            busy=${busy}
+                            conversationId=${conversationId}
+                        />
+                    <//>`;
+    };
+
     return html`<div
         class=${`activity ${open ? "open" : ""} ${fresh ? "enter" : ""}`}
         data-part="activity"
@@ -1298,10 +1395,10 @@ function ActivityGroup({
                 redraw((n) => n + 1);
             }}
         >
-            <${Icon} name="chevron" size=${14} class="chev" part="activity-chevron" />
             <span class="activity-summary">${summarize(all, thinking)}</span>
             ${failed > 0 && html`<span class="activity-failed">${failed} failed</span>`}
             <${GroupTime} id=${id} start=${start} end=${end} live=${live} />
+            <${Icon} name="chevron" size=${14} class="chev" part="activity-chevron" />
         </button>
         ${
             open &&
@@ -1314,54 +1411,28 @@ function ActivityGroup({
             open &&
             !lone &&
             html`<div class="timeline" data-part="timeline">
-                ${item.steps.map(({ block, entry, streaming, canRun }, index) => {
-                    // A call is named by its id, the same streamed and stored; a thought by the call before it. Not by
-                    // place: earlier steps join the front when earlier messages show.
-                    if (block.type === "thinking") {
-                        return html`<${Memo} key=${`t:${lastCall}:${thoughts++}`} deps=${[block, streaming, reading]}>
-                            <${ThoughtStep} block=${block} streaming=${streaming} reading=${reading} />
-                        <//>`;
-                    }
+                ${runsOf(
+                    item.steps.map((step, index) => ({ ...step, index })),
+                    (step) => stepView(step.block).kind,
+                    (step) => joins(step, live && step === item.steps.at(-1)),
+                ).map((run) => {
+                    const drawn = run.map(draw);
 
-                    const slot = slots.get(block.id);
-                    const approval =
-                        slot?.taskId === undefined
-                            ? undefined
-                            : approvals.find((each) => each.taskId === slot.taskId);
-                    let key = `c:${block.id || `#${index}`}`;
-
-                    // A provider can use an id twice, or none.
-                    if (keys.has(key)) {
-                        key = `${key}#${index}`;
-                    }
-
-                    keys.add(key);
-                    lastCall = key;
-                    thoughts = 0;
-
-                    return html`<${Memo}
-                        key=${key}
-                        deps=${[
-                            block,
-                            entry,
-                            canRun,
-                            busy,
-                            conversationId,
-                            ...callDeps(block, results, slots, approvals),
-                        ]}
-                    >
-                        <${ToolStep}
-                            call=${block}
-                            result=${results.get(block.id)}
-                            slot=${slot}
-                            approval=${approval}
-                            entryId=${entry?.id}
-                            streaming=${entry === undefined}
-                            canRun=${canRun}
-                            busy=${busy}
-                            conversationId=${conversationId}
-                        />
-                    <//>`;
+                    return run.length === 1
+                        ? drawn[0]
+                        : html`<${StepRun}
+                              key=${`r:${drawn[0].key}`}
+                              views=${run.map((step) => stepView(step.block))}
+                              took=${run.reduce(
+                                  (sum, step) =>
+                                      sum +
+                                      (callTime(step.entry?.endedAt, results.get(step.block.id)) ??
+                                          0),
+                                  0,
+                              )}
+                          >
+                              ${drawn}
+                          <//>`;
                 })}
             </div>`
         }
