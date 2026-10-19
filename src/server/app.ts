@@ -1627,8 +1627,8 @@ export class PocketApp {
      */
     canSee(user: User, id: ConversationId): boolean {
         const root = this.rootOf(id);
-        // noid: Noid does PiP's work, acting as the owner, so it is the owner's alone too.
-        const pip = this.#sessions[String(root)]?.pip ?? this.pip.ownerOf(root);
+        // noid: every bot does PiP's work, acting as the owner, so it is the owner's alone too.
+        const pip = this.#sessions[String(root)]?.pip ?? this.pip.actsFor(root);
 
         if (pip !== undefined && pip !== user.id) {
             return false;

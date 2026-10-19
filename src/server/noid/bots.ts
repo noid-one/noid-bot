@@ -252,6 +252,8 @@ export class Bots {
             );
         }
 
+        // Every bot has PiP's session tools, which a new conversation selects by name, as `ensureTools` does.
+        await this.#ensureTools(id, bot);
         await app.collab.activity(id, user, `made the bot ${name}`);
 
         return { id, bot };
@@ -371,46 +373,47 @@ export class Bots {
      */
     async ensureTools(): Promise<void> {
         for (const { conversationId, bot } of this.list({ archived: true })) {
-            // Noid does PiP's work too: PiP's tools, in Noid's conversation (`Pip.idOf`).
-            const want = [
-                ...this.#toolsOf(bot).map((extension) => extension.name),
-                ...(bot.main === true ? [PIP_EXTENSION] : []),
-            ];
-            const has = (selection: AgentState["extensions"]) =>
-                Array.isArray(selection)
-                    ? want.every((name) => selection.includes(name))
-                    : want.every(
-                          (name) =>
-                              (selection?.add ?? []).includes(name) &&
-                              !(selection?.remove ?? []).includes(name),
-                      );
+            await this.#ensureTools(conversationId, bot);
+        }
+    }
 
-            if (has((await this.#app.agentState(conversationId))?.extensions)) {
-                continue;
+    async #ensureTools(conversationId: ConversationId, bot: BotProfile): Promise<void> {
+        // Every bot does PiP's work too: PiP's session tools, acting for the owner (`Pip.actsFor`).
+        const want = [...this.#toolsOf(bot).map((extension) => extension.name), PIP_EXTENSION];
+        const has = (selection: AgentState["extensions"]) =>
+            Array.isArray(selection)
+                ? want.every((name) => selection.includes(name))
+                : want.every(
+                      (name) =>
+                          (selection?.add ?? []).includes(name) &&
+                          !(selection?.remove ?? []).includes(name),
+                  );
+
+        if (has((await this.#app.agentState(conversationId))?.extensions)) {
+            return;
+        }
+
+        await this.#app.harness.commit(async (tx) => {
+            const state = await tx.doc(AgentDoc, conversationId);
+            const selection = state.extensions;
+
+            if (Array.isArray(selection)) {
+                state.extensions = [
+                    ...selection,
+                    ...want.filter((name) => !selection.includes(name)),
+                ];
+
+                return;
             }
 
-            await this.#app.harness.commit(async (tx) => {
-                const state = await tx.doc(AgentDoc, conversationId);
-                const selection = state.extensions;
+            const add = selection?.add ?? [];
+            const remove = (selection?.remove ?? []).filter((name) => !want.includes(name));
 
-                if (Array.isArray(selection)) {
-                    state.extensions = [
-                        ...selection,
-                        ...want.filter((name) => !selection.includes(name)),
-                    ];
-
-                    return;
-                }
-
-                const add = selection?.add ?? [];
-                const remove = (selection?.remove ?? []).filter((name) => !want.includes(name));
-
-                state.extensions = {
-                    add: [...add, ...want.filter((name) => !add.includes(name))],
-                    ...(remove.length === 0 ? {} : { remove }),
-                };
-            }, context);
-        }
+            state.extensions = {
+                add: [...add, ...want.filter((name) => !add.includes(name))],
+                ...(remove.length === 0 ? {} : { remove }),
+            };
+        }, context);
     }
 
     /** A folder name under `bots/` that no bot uses yet. */

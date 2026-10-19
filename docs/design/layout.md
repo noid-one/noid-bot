@@ -36,6 +36,10 @@ at hairlines, a header line that runs across the whole width, quiet section head
   PiP's panel, bubble, menu tile, and launcher entry are gone; Alt+A, "Message Noid" in the launcher, and `/noid` go to
   Noid. Its empty conversation starts with PiP's questions ("What needs me?", "What happened today?"), as a plain list.
   Since its tools act as you, Noid is yours alone: a guest you invite cannot see it.
+- **Every bot has the session tools too.** Any bot can list, read, start, message, follow, stop, and schedule sessions
+  when its job needs work in a folder on your machine. They act as you, so every bot is yours alone. Bots are not
+  sessions to these tools: a bot reaches another with `bot_message`. Making, changing, and archiving bots stays
+  Noid's.
 - **Edges to drag.** The sidebar, browser, and files edges, and the line between the bots and the sessions, use one
   splitter (`web/splitter.js`) instead of separate copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it

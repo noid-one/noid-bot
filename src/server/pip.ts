@@ -294,9 +294,22 @@ export class Pip {
         );
     }
 
-    /** The name of the person whose PiP a conversation is; undefined for every other conversation. */
+    /**
+     * noid: the person a conversation's session tools act for: its PiP's person, or the owner for every bot, which has
+     * PiP's tools too (`Bots.ensureTools`); undefined for every other conversation.
+     */
+    actsFor(conversationId: ConversationId): string | undefined {
+        return (
+            this.ownerOf(conversationId) ??
+            (this.#app.sessionMeta(conversationId)?.bot === undefined
+                ? undefined
+                : this.#app.config.users.find((user) => user.role === "owner")?.id)
+        );
+    }
+
+    /** The name of the person a conversation's session tools act for; undefined for every other conversation. */
     ownerName(conversationId: ConversationId): string | undefined {
-        const userId = this.ownerOf(conversationId);
+        const userId = this.actsFor(conversationId);
 
         return userId === undefined
             ? undefined
@@ -437,7 +450,7 @@ export class Pip {
         const app = this.#app;
         const counted =
             user ??
-            (this.ownerOf(conversationId) === undefined ? undefined : this.#person(conversationId));
+            (this.actsFor(conversationId) === undefined ? undefined : this.#person(conversationId));
 
         if (
             counted === undefined ||
@@ -503,7 +516,7 @@ export class Pip {
 
     /** PiP's person, from its conversation; an error when the conversation is no PiP, or its person is gone. */
     #person(pipId: ConversationId): User {
-        const userId = this.ownerOf(pipId);
+        const userId = this.actsFor(pipId);
         const user = userId === undefined ? undefined : this.#app.config.userById(userId);
 
         if (user === undefined) {
@@ -527,6 +540,11 @@ export class Pip {
 
         if (this.#app.sessionMeta(id) === undefined) {
             throw new Error(`There is no session ${sessionId}. List them with the sessions tool.`);
+        }
+
+        // noid: bots are reached as bots, with what bot mail keeps track of.
+        if (this.#app.sessionMeta(id)?.bot !== undefined) {
+            throw new Error(`${String(sessionId)} is a bot: use bot_message or bot_brief.`);
         }
 
         this.#app.requireSee(user, id);
@@ -813,35 +831,41 @@ export class Pip {
         const app = this.#app;
         const user = this.#person(pipId);
         const words = (filter.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-        const all = app.sessions(user).map((session): PipSession => {
-            const counts = session.subagents;
+        // noid: bots are not sessions here; the bots tool lists them.
+        const all = app
+            .sessions(user)
+            .filter((session) => session.bot === undefined)
+            .map((session): PipSession => {
+                const counts = session.subagents;
 
-            return {
-                id: session.id,
-                title: session.title ?? "New session",
-                state: session.waiting ? "needs approval" : session.busy ? "working" : "idle",
-                folder: homePath(app.cwdOf(session.id as unknown as ConversationId)),
-                archived: session.archived === true,
-                ...(session.model === undefined ? {} : { model: session.model }),
-                ...(session.worktree === undefined ? {} : { branch: session.worktree.branch }),
-                updatedAt: session.updatedAt,
-                ...(counts === undefined
-                    ? {}
-                    : {
-                          // "2 failed (1 dismissed)": failures a person dealt with need nobody now.
-                          subagents: Object.entries(counts)
-                              .filter(
-                                  ([kind, count]) =>
-                                      kind !== "dealt" && typeof count === "number" && count > 0,
-                              )
-                              .map(
-                                  ([kind, count]) =>
-                                      `${String(count)} ${kind}${kind === "failed" && counts.dealt !== undefined ? ` (${String(counts.dealt)} dismissed)` : ""}`,
-                              )
-                              .join(", "),
-                      }),
-            };
-        });
+                return {
+                    id: session.id,
+                    title: session.title ?? "New session",
+                    state: session.waiting ? "needs approval" : session.busy ? "working" : "idle",
+                    folder: homePath(app.cwdOf(session.id as unknown as ConversationId)),
+                    archived: session.archived === true,
+                    ...(session.model === undefined ? {} : { model: session.model }),
+                    ...(session.worktree === undefined ? {} : { branch: session.worktree.branch }),
+                    updatedAt: session.updatedAt,
+                    ...(counts === undefined
+                        ? {}
+                        : {
+                              // "2 failed (1 dismissed)": failures a person dealt with need nobody now.
+                              subagents: Object.entries(counts)
+                                  .filter(
+                                      ([kind, count]) =>
+                                          kind !== "dealt" &&
+                                          typeof count === "number" &&
+                                          count > 0,
+                                  )
+                                  .map(
+                                      ([kind, count]) =>
+                                          `${String(count)} ${kind}${kind === "failed" && counts.dealt !== undefined ? ` (${String(counts.dealt)} dismissed)` : ""}`,
+                                  )
+                                  .join(", "),
+                          }),
+                };
+            });
         const folders = [
             ...new Set(all.filter((each) => !each.archived).map((each) => each.folder)),
         ];

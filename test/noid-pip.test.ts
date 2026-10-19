@@ -39,7 +39,12 @@ const route: FauxResponseStep = (request) => {
     const tools = system.flatMap((message) => (message.toolsAdded ?? []).map((tool) => tool.name));
 
     return fauxAssistantMessage([
-        fauxText(text === "show" ? JSON.stringify({ systemPrompt, tools }) : `echo: ${text}`),
+        // A bot but Noid hears who it is from: "[from: Owner] show".
+        fauxText(
+            /^(?:\[from: [^\]]+\] )?show$/.test(text)
+                ? JSON.stringify({ systemPrompt, tools })
+                : `echo: ${text}`,
+        ),
     ]);
 };
 
@@ -113,6 +118,37 @@ test("Noid acts as the owner, so only the owner sees it", () => {
 
     assert.equal(app.canSee(owner(app), noid), true);
     assert.equal(app.canSee(guest, noid), false);
+});
+
+test("every bot has the session tools, acting as the owner; bots are not sessions there", async () => {
+    const { id: bot } = await app.bots.create(owner(app), { name: "Scout", role: "Finds things" });
+    const extensions = (await app.agentState(bot))?.extensions;
+    const names = Array.isArray(extensions) ? extensions : (extensions?.add ?? []);
+
+    assert.ok(names.includes(PIP_EXTENSION), "PiP's extension, selected");
+    await app.commands.configure(bot, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+        thinkingLevel: "off",
+    });
+    await say(app, bot, "show");
+    const shown = JSON.parse(await answer(bot)) as { systemPrompt: string; tools: string[] };
+
+    for (const tool of ["sessions", "session_start", "session_send", "bot_message"]) {
+        assert.ok(shown.tools.includes(tool), `${tool}, offered`);
+    }
+
+    assert.ok(!shown.tools.includes("bot_create"), "making bots stays Noid's");
+    assert.match(shown.systemPrompt, /You can also work through sessions/);
+    assert.doesNotMatch(shown.systemPrompt, /You are PiP|Besides your bots/);
+
+    assert.equal(app.pip.actsFor(bot), owner(app).id);
+    assert.equal(app.pip.ownerOf(bot), undefined, "a bot is no PiP");
+    assert.equal(app.canSee(app.config.addUser("Visitor", "guest").user, bot), false);
+
+    const { sessions } = app.pip.sessions(bot);
+
+    assert.ok(!sessions.some((session) => Number(session.id) === Number(noid)), "Noid is a bot");
+    await assert.rejects(app.pip.read(bot, Number(noid)), /is a bot/);
 });
 
 test("the list says what a bot last said, under its name", async () => {

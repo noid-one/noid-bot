@@ -1,5 +1,5 @@
 /**
- * Noid's sessions tools: Noid finds out what sessions are doing, starts and messages them, stops and archives them,
+ * Noid's sessions tools, which every bot has too: Noid finds out what sessions are doing, starts and messages them, stops and archives them,
  * schedules messages, follows runs until they end, watches the owner's GitHub repositories and pull requests and acts
  * on what happens there, and can deny (never allow) calls waiting for approval. Pi Pocket gave these to PiP, an
  * assistant beside the sessions; noid gives them to Noid, in its conversation (`Pip.idOf`). While this is off, Noid
@@ -50,6 +50,15 @@ ${name} relies on you: be dependable before fast. So:
 - Check before you act on a session: read it as it is now (session_read) and do only what it needs. Never send one message to several sessions without checking each.
 - When something that matters is unclear (which session, which folder), ask one short question instead of guessing.
 - Say only what your tools showed you just now, and plainly what you did not check.
+- Never choose a model for a session: pass or name one only when ${name} did.`;
+}
+
+/** noid: every other bot has the session tools too; this says what they are for, after the bot's own prompt. */
+function botPreamble(name: string): string {
+    return `You can also work through sessions, the other conversations in noid where Pi works in a folder on ${name}'s machine: list and read them, start one in a folder or repository for hands-on work, message it, follow it until its run ends, stop or archive it, and schedule messages to it. Start one when your job needs work in a folder you do not have; otherwise do the work yourself. To reach another bot, use bot_message, not these tools.
+
+- Check before you act on a session: read it as it is now (session_read) and do only what it needs.
+- Link every session you mention as [its title](/s/ID).
 - Never choose a model for a session: pass or name one only when ${name} did.`;
 }
 
@@ -696,12 +705,19 @@ export default function createPip(host: PocketHost) {
                 (input) => {
                     const name = host.pip.ownerName(input.conversationId);
 
-                    return name === undefined
-                        ? undefined
-                        : // A server that has not restarted since noid merged PiP into Noid has no isNoid.
-                          typeof host.pip.isNoid === "function" &&
-                            host.pip.isNoid(input.conversationId)
-                          ? noidPreamble(name)
+                    if (name === undefined) {
+                        return undefined;
+                    }
+
+                    // A server that has not restarted since noid merged PiP into Noid has no isNoid.
+                    if (typeof host.pip.isNoid !== "function") {
+                        return preamble(name);
+                    }
+
+                    return host.pip.isNoid(input.conversationId)
+                        ? noidPreamble(name)
+                        : host.pip.ownerOf(input.conversationId) === undefined
+                          ? botPreamble(name)
                           : preamble(name);
                 },
                 { tag: false },
