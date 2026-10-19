@@ -1,6 +1,7 @@
 // The shared computer for real: Docker, the computer image, pi-env over `docker exec`. Opt-in, as it needs Docker and
 // builds or starts a container: NOID_DOCKER=docker npm test (or node --test test/computer.docker.test.ts). Without
-// NOID_DOCKER every test here is skipped.
+// NOID_DOCKER every test here is skipped. They use a computer of their own, noid-computer-test (NOID_COMPUTER), which
+// they stop and restart; the owner's noid-computer is never touched. `docker rm -f noid-computer-test` after, if wanted.
 import {
     type App,
     cleanUp,
@@ -24,12 +25,14 @@ import { Computer, dockerCommand } from "../src/server/noid/computer.ts";
 import { route } from "./computer-route.ts";
 
 const enabled = process.env.NOID_DOCKER !== undefined;
+// A computer of the tests' own: the owner's (noid-computer), maybe in use, is never stopped or restarted by them.
+const NAME = (process.env.NOID_COMPUTER ??= "noid-computer-test");
 const skip = enabled ? false : "set NOID_DOCKER to run the shared computer's Docker tests";
 const docker = dockerCommand(process.env.NOID_DOCKER ?? "docker");
 /** A run of this file has its own folders on the computer, so runs never see each other's files. */
 const run = randomUUID().slice(0, 8);
 const folder = (name: string) => `/home/noid/bots/test-${run}-${name}`;
-const onComputer = (script: string) => docker(["exec", "noid-computer", "sh", "-c", script]);
+const onComputer = (script: string) => docker(["exec", NAME, "sh", "-c", script]);
 let app: App | undefined;
 
 before(async () => {
@@ -159,7 +162,7 @@ test(
         const id = await newSession(app!, folder("restart"));
 
         await say(app!, id, "run echo kept > kept.txt");
-        await docker(["restart", "--time", "2", "noid-computer"]);
+        await docker(["restart", "--time", "2", NAME]);
         await say(app!, id, "run cat kept.txt");
         assert.equal((await answer(id)).trim(), "ok: kept");
     },
@@ -244,7 +247,7 @@ test(
         await docker([
             "exec",
             "-d",
-            "noid-computer",
+            NAME,
             "sh",
             "-c",
             "cd /tmp && python3 -m http.server 8765 --bind 127.0.0.1",
@@ -293,7 +296,7 @@ test(
 
         // A stopped computer: its display starts in the background as the browser asks for it.
         await app!.browsers.closeAll();
-        await docker(["stop", "--time", "2", "noid-computer"]);
+        await docker(["stop", "--time", "2", NAME]);
 
         const page = await app!.browsers.open(Number(id));
 
@@ -305,7 +308,7 @@ test(
         await docker([
             "exec",
             "-d",
-            "noid-computer",
+            NAME,
             "sh",
             "-c",
             "cd /tmp && python3 -m http.server 8766 --bind 127.0.0.1",
@@ -523,7 +526,7 @@ test(
         await docker([
             "exec",
             "-d",
-            "noid-computer",
+            NAME,
             "sh",
             "-c",
             `echo $$ > ${site}/pid && exec python3 -m http.server ${port} --bind 127.0.0.1 --directory ${site}`,

@@ -16,6 +16,9 @@ const FPS = 30;
  * back the full rate at once.
  */
 const RESTING_FPS = 10;
+/** And once nothing has moved for a while (a page left open): breathing still reads at this rate. */
+const DROWSY_FPS = 4;
+const DROWSY_AFTER_MS = 20_000;
 const AT_REST = new Set(["idle", "asleep"]);
 /** How long after the pointer moves the eyes may still be following it. */
 const POINTER_SETTLE_MS = 1500;
@@ -307,7 +310,9 @@ function createRenderer() {
             calm &&= !face.visible || AT_REST.has(face.motion.state);
         }
 
-        if (elapsed >= 1000 / (calm ? RESTING_FPS : FPS) - 2 || dirty) {
+        const fps = !calm ? FPS : now - pointer.at > DROWSY_AFTER_MS ? DROWSY_FPS : RESTING_FPS;
+
+        if (elapsed >= 1000 / fps - 2 || dirty) {
             const clock = now / 1000;
             const dt = Math.min(0.1, elapsed / 1000);
 
@@ -337,7 +342,7 @@ function createRenderer() {
                     resting = 0;
                     schedule();
                 },
-                Math.max(0, 1000 / RESTING_FPS - (performance.now() - lastDraw) - 8),
+                Math.max(0, 1000 / fps - (performance.now() - lastDraw) - 8),
             );
         } else {
             schedule();

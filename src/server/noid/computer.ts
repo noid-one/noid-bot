@@ -202,8 +202,12 @@ export class Computer {
         const run = docker ?? dockerCommand(this.#binary);
 
         this.#docker = (args, input) => run([...this.#hostArgs, ...args], input);
-        this.container = options.container ?? "noid-computer";
-        this.volume = options.volume ?? "noid-computer-home";
+        // NOID_COMPUTER names another computer (its container, and `<name>-home` its volume): the Docker tests use one
+        // of their own, and never stop or restart the owner's.
+        const named = process.env.NOID_COMPUTER?.trim() || "noid-computer";
+
+        this.container = options.container ?? named;
+        this.volume = options.volume ?? `${named}-home`;
         this.#buildContext = options.buildContext ?? join(APP_ROOT, "computer");
         // Tagged by what it is built from: a change to computer/ (or to pi-env's daemon) is a new image, and a container
         // made from an older one is made again at its next start.
