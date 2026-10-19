@@ -549,7 +549,13 @@ export function botFaceState(session) {
  */
 function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
     return html`<div class="sessions-head">
-        <button
+        ${
+            onFold === undefined
+                ? html`<span class="section-fold" data-part=${part}>
+                      <span class="sessions-name">${name}</span>
+                      <span class="sessions-count">${count}</span>
+                  </span>`
+                : html`<button
             class="section-fold"
             data-part=${part}
             aria-expanded=${!folded}
@@ -559,7 +565,8 @@ function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
             <${Icon} name="chevron" size=${12} />
             <span class="sessions-name">${name}</span>
             <span class="sessions-count">${count}</span>
-        </button>
+        </button>`
+        }
         ${
             onAdd &&
             html`<button class="new-button" title=${add} aria-label=${add} onClick=${onAdd}>
@@ -569,17 +576,54 @@ function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
     </div>`;
 }
 
-/** noid: how tall the bot list is, as the owner dragged it (`--bots-h`); none set, it takes what it needs. */
-const BOTS_HEIGHT_KEY = "pocket.botsHeight";
-const BOTS_MIN = 120;
-const botsHeight = Number(localStorage.getItem(BOTS_HEIGHT_KEY));
+/** noid: which list the sidebar shows, bots or sessions, as its tabs last chose. */
+const PANE_KEY = "pocket.sidebarPane";
 
-if (botsHeight > 0) {
-    document.documentElement.style.setProperty("--bots-h", `${botsHeight}px`);
+function readPane() {
+    try {
+        return localStorage.getItem(PANE_KEY) === "sessions" ? "sessions" : "bots";
+    } catch {
+        return "bots";
+    }
 }
 
-/** noid: the bots, above the sessions: Noid first, then by name. */
-function BotList({ compact, canStart, folded, onFold }) {
+/**
+ * noid: the sidebar's tabs, as Claude's chat and code ones: an icon each for the bots and the sessions, the one shown
+ * pressed. A dot on one that is hidden says something there is at work or needs you.
+ */
+function PaneTabs({ pane, onPane }) {
+    const { sessions } = store.state;
+    const busy = (bots) =>
+        sessions.some(
+            (session) =>
+                !session.archived &&
+                (session.bot !== undefined) === bots &&
+                (session.busy || session.waiting),
+        );
+    const tabs = [
+        ["bots", "bot", "Bots"],
+        ["sessions", "terminal", "Sessions"],
+    ];
+
+    return html`<div class="pane-tabs" role="tablist" aria-label="Show" data-part="pane-tabs">
+        ${tabs.map(
+            ([key, icon, label]) => html`<button
+                role="tab"
+                class=${`pane-tab ${pane === key ? "on" : ""}`}
+                aria-selected=${pane === key}
+                title=${label}
+                aria-label=${label}
+                onClick=${() => onPane(key)}
+            >
+                <${Icon} name=${icon} size=${17} />
+                ${pane !== key && busy(key === "bots") && html`<span class="pane-dot"></span>`}
+            </button>`,
+        )}
+    </div>`;
+}
+
+/** noid: the bots, in the sidebar's Bots tab: Noid first, then by name. */
+function BotList({ compact, canStart }) {
     const { sessions, conversationId } = store.state;
     const bots = sessions
         .filter((session) => session.bot !== undefined && !session.archived)
@@ -597,13 +641,11 @@ function BotList({ compact, canStart, folded, onFold }) {
     const main = bots[0]?.bot.main === true ? bots[0] : undefined;
     const others = main === undefined ? bots : bots.slice(1);
 
-    return html`<div class=${`bots ${folded ? "folded" : ""}`} data-part="bot-list">
+    return html`<div class="bots" data-part="bot-list">
         <${SectionHead}
             name="Bots"
             count=${bots.length}
             part="bot-list-title"
-            folded=${folded}
-            onFold=${onFold}
             add="New bot"
             onAdd=${canStart && (() => openSheet({ type: "bot" }))}
         />
@@ -625,24 +667,6 @@ function BotList({ compact, canStart, folded, onFold }) {
                 />`,
             )}
         </div>
-        ${
-            !compact &&
-            !folded &&
-            html`<${Splitter}
-                edge="bottom"
-                label="Resize the bot list"
-                variable="--bots-h"
-                className="bots-splitter"
-                of=${(handle) => handle.parentElement.querySelector(".bot-items")}
-                min=${BOTS_MIN}
-                max=${() => Math.max(BOTS_MIN, innerHeight * 0.7)}
-                commit=${(height) => localStorage.setItem(BOTS_HEIGHT_KEY, String(height))}
-                reset=${() => {
-                    localStorage.removeItem(BOTS_HEIGHT_KEY);
-                    document.documentElement.style.removeProperty("--bots-h");
-                }}
-            />`
-        }
     </div>`;
 }
 
@@ -741,6 +765,27 @@ export function SessionList({ compact = false }) {
     const tabs = useRef(null);
     const needle = query.trim().toLowerCase();
     const archived = tab === "archived";
+    const [pane, setPaneState] = useState(readPane);
+    const conversationId = store.state.conversationId;
+
+    const setPane = (next) => {
+        try {
+            localStorage.setItem(PANE_KEY, next);
+        } catch {
+            // Kept for this page only.
+        }
+
+        setPaneState(next);
+    };
+
+    // Opening a bot or a session, from anywhere, shows its list.
+    useEffect(() => {
+        const open = sessions.find((session) => session.id === conversationId);
+
+        if (open !== undefined && !open.archived) {
+            setPaneState(open.bot === undefined ? "sessions" : "bots");
+        }
+    }, [conversationId]);
 
     const setQuery = (next) => {
         if (!compact) {
@@ -1191,31 +1236,28 @@ export function SessionList({ compact = false }) {
     const count = sessions.filter(
         (session) => !session.archived && session.bot === undefined,
     ).length;
-    const sessionsFolded = closed.has("section:sessions");
     let index = 0;
+    const tabsHead = html`<${PaneTabs} pane=${pane} onPane=${setPane} />`;
 
     return html`<div
-        class=${`sessions ${compact ? "compact" : ""} ${sessionsFolded ? "sessions-folded" : ""}`}
+        class=${`sessions ${compact ? "compact" : ""} pane-${pane}`}
         data-part="session-list"
     >
         ${
-            !compact &&
-            html`<div class="sidebar-head" data-part="sidebar-head">
-                <span class="wordmark">noid</span>
-            </div>`
+            compact
+                ? html`<div class="pane-head">${tabsHead}</div>`
+                : html`<div class="sidebar-head" data-part="sidebar-head">
+                      <span class="wordmark">noid</span>
+                      ${tabsHead}
+                  </div>`
         }
-        <${BotList}
-            compact=${compact}
-            canStart=${canStart}
-            folded=${closed.has("section:bots")}
-            onFold=${() => toggleGroup("section:bots")}
-        />
-        <${SectionHead}
+        ${pane === "bots" && html`<${BotList} compact=${compact} canStart=${canStart} />`}
+        ${
+            pane === "sessions" &&
+            html`<${SectionHead}
             name="Sessions"
             count=${sessionsLoaded ? count : ""}
             part="session-list-title"
-            folded=${sessionsFolded}
-            onFold=${() => toggleGroup("section:sessions")}
             add="New session (Alt+N)"
             onAdd=${canStart && (() => openSheet({ type: "cwd", mode: "new" }))}
         />
@@ -1363,6 +1405,8 @@ export function SessionList({ compact = false }) {
                 </section>`;
             })}
         </div>
+        `
+        }
         ${
             chosen.length > 0 &&
             html`<div class="select-bar" role="group" aria-label="Selected sessions">

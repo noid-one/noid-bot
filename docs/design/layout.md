@@ -16,13 +16,16 @@ at hairlines, a header line that runs across the whole width, quiet section head
   controls, down from 14 and 10).
 - **One header line.** The rail's mark, the sidebar's head, the top bar, and every panel's bar share one height,
   `--head-h`, so their bottom lines meet across the window.
-- **Sidebar sections.** `BOTS` and `SESSIONS` are small spaced capitals with their count. Each folds, and stays folded
-  in this browser. A plus adds a bot or a session, where the blue "+ New" pills were.
+- **Bots and sessions are tabs.** The sidebar's head ends in two icon tabs, as Claude's chat and code ones: a robot for
+  the bots and a terminal for the sessions. Only the chosen list shows, at the sidebar's full height, and the choice
+  stays in this browser. Opening a bot or a session shows its tab, and a dot on the hidden tab says something there is
+  working or needs you. Each list's head is `BOTS` or `SESSIONS` in small spaced capitals with its count, and a plus
+  adds a bot or a session, where the blue "+ New" pills were.
 - **One side panel, with tabs.** Files, Changes, and the Browser were separate panels with separate heads. They are now
   tabs on one panel head (`web/panel-tabs.js`), on the header line, with the folder and close at its end. Each tab's
   own tools sit under it, such as the browser's address bar. On a phone the head starts with a back button.
-- **Many bots fit.** Bot rows are one line each (a smaller face, the name, the role quieter), and the bot list scrolls in
-  its own section, with the open bot kept in sight. With 24 bots the sessions still show below them.
+- **Many bots fit.** Bot rows are compact (the face, the name, what the bot last said quieter), and the Bots tab
+  scrolls, with the open bot kept in sight.
 - **Conversations read as people and bots.** Your messages are quiet filled bubbles on the right, as wide as their
   words; the bots' replies run on the left. A message from another bot shows that bot's face and name and only its
   words: the safety preamble and `<bot-message>` tags the receiving bot reads stay out of sight. A failed request is a

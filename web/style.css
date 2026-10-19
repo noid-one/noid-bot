@@ -790,8 +790,16 @@ kbd {
         grid-template-rows: repeat(4, auto) minmax(0, 1fr);
         column-gap: 8px;
     }
-    .home-list > .sessions > .sidebar-head {
+    .home-list > .sessions > .sidebar-head .wordmark {
         display: none;
+    }
+    .home-list > .sessions > .sidebar-head {
+        height: auto;
+        margin-bottom: 6px;
+        border-bottom: 0;
+    }
+    .home-list > .sessions.pane-bots > .bots {
+        grid-row: 5;
     }
     .home-list > .sessions > .session-items {
         grid-row: 5;
@@ -4056,6 +4064,63 @@ pre.diff .del {
     padding-top: 0;
 }
 
+/* noid: the sidebar's tabs at the head's end, as Claude's chat and code ones: icons in a quiet well, the one shown
+ * raised. In the drawer they head the list on their own. */
+.pane-tabs {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    padding: 2px;
+    border-radius: 10px;
+    background: var(--hover);
+}
+
+.pane-tab {
+    position: relative;
+    width: 34px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    color: var(--muted);
+    transition:
+        background-color var(--t-hover) var(--ease-out),
+        color var(--t-hover) var(--ease-out);
+}
+
+.pane-tab.on {
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: 0 0 0 1px var(--hair);
+}
+
+@media (hover: hover) {
+    .pane-tab:not(.on):hover {
+        color: var(--text);
+    }
+}
+
+/* Something in the hidden list is at work or needs you. */
+.pane-dot {
+    position: absolute;
+    top: 5px;
+    right: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+}
+
+.pane-head {
+    display: flex;
+    flex: none;
+    margin-bottom: 8px;
+}
+
+.pane-head > .pane-tabs {
+    margin-left: 0;
+}
+
 .wordmark {
     font: 700 16px var(--mono);
     letter-spacing: -0.02em;
@@ -4126,12 +4191,6 @@ pre.diff .del {
     .new-button:hover {
         background: var(--hover);
     }
-}
-
-/* Folded, a section keeps its head alone. */
-.bots.folded > .bot-items,
-.sessions-folded > :is(.search, .session-tabs, .session-items) {
-    display: none;
 }
 
 /* A search field: the sheets' (providers, a message's, the pickers') and the session list's. */
@@ -14366,20 +14425,21 @@ pre.gallery-code {
 
 /* ─── noid: bots (sessions.js BotList, app.js top bar, sheets/bot.js) ─────────────────────── */
 
+/* The Bots tab: the list takes the sidebar's height, and scrolls. */
 .bots {
     position: relative;
-    flex: none;
-    margin-bottom: 10px;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
-/* Many bots scroll in their own section, so the sessions under them stay in sight. */
 .bot-items {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 1px;
-    /* As tall as the owner dragged it (the splitter under it), else as tall as it needs, up to 40% of the screen. */
-    height: var(--bots-h, auto);
-    max-height: var(--bots-h, 40dvh);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;

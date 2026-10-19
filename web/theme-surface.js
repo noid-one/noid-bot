@@ -133,6 +133,7 @@ export const PARTS = [
     "rail-button",
     "sidebar",
     "sidebar-head",
+    "pane-tabs",
     "drawer",
     "session-list",
     "session-list-title",
