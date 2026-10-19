@@ -93,7 +93,10 @@ not exact, so the shipped mark, icons, and logo stay vector or computed; these a
 
 ## Left as it was
 
-- The rail stays: it is the activity bar, holding Noid, running now, subagents, people, providers, and Appearance.
+- The rail stays as the activity bar, but holds only what has no other way in: home, the session list's fold, the
+  subagents board, Appearance, and you (plus extensions' buttons). Running now, people and devices, and providers are in
+  the launcher (Ctrl+K); peek tiles are in the top bar; Noid heads the bot list, so its rail button (still drawn with
+  PiP's icon) went too.
 - Pi Pocket's names remain inside, such as the `pocket.*` storage keys and the `pocket` theme id. Changing them would
   reset saved settings for no visible gain. Help text that means the engine ("needs a newer Pi Pocket") also stays.
 - PiP's code stays, off: turning it on in Extensions brings back its panel and its GitHub repository watches.

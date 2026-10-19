@@ -20,7 +20,6 @@ import {
     Icon,
     Markdown,
     modelLabel,
-    railState,
     readable,
     Spinner,
     splitAttachments,
@@ -1118,52 +1117,4 @@ export function PipHost() {
             onClick=${closePip}
         ></div>
         <${PipPanel} leaving=${leaving} scrim=${scrim} />`;
-}
-
-/** PiP in the rail: the way to it that is always there, marked while it works or has something new. */
-/** noid: the rail's way to Noid, lit while it works, marked while it waits for you. */
-function NoidRailButton({ noid }) {
-    const here = store.state.conversationId === noid.id;
-    const state = noid.waiting ? "waiting for you" : noid.busy ? "working" : "";
-
-    return html`<button
-        class=${`rail-button rail-pip ${noid.busy ? "lit" : ""} ${here ? "open" : ""}`}
-        data-part="rail-button"
-        data-state=${railState(here, Boolean(noid.busy))}
-        title="Noid, your main bot (Alt+A)"
-        aria-label=${["Noid", state].filter(Boolean).join(", ")}
-        aria-current=${here ? "page" : undefined}
-        onClick=${() => navigate(noid.id)}
-    >
-        <${Icon} name="pip" size=${18} />
-        ${noid.waiting && html`<span class="rail-news" aria-hidden="true"></span>`}
-    </button>`;
-}
-
-export function PipRailButton() {
-    const noid = mainBot();
-
-    if (noid !== undefined) {
-        return html`<${NoidRailButton} noid=${noid} />`;
-    }
-
-    if (!pipAvailable()) {
-        return null;
-    }
-
-    const { pip, pipOpen } = store.state;
-    const unread = pipUnread();
-
-    return html`<button
-        class=${`rail-button rail-pip ${pip?.busy ? "lit" : ""} ${pipOpen ? "open" : ""}`}
-        data-part="rail-button"
-        data-state=${railState(pipOpen, Boolean(pip?.busy))}
-        title="PiP, your assistant (Alt+A)"
-        aria-label=${["PiP", pip?.busy && "working", unread && "something new"].filter(Boolean).join(", ")}
-        aria-pressed=${pipOpen}
-        onClick=${togglePip}
-    >
-        <${Icon} name="pip" size=${18} />
-        ${unread && html`<span class="rail-news" aria-hidden="true"></span>`}
-    </button>`;
 }

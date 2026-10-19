@@ -6,8 +6,6 @@ import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
 import { Face } from "./faces/face.js";
 import { useDragToClose } from "./gestures.js";
-import { PeeksRailButton } from "./peeks.js";
-import { PipRailButton } from "./pip.js";
 import { sessionForest } from "./session-tree.js";
 import { Splitter } from "./splitter.js";
 import {
@@ -1382,14 +1380,14 @@ function RailTiles() {
 }
 
 /**
- * The rail beside the session list: Pi (home), the sessions (which fold the sidebar), then the tools (peek tiles, PiP,
- * running now, the subagents board, people, providers, the theme) and you. Folded, it holds the sessions too, numbered.
- * In the drawer and on a phone's home screen it does not fold, and Pi is a mark.
+ * The rail beside the session list: the mark (home), the sessions (which fold the sidebar), then the subagents board,
+ * extensions' buttons, the theme, and you. Folded, it holds the sessions too, numbered. In the drawer and on a phone's
+ * home screen it does not fold, and the mark is a mark. noid: no more than that; running now, people, and providers are
+ * in the launcher, peek tiles in the top bar, and Noid heads the bot list.
  */
 export function RailNav({ foldable = false, folded = false }) {
     const { sessions, board, me } = store.state;
     const canStart = canSteer() && !scoped();
-    const busy = sessions.filter((session) => session.busy).length;
     const agents = subagentTotals(sessions);
     const live = agents.working + agents.waiting;
     const failed = failing(agents);
@@ -1449,19 +1447,6 @@ export function RailNav({ foldable = false, folded = false }) {
             </button>`
         }
         ${folded && html`<${RailTiles} />`}
-        ${foldable && html`<${PeeksRailButton} />`}
-        <${PipRailButton} />
-        <button
-            class=${`rail-button rail-running ${busy > 0 ? "lit" : ""}`}
-            data-part="rail-button"
-            data-state=${railState(false, busy > 0)}
-            title="Running now"
-            aria-label=${busy > 0 ? `Running now, ${busy}` : "Running now"}
-            onClick=${() => openSheet({ type: "running" })}
-        >
-            <${Icon} name="pulse" size=${19} />
-            ${busy > 0 && html`<span class="rail-count">${busy}</span>`}
-        </button>
         <button
             class=${`rail-button rail-agents ${live > 0 ? "lit" : ""} ${board ? "open" : ""}`}
             data-part="rail-button"
@@ -1486,44 +1471,11 @@ export function RailNav({ foldable = false, folded = false }) {
             }
         </button>
         <${ExtensionRailButtons} />
-        ${
-            collab()
-                ? html`<button
-                    class="rail-button"
-                    data-part="rail-button"
-                    title=${canStart ? "People and invites" : "People"}
-                    aria-label="People"
-                    onClick=${() => openSheet({ type: "people" })}
-                >
-                    <${Icon} name="users" size=${19} />
-                </button>`
-                : html`<button
-                    class="rail-button"
-                    data-part="rail-button"
-                    title="Sign in another device"
-                    aria-label="Devices"
-                    onClick=${() => openSheet({ type: "invite" })}
-                >
-                    <${Icon} name="users" size=${19} />
-                </button>`
-        }
-        ${
-            me?.role === "owner" &&
-            html`<button
-                class="rail-button"
-                data-part="rail-button"
-                title="Model providers"
-                aria-label="Providers"
-                onClick=${() => openSheet({ type: "providers" })}
-            >
-                <${Icon} name="key" size=${19} />
-            </button>`
-        }
         <button
             class="rail-button"
             data-part="rail-button"
-            title="Theme, tiling, motion"
-            aria-label="Theme"
+            title="Appearance: theme, colors, layout"
+            aria-label="Appearance"
             onClick=${() => openSheet({ type: "appearance" })}
         >
             <${Icon} name="palette" size=${19} />

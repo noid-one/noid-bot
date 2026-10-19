@@ -3747,16 +3747,14 @@ pre.diff .del {
     background: var(--card-2);
 }
 
-/* A tool whose window is open (peek tiles, PiP, the subagents board, an extension's page): the accent's soft fill. */
+/* A tool whose window is open (the subagents board, an extension's page): the accent's soft fill. */
 .rail-button.open {
     color: var(--accent);
     background: var(--accent-soft);
 }
 
 .rail-new,
-.rail-running.lit,
-.rail-agents.lit,
-.rail-pip.lit {
+.rail-agents.lit {
     color: var(--accent);
 }
 
@@ -14142,8 +14140,7 @@ textarea.notes {
 }
 
 .pip-mark.working .icon,
-.pip-bubble.busy .icon,
-.rail-pip.lit .icon {
+.pip-bubble.busy .icon {
     animation: pulse 1.4s ease-in-out infinite;
 }
 
