@@ -2,6 +2,7 @@
 import {
     type App,
     cleanUp,
+    context,
     fakeTab,
     lastText,
     openApp,
@@ -14,7 +15,8 @@ import {
     work,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import { after, before, mock, test } from "node:test";
@@ -22,6 +24,8 @@ import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { Attachment } from "../src/server/commands.ts";
+import createArtifacts from "../src/server/extensions/artifacts.ts";
+import type { PocketHost } from "../src/server/host.ts";
 
 /** The provider session id each request carried, with the message it answered. */
 const requests: { sessionId: string | undefined; text: string }[] = [];
@@ -117,6 +121,72 @@ test("the artifact tool publishes versions, edits the latest, and serves the bod
     assert.equal(second.version, 2);
     assert.equal(second.content, "<h1>two</h1>");
     assert.equal((await app.artifactBody(id, "demo-page", 1)).content, "<h1>one</h1>");
+});
+
+/** Real document commits, with a fixed tool-call identity so the test can replay the same call. */
+async function artifactCall() {
+    const id = await newSession();
+    const tool = createArtifacts({} as PocketHost).tools![0]!;
+    const api = {
+        conversationId: id,
+        taskId: 987_654,
+        callId: "publish-file",
+        agent: async () => ({ cwd: work }),
+        // noid: the file is read through the call's environment, as on the shared computer.
+        env: new NodeExecutionEnv({ cwd: work }),
+        snapshot: app.harness.snapshot.bind(app.harness),
+        commit: app.harness.commit.bind(app.harness),
+    };
+    const publish = (args: Record<string, unknown>) =>
+        tool.execute(
+            { id: "from-file", title: "From file", ...args } as never,
+            api as never,
+            context,
+        );
+
+    return { id, api, publish };
+}
+
+test("artifact paths snapshot UTF-8 bytes and replay without rereading the source", async () => {
+    const { id, api, publish } = await artifactCall();
+    const path = join(work, "artifact-source.md");
+    const content = "# Café\n";
+
+    writeFileSync(path, content);
+    await publish({ path: "artifact-source.md" });
+    writeFileSync(path, "changed");
+    await publish({ path: "artifact-source.md" });
+    unlinkSync(path);
+    await publish({ path: "artifact-source.md" });
+    const first = await app.artifactBody(id, "from-file", 1);
+
+    assert.equal(first.content, content);
+    assert.equal(first.meta.type, "markdown");
+    assert.equal(first.meta.versions.length, 1);
+    assert.equal(first.meta.versions[0]!.size, Buffer.byteLength(content));
+    api.callId = "publish-next";
+    const next = join(work, "artifact-next.html");
+
+    writeFileSync(next, "# Next");
+    await assert.rejects(publish({ path: next, type: "html" }), /cannot change/);
+    await publish({ path: next });
+    const latest = await app.artifactBody(id, "from-file", undefined);
+
+    assert.equal(latest.version, 2);
+    assert.equal(latest.meta.type, "markdown");
+    assert.equal((await app.artifactBody(id, "from-file", 1)).content, content);
+});
+
+test("artifact paths reject oversized and nonregular files instead of publishing a partial body", async () => {
+    const { id, publish } = await artifactCall();
+    const path = join(work, "artifact-large.html");
+
+    writeFileSync(path, Buffer.alloc(2_000_001, 120));
+    await assert.rejects(publish({ path }), /limited to 2000000 bytes/);
+    writeFileSync(path, Buffer.from([0xc3, 0x28]));
+    await assert.rejects(publish({ path }), /UTF-8 text/);
+    await assert.rejects(publish({ path: work, type: "html" }), /regular file/);
+    await assert.rejects(app.artifactBody(id, "from-file", undefined), /No such artifact/);
 });
 
 test("the page that runs a reply's HTML is for people signed in, sandboxed, and runs only what the app sends it", async () => {

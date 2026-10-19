@@ -3,8 +3,11 @@
  * Every call with the same id adds a version. The index and the bodies are durable documents committed together with
  * the call, so a replayed call finds the version it already wrote instead of writing another.
  */
+import { extname } from "node:path";
+import type { Context } from "@earendil-works/chord";
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { ArtifactBodyDoc, type ArtifactMeta, ArtifactsDoc, type ArtifactType } from "../docs.ts";
 import type { PocketHost } from "../host.ts";
 
@@ -17,6 +20,76 @@ export function slugify(value: string): string {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 64);
+}
+
+/**
+ * A snapshot of a file in the session's environment (this machine, or the shared computer for its sessions): a regular
+ * file, not a final link (parent links are fine), UTF-8 text of at most `MAX_BYTES`. noid: through the call's
+ * environment, not this machine's file system, so a computer session reads the computer's file and never this one's.
+ */
+async function readArtifact(env: ExecutionEnv, path: string, context: Context): Promise<string> {
+    const opened = await env.openBinaryReader(path, { noFollow: true }, context);
+
+    if (!opened.ok) {
+        throw new Error(
+            opened.error.code === "invalid" || opened.error.code === "is_directory"
+                ? "Artifact paths must name a regular file."
+                : `Could not read ${path}: ${opened.error.message}`,
+        );
+    }
+
+    const reader = opened.value;
+
+    try {
+        const info = await reader.info(context);
+
+        if (!info.ok || info.value.kind !== "file") {
+            throw new Error("Artifact paths must name a regular file.");
+        }
+
+        if (info.value.size > MAX_BYTES) {
+            throw new Error(`Artifacts are limited to ${MAX_BYTES} bytes.`);
+        }
+
+        // At most one byte beyond the limit, even when the file grows after its size was read.
+        const read = await reader.read(0, MAX_BYTES + 1, context);
+
+        if (!read.ok) {
+            throw new Error(`Could not read ${path}: ${read.error.message}`);
+        }
+
+        const bytes = read.value;
+
+        if (bytes.length > MAX_BYTES) {
+            throw new Error(`Artifacts are limited to ${MAX_BYTES} bytes.`);
+        }
+
+        try {
+            if (bytes.includes(0)) {
+                throw new Error("Binary data");
+            }
+
+            return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+        } catch {
+            throw new Error("Artifact paths must contain UTF-8 text, not binary data.");
+        }
+    } finally {
+        await reader.close(context);
+    }
+}
+
+function pathType(path: string): ArtifactType | undefined {
+    switch (extname(path).toLowerCase()) {
+        case ".html":
+            return "html";
+        case ".md":
+        case ".markdown":
+            return "markdown";
+        case ".svg":
+            return "svg";
+        default:
+            return undefined;
+    }
 }
 
 function applyEdits(
@@ -52,14 +125,15 @@ const GUIDE = `Use the artifact tool for results the user should see rendered ra
 - HTML artifacts open in a sandboxed frame on the user's device (often a phone). They cannot reach this app, its cookies, or the parent page. Make them self-contained, responsive (include a viewport meta tag), and touch-friendly.
 - Load libraries from a CDN with full URLs, such as https://esm.sh or https://cdn.jsdelivr.net. For ES modules that import bare specifiers (three.js addons import "three"), add an import map, for example: <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0","three/addons/":"https://esm.sh/three@0.170.0/examples/jsm/"}}</script>
 - Show loading and error states inside the page (window.onerror, a visible message), so a broken artifact explains itself.
-- Reuse the id to publish a new version. For small fixes, send edits against the latest version instead of the whole content.`;
+- Reuse the id to publish a new version. For small fixes, send edits against the latest version instead of the whole content.
+- To publish an existing local HTML, Markdown, or SVG file without repeating its contents, give path instead of content or edits. This copies a UTF-8 snapshot (up to 2,000,000 bytes), not a live link or its neighboring assets. Everyone who can see the conversation can open the snapshot.`;
 
 export default function createArtifacts(_host: PocketHost) {
     const artifact = defineTool({
         name: "artifact",
         description:
             "Publish a viewable artifact (self-contained HTML page, Markdown document, or SVG image) that the user opens in the app's artifact viewer. " +
-            "Calling again with the same id publishes a new version. Give either the full content or edits against the latest version.",
+            "Calling again with the same id publishes a new version. Give exactly one of content, nonempty edits, or a local UTF-8 file path (up to 2,000,000 bytes).",
         parameters: Type.Object({
             id: Type.String({
                 description:
@@ -68,11 +142,18 @@ export default function createArtifacts(_host: PocketHost) {
             title: Type.String({ description: "Short human-readable title." }),
             type: Type.Optional(
                 Type.Union([Type.Literal("html"), Type.Literal("markdown"), Type.Literal("svg")], {
-                    description: "Default html, or the type of the existing artifact.",
+                    description:
+                        "Default html for content, inferred from .html/.md/.markdown/.svg for a new path, or the existing artifact's type. A path cannot change an existing type.",
                 }),
             ),
             content: Type.Optional(
                 Type.String({ description: "The complete content of the new version." }),
+            ),
+            path: Type.Optional(
+                Type.String({
+                    description:
+                        "A UTF-8 file where this session runs, to copy as this version: absolute, ~/…, or relative to the session folder. Regular files only, not a final symlink. No neighboring assets are copied.",
+                }),
             ),
             edits: Type.Optional(
                 Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() }), {
@@ -103,9 +184,55 @@ export default function createArtifacts(_host: PocketHost) {
             let version = replayed?.version;
 
             if (version === undefined) {
-                let content: string;
+                const inputs = [args.content, args.edits, args.path].filter(
+                    (value) => value !== undefined,
+                ).length;
 
-                if (args.content !== undefined) {
+                if (inputs !== 1 || args.edits?.length === 0) {
+                    throw new Error("Give exactly one of content, nonempty edits, or path.");
+                }
+
+                let content: string;
+                let type: ArtifactType = args.type ?? previous?.type ?? "html";
+
+                if (args.path !== undefined) {
+                    if (args.path.trim() === "") {
+                        throw new Error("Give a local file path.");
+                    }
+
+                    if (
+                        previous !== undefined &&
+                        args.type !== undefined &&
+                        args.type !== previous.type
+                    ) {
+                        throw new Error("A path cannot change an existing artifact's type.");
+                    }
+
+                    const inferred = args.type ?? previous?.type ?? pathType(args.path);
+
+                    if (inferred === undefined) {
+                        throw new Error(
+                            "Set type for a path without a .html, .md, .markdown, or .svg extension.",
+                        );
+                    }
+
+                    type = inferred;
+
+                    if (api.env === undefined) {
+                        throw new Error(
+                            "This conversation's files cannot be read here: give content.",
+                        );
+                    }
+
+                    // Absolute, ~/ (the environment's home), or relative to the session's folder, where it runs.
+                    const path = await api.env.absolutePath(args.path.trim(), context);
+
+                    if (!path.ok) {
+                        throw new Error(`Could not read ${args.path}: ${path.error.message}`);
+                    }
+
+                    content = await readArtifact(api.env, path.value, context);
+                } else if (args.content !== undefined) {
                     content = args.content;
                 } else if (args.edits !== undefined && args.edits.length > 0) {
                     const latest = previous?.versions.at(-1);
@@ -130,8 +257,6 @@ export default function createArtifacts(_host: PocketHost) {
                     throw new Error(`Artifacts are limited to ${MAX_BYTES} bytes.`);
                 }
 
-                const type: ArtifactType = args.type ?? previous?.type ?? "html";
-
                 version = await api.commit(async (tx) => {
                     const doc = await tx.doc(ArtifactsDoc, api.conversationId);
                     const current = Object.hasOwn(doc.items, id) ? doc.items[id] : undefined;
@@ -141,12 +266,20 @@ export default function createArtifacts(_host: PocketHost) {
                         return again.version;
                     }
 
+                    if (args.path !== undefined && current !== undefined) {
+                        if (args.type !== undefined && args.type !== current.type) {
+                            throw new Error("A path cannot change an existing artifact's type.");
+                        }
+
+                        type = current.type;
+                    }
+
                     const next = (current?.versions.at(-1)?.version ?? 0) + 1;
                     const record = {
                         version: next,
                         taskId: api.taskId,
                         callId: api.callId,
-                        size: content.length,
+                        size: Buffer.byteLength(content),
                         createdAt: Date.now(),
                     };
 
