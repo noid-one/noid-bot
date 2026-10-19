@@ -375,7 +375,7 @@ function UserEntry({ entry, view, users }) {
             <span class="prompt-head" data-part="prompt-head">
                 ${
                     sender
-                        ? html`<${Face}
+                        ? html`<span class="prompt-face" aria-hidden="true"><${Face}
                               id=${sender.id}
                               color=${sender.color}
                               skin=${sender.skin}
@@ -383,7 +383,7 @@ function UserEntry({ entry, view, users }) {
                               state="idle"
                               size=${20}
                               label=${sender.name}
-                          />`
+                          /></span>`
                         : html`<span
                               class="prompt-avatar"
                               data-part="author-mark"

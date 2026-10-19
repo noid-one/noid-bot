@@ -19,8 +19,8 @@ import { watchTree } from "../src/server/reload.ts";
 
 const port = Number(process.argv[2] ?? 8899);
 const host = process.argv[3] ?? "127.0.0.2";
-// noid: with Noid, the main bot, as the real server has.
-const app = await openApp(scriptedModel(), undefined, undefined, { mainBot: true });
+// noid: with Noid, the main bot, and PiP off, as the real server has.
+const app = await openApp(scriptedModel(), undefined, undefined, { mainBot: true, pip: false });
 const server = createServer(createHandler({ app, listen: { host, port }, restart: () => {} }));
 const stopWatching = watchTree(join(APP_ROOT, "web"), (file) => app.reloadClients(file));
 

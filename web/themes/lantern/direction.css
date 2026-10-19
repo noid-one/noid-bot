@@ -17,6 +17,11 @@
 
 [data-part~="prompt"] {
     gap: 4px;
+    /* Full width at the start, whoever wrote it: the bar marks it, not a bubble's place. */
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    margin-inline-start: 0;
     padding-block: 2px 3px;
     padding-inline: calc(16px * var(--space-x)) 0;
     border: 0;

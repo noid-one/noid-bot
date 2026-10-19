@@ -40,7 +40,17 @@ export function PanelTabs({ active, beside, count = 0, extra = null }) {
                     role="tab"
                     aria-selected=${id === active ? "true" : "false"}
                     class=${id === active ? "on" : ""}
-                    onClick=${() => id !== active && open()}
+                    onClick=${() => {
+                        if (id !== active) {
+                            open();
+                            // The tab's panel takes the other's place: the keys stay on the tabs.
+                            requestAnimationFrame(() =>
+                                document
+                                    .querySelector('.panel-tablist [aria-selected="true"]')
+                                    ?.focus({ preventScroll: true }),
+                            );
+                        }
+                    }}
                 >
                     ${label}
                     ${id === "changes" && count > 0 && html`<span class="files-count">${count}</span>`}

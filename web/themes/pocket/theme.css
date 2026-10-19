@@ -158,12 +158,12 @@
 /*
  * Examples of changes to the layout. Take the comment marks off one to try it.
  *
- * Your messages as bubbles on the right; other people's stay on the left:
+ * Your messages back on the left, as wide as the conversation (the app puts them on the right, as bubbles):
  *
  *     [data-part="prompt"][data-from="me"] {
- *         margin-inline-start: auto;
- *         max-width: 70%;
- *         background: var(--accent-soft);
+ *         width: auto;
+ *         max-width: none;
+ *         margin-inline-start: 0;
  *     }
  *
  * A wider conversation:

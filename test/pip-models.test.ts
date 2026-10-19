@@ -92,6 +92,8 @@ before(async () => {
             models.registerNativeProvider(hub as never);
         },
     });
+    // noid ships PiP off; these are PiP's tests.
+    await app.setExtensionEnabled(owner(app), "pip.ts", true);
 });
 
 after(async () => {

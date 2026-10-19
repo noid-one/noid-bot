@@ -68,13 +68,13 @@ export function scriptedModel(route: FauxResponseStep = echo) {
 }
 
 /** Open the app on `dataDir` with the scripted model. Opening the same folder again is a restart; `now` moves its clock. */
-export function openApp(
+export async function openApp(
     model: ReturnType<typeof scriptedModel>,
     dataDir = join(root, "data"),
     now?: () => number,
-    { mainBot = false }: { mainBot?: boolean } = {},
+    { mainBot = false, pip = true }: { mainBot?: boolean; pip?: boolean } = {},
 ): Promise<App> {
-    return PocketApp.open({
+    const app = await PocketApp.open({
         dataDir,
         defaultCwd: work,
         supervised: false,
@@ -84,6 +84,13 @@ export function openApp(
         mainBot,
         ...(now === undefined ? {} : { now }),
     });
+
+    // noid ships PiP off (the owner talks to Noid); its tests, Pi Pocket's, expect it on unless they turned it off.
+    if (pip && app.config.extensionChoice("pip.ts") === undefined) {
+        await app.setExtensionEnabled(owner(app), "pip.ts", true);
+    }
+
+    return app;
 }
 
 /** Wait until `check` holds, polling. */

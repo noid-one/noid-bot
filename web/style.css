@@ -732,6 +732,18 @@ kbd {
     height: 100dvh;
 }
 
+/* Beside panes on a wide screen the conversation keeps a readable width; the panes beside it give way first. */
+@media (min-width: 1100px) {
+    .layout > .pane {
+        min-width: 360px;
+    }
+    .layout.filing > .files-tile,
+    .layout.browsing > .browser {
+        flex-shrink: 1;
+        min-width: 320px;
+    }
+}
+
 /* The home screen scrolls inside the window: the window itself must not clip its active border. */
 .layout.home .pane {
     min-height: 0;
@@ -1435,7 +1447,8 @@ kbd {
 
 /* A person's message: a card, with who and when over what they wrote. Scoped to its row: the launcher's input has a
  * `.prompt` of its own. */
-/* A person's message: a quiet filled bubble on the right, as wide as its words; the bots' replies run on the left. */
+/* A message to the bot: a quiet filled bubble as wide as its words. Yours sit on the right; another person's, another
+ * bot's, or the app's sit on the left, where the replies run. */
 .user-row > .prompt {
     display: flex;
     flex-direction: column;
@@ -1443,7 +1456,6 @@ kbd {
     width: fit-content;
     min-width: min(240px, 100%);
     max-width: min(85%, 760px);
-    margin-left: auto;
     padding: calc(10px * var(--space-y)) calc(14px * var(--space-x)) calc(12px * var(--space-y));
     border-radius: var(--r-card);
     background: var(--card-2);
@@ -1456,6 +1468,10 @@ kbd {
         padding: calc(12px * var(--space-y)) calc(14px * var(--space-x)) calc(13px * var(--space-y));
         border-radius: calc(var(--r-window) + 2px);
     }
+}
+
+.user-row > .prompt[data-from="me"] {
+    margin-inline-start: auto;
 }
 
 .user-row > .prompt.tappable {
@@ -1479,6 +1495,11 @@ kbd {
 }
 
 /* Yours takes the accent, someone else's their color (`--who`), anyone else a quiet one. */
+.prompt-face {
+    display: inline-flex;
+    flex: none;
+}
+
 .prompt-avatar {
     flex: none;
     display: grid;
@@ -2680,7 +2701,8 @@ pre.diff .del {
 /* A failed request: a line in the error's color with a rule beside it, not a red box. A run that retries a few times
  * leaves a few quiet lines rather than a wall of red. */
 .error-box {
-    padding: 2px 0 2px 12px;
+    margin-block: 4px;
+    padding: 4px 0 4px 12px;
     border-left: 2px solid var(--err-line);
     color: var(--err);
     font-size: 13px;
@@ -13922,48 +13944,6 @@ textarea.notes {
     animation: pop-out var(--t-out) linear forwards;
 }
 
-.pip-splitter {
-    display: none;
-}
-
-/* noid: on wide screens PiP is a pane, not a card floating over the others: docked at the right, flush with the header
- * line, its edge dragged like the other panes'. Its floating corners and edges go. */
-@media (min-width: 1100px) {
-    .layout > .pip-panel {
-        position: relative;
-        inset: auto;
-        order: 10;
-        flex: 0 0 var(--pip-w, 380px);
-        width: auto;
-        max-width: none;
-        height: 100dvh;
-        max-height: none;
-        z-index: auto;
-        border: 0;
-        border-left: 1px solid var(--hair);
-        border-radius: 0;
-        box-shadow: none;
-        background: var(--bg);
-        animation: none;
-    }
-    :root[data-tiling="on"] .layout > .pip-panel {
-        height: auto;
-        border: var(--border) solid var(--window-border);
-        border-radius: var(--r-window);
-    }
-    .layout > .pip-panel > .pip-resize {
-        display: none;
-    }
-    .layout > .pip-panel > .pip-splitter {
-        display: block;
-    }
-    .layout > .pip-panel > .pip-head {
-        min-height: calc(var(--head-h) + env(safe-area-inset-top));
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: 0;
-    }
-}
-
 .pip-resize {
     display: none;
 }
@@ -14342,19 +14322,19 @@ textarea.notes {
     white-space: normal;
 }
 
-/* Things to ask, as a plain list: each a row with a hairline between, not a pile of pills. */
 .pip-chips {
     display: flex;
-    flex-direction: column;
-    margin-top: 10px;
-    border-top: 1px solid var(--hair);
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
 }
 
 .pip-chip {
-    min-height: 38px;
-    padding: 8px 4px;
-    border-bottom: 1px solid var(--hair);
-    color: var(--body);
+    min-height: 40px;
+    padding: 8px 12px;
+    border: 1px solid var(--hair-2);
+    border-radius: var(--r-card);
+    color: var(--text);
     font-size: 13px;
     text-align: left;
 }
@@ -14366,7 +14346,7 @@ textarea.notes {
 
 @media (hover: hover) {
     .pip-chip:not(:disabled):hover {
-        background: var(--hover);
+        border-color: var(--accent-line);
         color: var(--text);
     }
 }

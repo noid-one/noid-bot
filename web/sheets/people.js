@@ -225,8 +225,8 @@ export function InviteSheet({ session = null }) {
                 ? html`<div class="invite">
                     ${
                         invite.local &&
-                        html`<div class="error-box">
-                            This link only works on this device. To let other devices in, press <span class="mono">a</span> in the Pi Pocket terminal (or start it with <span class="mono">--access</span>) and pick Local network, Cloudflare Tunnel, or Tailscale. Then make a new invite.
+                        html`<div class="muted small invite-note">
+                            This link only works on this device. To let other devices in, press <span class="mono">a</span> in the noid terminal (or start it with <span class="mono">--access</span>) and pick Local network, Cloudflare Tunnel, or Tailscale. Then make a new invite.
                         </div>`
                     }
                     <div class="invite-details">
