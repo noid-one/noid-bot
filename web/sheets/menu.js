@@ -649,36 +649,42 @@ export function AccountSheet() {
         anchor=".rail-me"
         beside=${true}
         width=${240}
-        header=${html`<div class="pop-me">
+        header=${html`<button
+            type="button"
+            class="pop-me pop-row"
+            role="menuitem"
+            data-row="me"
+            title="Your name"
+            onClick=${() => openSettings("name")}
+        >
             ${me && html`<${Avatar} person=${me} size=${32} />`}
             <span class="pop-me-text">
                 <span class="pop-me-name">${me?.name ?? "You"}</span>
                 <span class="pop-me-role">${roleLabel(me?.role)}</span>
             </span>
-        </div>`}
+        </button>`}
         groups=${[
             [
-                { id: "name", icon: "pencil", label: "Your name", run: instead({ type: "name" }) },
-                {
-                    id: "appearance",
-                    icon: "palette",
-                    label: "Appearance",
-                    value: lookLabel(),
-                    run: instead({ type: "appearance" }),
-                },
                 {
                     id: "settings",
                     icon: "sliders",
                     label: "Settings",
                     keys: "Mod ,",
-                    run: openSettings,
+                    run: () => openSettings(),
+                },
+                {
+                    id: "appearance",
+                    icon: "palette",
+                    label: "Appearance",
+                    value: lookLabel(),
+                    run: () => openSettings("appearance"),
                 },
                 !touch && {
                     id: "shortcuts",
                     icon: "keyboard",
                     label: "Keyboard shortcuts",
                     keys: "?",
-                    run: instead({ type: "shortcuts" }),
+                    run: () => openSettings("shortcuts"),
                 },
             ],
             [{ id: "signout", icon: "logout", label: "Sign out", danger: true, run: signOut }],

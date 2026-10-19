@@ -1220,7 +1220,44 @@ PEOPLE_DOCK.addEventListener("change", () => {
     }
 });
 
+/**
+ * noid: the sheets that are pages of Settings, by the page's id: opened from anywhere (the launcher, a command, a link
+ * in another sheet), Settings opens at that page, so each lives in one place. With more than its type (a tab to show),
+ * a sheet opens as itself.
+ */
+const SETTINGS_PAGES = {
+    appearance: "appearance",
+    name: "name",
+    notifications: "notifications",
+    shortcuts: "shortcuts",
+    providers: "providers",
+    "auto-review": "auto-review",
+    spend: "spend",
+    running: "running",
+    people: "people",
+    hooks: "hooks",
+    extensions: "extensions",
+};
+
+function settingsPageOf(sheet) {
+    if (sheet?.type === "model" && sheet.forDefault === true) {
+        return "default-model";
+    }
+
+    return sheet && Object.keys(sheet).length === 1 && Object.hasOwn(SETTINGS_PAGES, sheet.type)
+        ? SETTINGS_PAGES[sheet.type]
+        : undefined;
+}
+
 export function openSheet(sheet) {
+    const page = settingsPageOf(sheet);
+
+    if (page !== undefined) {
+        openSettings(page);
+
+        return;
+    }
+
     store.set((state) => ({ ...sheetChange(sheet, state), drawer: false }));
 }
 

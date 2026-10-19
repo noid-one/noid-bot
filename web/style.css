@@ -12021,13 +12021,16 @@ textarea.notes {
 }
 
 /* You, at the top of the account menu. */
-.pop-me {
-    display: flex;
-    align-items: center;
+.pop-row.pop-me {
+    min-height: 52px;
     gap: 10px;
-    padding: 8px 10px 10px;
     margin-bottom: 4px;
-    border-bottom: 1px solid var(--hair);
+    padding: 6px 10px;
+}
+
+.pop-me + [role="menu"] > .pop-group:first-child {
+    padding-top: 4px;
+    border-top: 1px solid var(--hair);
 }
 
 .pop-me-text {

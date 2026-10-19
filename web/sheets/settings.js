@@ -12,8 +12,6 @@ import { api, attempt, closeSettings, collab, notify, store } from "../store.js"
 import { Boundary, BOTTOM_SHEETS, html, Icon, scrimPress, SheetEmbed, SheetInfo } from "../ui.js";
 import { defaultsKept } from "./model.js";
 
-const touch = matchMedia("(pointer: coarse)").matches;
-
 /** Whether a media query matches, kept up to date. */
 function useMatches(query) {
     const [matches, setMatches] = useState(query.matches);
@@ -113,7 +111,7 @@ function groupsOf() {
                     about: "Pushes to this device when Pi finishes, needs you, or someone writes.",
                     sheet: { type: "notifications" },
                 },
-                !touch && {
+                {
                     id: "shortcuts",
                     icon: "keyboard",
                     label: "Keyboard shortcuts",
