@@ -62,8 +62,18 @@ monospace cell. noid's is drawn the same way: one pixel wide, seven tall, the ic
 - **Everywhere else** (the rail, boot screen, sign-in, empty conversation): `NoidMark`, the same bar in CSS, in the ink
   color.
 - **App icons:** `web/icon.svg` and its PNGs are the bar on paper, inside a maskable icon's safe circle.
-  `node scripts/icons.mjs` draws the PNGs from the same rectangles. No image model was needed: the icon is two
-  rectangles, so vector and computed pixels are exact.
+  `node scripts/icons.mjs` draws the PNGs from the same rectangles, so they are exact.
+
+### Image generation, for comparison
+
+Codex's image generator (given the original icon, and told to keep to it) drew the same ideas: the bar beside a
+lowercase monospace wordmark, the bar beside a terminal's facts, and a dark icon. They agree with what is built here
+(the rail's mark and the sidebar's "noid" are that lockup). Generated pixels carry a faint texture and colors that are
+not exact, so the shipped mark, icons, and logo stay vector or computed; these are references.
+
+| Lockup                    | Terminal                      | Dark icon                       |
+| ------------------------- | ----------------------------- | ------------------------------- |
+| ![Lockup](gen-lockup.png) | ![Terminal](gen-terminal.png) | ![Dark icon](gen-icon-dark.png) |
 
 ## Left as it was
 
