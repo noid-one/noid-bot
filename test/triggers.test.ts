@@ -877,7 +877,7 @@ test("a GitHub hook is signed: its address alone lets nothing in, and a new secr
 });
 
 test("webhooks to Noid, and who may make, see, and remove them", async () => {
-    const hook = await app.commands.addHook(owner(app), { target: "pip", name: "Alerts" });
+    const hook = await app.commands.addHook(owner(app), { target: "noid", name: "Alerts" });
     const noid = app.sessionTools.noid()!;
 
     // Noid was made as the app opened, before any model was picked.

@@ -1751,9 +1751,9 @@ export class Commands {
         },
     ) {
         const app = this.#app;
-        // "pip": Noid, which takes webhooks while its session tools are on.
+        // "noid": Noid, which takes webhooks while its session tools are on.
         const noid =
-            body.target === "pip" && app.sessionTools.available(user)
+            body.target === "noid" && app.sessionTools.available(user)
                 ? app.sessionTools.noid()
                 : undefined;
         const target = noid === undefined ? Number(body.target) : Number(noid);

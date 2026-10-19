@@ -51,8 +51,6 @@ const context = BACKGROUND_CONTEXT;
 
 /** The session tools' extension: the tools, their prompt, and the follow task. Bots' conversations select it. */
 export const SESSION_TOOLS_EXTENSION = "noid-sessions";
-/** Its name in pi-pocket, which selections stored before the rename hold (`Bots.ensureTools` renames it). */
-export const OLD_SESSION_TOOLS_EXTENSION = "pocket-pip";
 /** How reports from followed sessions start, so the bot knows what they are. */
 export const REPORT_HEAD = "[report] ";
 /** What sends for the owner when a conversation is no bot's: Noid, the main bot. */
@@ -181,8 +179,7 @@ export class SessionTools {
     constructor(app: PocketApp) {
         this.#app = app;
         this.task = defineTask<FollowInput, FollowState, null>({
-            // "pip": the task's stored name, from pi-pocket.
-            name: "pocket.pip-follow",
+            name: "pocket.session-follow",
             version: 1,
             initial: () => ({ phase: "wait" }),
             phases: {
@@ -1575,8 +1572,7 @@ export class SessionTools {
         }
 
         const bot = await this.#app.harness.conversation(botId, context);
-        // "pip-report": as pi-pocket made these request ids, so a report sent before an upgrade is found.
-        const requestId = requestFor(input.userId, `pip-report-${String(runtime.taskId)}`);
+        const requestId = requestFor(input.userId, `follow-report-${String(runtime.taskId)}`);
 
         // The report says what the session did: the bot has looked at it.
         this.#looked(botId, input.sessionId);
@@ -1594,8 +1590,7 @@ export class SessionTools {
                             type: "write",
                             entry: {
                                 kind: NOTE_ENTRY,
-                                // "pip": stored in the note, as pi-pocket marked it.
-                                data: { text, by: "pip", name: this.#via(botId) },
+                                data: { text, by: "bot", name: this.#via(botId) },
                                 model: [
                                     {
                                         role: "user",

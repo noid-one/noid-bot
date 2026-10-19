@@ -135,8 +135,8 @@ async function said(id: ConversationId): Promise<string[]> {
 test("Noid's session tools are the owner's", async () => {
     const guest = app.config.addUser("Guest", "guest").user;
 
-    assert.equal((await app.hello(owner(app))).server.pip, true);
-    assert.equal((await app.hello(guest)).server.pip, false);
+    assert.equal((await app.hello(owner(app))).server.sessionTools, true);
+    assert.equal((await app.hello(guest)).server.sessionTools, false);
 });
 
 test("Noid has the session tools, and a session has none", async () => {
@@ -290,7 +290,7 @@ test("Noid's messages go once per call, whatever its call ids look like", async 
     const id = await noid();
     const session = await newSession(app);
     // OpenAI-style call ids are long; codemode adds "/n" for each call a script makes.
-    const call = `pip-7-call_${"x".repeat(70)}|fc_${"y".repeat(20)}`;
+    const call = `session-7-call_${"x".repeat(70)}|fc_${"y".repeat(20)}`;
 
     await app.sessionTools.read(id, Number(session));
     await app.sessionTools.send(id, Number(session), "first", false, `${call}/1`);

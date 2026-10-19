@@ -864,17 +864,6 @@ if (new URLSearchParams(location.search).has("chat")) {
     openSheet({ type: "chat" });
 }
 
-// Notifications sent by pi-pocket for its assistant (`/?pip=1`) open Noid, once the sessions are known.
-if (new URLSearchParams(location.search).has("pip")) {
-    replaceAddress(location.pathname);
-    const stop = store.subscribe(() => {
-        if (mainBot() !== undefined) {
-            stop();
-            toNoid();
-        }
-    });
-}
-
 // The worker shows notifications and receives what other apps share; it needs a secure page (https or localhost).
 registerWorker();
 store.subscribe(updateBadge);

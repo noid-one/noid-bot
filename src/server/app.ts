@@ -1520,8 +1520,7 @@ export class PocketApp {
      */
     canSee(user: User, id: ConversationId): boolean {
         const root = this.rootOf(id);
-        // `pip`: stored by pi-pocket on its assistant's conversation, which stays its person's alone.
-        const theirs = this.#sessions[String(root)]?.pip ?? this.sessionTools.actsFor(root);
+        const theirs = this.sessionTools.actsFor(root);
 
         if (theirs !== undefined && theirs !== user.id) {
             return false;
@@ -1811,11 +1810,10 @@ export class PocketApp {
                 ...(user.role === "owner"
                     ? { subagentModels: [...this.config.subagentModels] }
                     : {}),
-                // This person's bots have the session tools (`session-tools.ts`). "pip": the name tabs know it by.
-                pip: this.sessionTools.available(user),
-                // Tokens of context above which Noid compacts itself once idle; 0: only as sessions do. Named as the
-                // config stores it.
-                pipCompactAt: this.noidCompaction.compactAt,
+                // This person's bots have the session tools (`session-tools.ts`).
+                sessionTools: this.sessionTools.available(user),
+                // Tokens of context above which Noid compacts itself once idle; 0: only as sessions do.
+                noidCompactAt: this.noidCompaction.compactAt,
             },
             // Read after the guard's wait, so a connecting device does not replace a live update with an older list.
             folderFavorites: await this.folderFavorites.list(user),
@@ -1913,12 +1911,7 @@ export class PocketApp {
         }
 
         return Object.entries(this.#sessions)
-            .filter(
-                ([id, meta]) =>
-                    // `pip`: stored by pi-pocket on its assistant's conversation, which is no session to pick.
-                    meta.pip === undefined &&
-                    (user?.sessions === undefined || user.sessions.includes(id)),
-            )
+            .filter(([id]) => user?.sessions === undefined || user.sessions.includes(id))
             .map(([id, meta]) => {
                 const model = this.#agents.get(Number(id) as unknown as ConversationId)?.model;
                 const busy = this.#busy.has(Number(id) as unknown as ConversationId);
@@ -2601,7 +2594,7 @@ export class PocketApp {
         if (typeof tokens !== "number" || !NOID_COMPACT_CHOICES.includes(tokens)) {
             throw new HttpError(
                 400,
-                `pipCompactAt must be one of ${NOID_COMPACT_CHOICES.join(", ")}`,
+                `noidCompactAt must be one of ${NOID_COMPACT_CHOICES.join(", ")}`,
             );
         }
 

@@ -16,8 +16,7 @@ export function toNoid() {
 }
 
 /** Whether webhooks and watches can go to Noid: the server has the session tools on. */
-// `pip`: the server's name for it, which older tabs know.
-export const noidWatches = () => store.state.server?.pip === true;
+export const noidWatches = () => store.state.server?.sessionTools === true;
 
 /** Send Noid a message from anywhere (`/noid …`), then go there to see what it says. */
 export async function askNoid(text) {

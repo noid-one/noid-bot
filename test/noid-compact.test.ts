@@ -420,10 +420,10 @@ test("only the owner sets when Noid compacts, to one of its choices; with its se
     const id = await noid();
 
     await assert.rejects(app.setNoidCompactAt(guest, 40_000), /Only the owner/);
-    await assert.rejects(app.setNoidCompactAt(me, 12_345), /pipCompactAt must be one of/);
+    await assert.rejects(app.setNoidCompactAt(me, 12_345), /noidCompactAt must be one of/);
     await app.setNoidCompactAt(me, 40_000);
     assert.equal(app.noidCompaction.compactAt, 40_000);
-    assert.equal((await app.hello(me)).server.pipCompactAt, 40_000);
+    assert.equal((await app.hello(me)).server.noidCompactAt, 40_000);
     await app.setNoidCompactAt(me, NOID_COMPACT_DEFAULT);
 
     // Turned off mid-answer: Noid stops, takes nothing, and is not compacted.

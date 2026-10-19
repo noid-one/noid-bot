@@ -137,8 +137,7 @@ export function HooksSheet() {
         setMaking(true);
         attempt(async () => {
             const hook = await api("hooks", {
-                // "pip": the server's name for Noid as a target, which older servers know too.
-                target: target === "noid" ? "pip" : here.id,
+                target: target === "noid" ? "noid" : here.id,
                 name: name.trim(),
                 instructions: instructions.trim(),
                 signed: github,

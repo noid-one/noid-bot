@@ -121,8 +121,7 @@ async function describeTask(
         }
 
         // A bot waiting for a session's run to end, from its list of follows.
-        // "pip": the follow task's stored name.
-        case "pocket.pip-follow": {
+        case "pocket.session-follow": {
             const follow = Object.values(
                 (await app.harness.snapshot(FollowsDoc, id, context))?.items ?? {},
             ).find((each) => each.taskId === Number(node.id));

@@ -710,7 +710,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
             const body = await readJson<{
                 approvalRule?: unknown;
                 defaultModel?: unknown;
-                pipCompactAt?: unknown;
+                noidCompactAt?: unknown;
                 subagentModels?: unknown;
             }>(request);
 
@@ -719,7 +719,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 [
                     body.approvalRule,
                     body.defaultModel,
-                    body.pipCompactAt,
+                    body.noidCompactAt,
                     body.subagentModels,
                 ].filter((value) => value !== undefined).length > 1
             ) {
@@ -731,9 +731,8 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 await app.setSubagentModels(user, body.subagentModels);
             }
 
-            // "pipCompactAt": named as the config stores it.
-            if (body.pipCompactAt !== undefined) {
-                await app.setNoidCompactAt(user, body.pipCompactAt);
+            if (body.noidCompactAt !== undefined) {
+                await app.setNoidCompactAt(user, body.noidCompactAt);
             }
 
             if (body.approvalRule !== undefined) {

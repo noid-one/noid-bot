@@ -153,9 +153,8 @@ const NOID_COMPACT = [
 ];
 
 function NoidCompactAt({ owner }) {
-    // `pipCompactAt`: the setting's stored name.
-    const at = store.state.server?.pipCompactAt ?? 60000;
-    const change = (value) => attempt(() => api("settings", { pipCompactAt: value }));
+    const at = store.state.server?.noidCompactAt ?? 60000;
+    const change = (value) => attempt(() => api("settings", { noidCompactAt: value }));
 
     return html`<div class="setting wrap">
         <div class="grow">

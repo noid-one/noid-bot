@@ -54,8 +54,7 @@ const MARGIN_TOKENS = 4096;
 const REGROW_TOKENS = 8192;
 /** Summaries whose cost was counted, remembered: one compaction's is counted once. */
 const COUNTED = 50;
-// "pip": the memo's stored name, from pi-pocket.
-const SUMMARY_MEMO = "pocket.pip-summary";
+const SUMMARY_MEMO = "pocket.noid-summary";
 /** Failed summaries whose reason is kept for the notice that says so. */
 const FAILURES = 20;
 /** After a summary of its own failed, Noid tries again once this long has passed, or `REGROW_TOKENS` more came. */

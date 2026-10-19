@@ -33,11 +33,6 @@ export type SessionMeta = {
     worktree?: Worktree;
     /** The session of Pi's in the terminal this one continues, and how many messages its file had then. */
     fromPi?: { session: string; count: number };
-    /**
-     * Stored by pi-pocket: the id of the person whose assistant this conversation was. noid writes it no more; one that
-     * has it stays out of the session list, and its person's alone.
-     */
-    pip?: string;
     /** noid: the bot this session is, with one continuous thread (`noid/bots.ts`). */
     bot?: BotProfile;
 };
@@ -506,13 +501,12 @@ export const ShellRequestsDoc = defineDoc<{ items: Record<string, number> }>({
 
 /**
  * A bot's follows (`session-tools.ts`), by the key of the tool call that made each, so a call run again finds the
- * follow it made. `doneAt` marks one that reported (or was stopped); it stays a day, then goes. Its kind keeps
- * pi-pocket's stored name, as do the two below.
+ * follow it made. `doneAt` marks one that reported (or was stopped); it stays a day, then goes.
  */
 export const FollowsDoc = defineDoc<{
     items: Record<string, { taskId: number; session: number; at: number; doneAt?: number }>;
 }>({
-    kind: "pocket.pip-follows",
+    kind: "pocket.session-follows",
     version: 1,
     scope: "conversation",
     history: "latest",
@@ -528,7 +522,7 @@ export const FollowsDoc = defineDoc<{
 export const ProviderAskedDoc = defineDoc<{
     asked?: { models: { provider: string; id: string }[]; at: number };
 }>({
-    kind: "pocket.pip-asked",
+    kind: "pocket.provider-asked",
     version: 1,
     scope: "conversation",
     history: "latest",
@@ -541,7 +535,7 @@ export const ProviderAskedDoc = defineDoc<{
  * added once. The newest few are kept.
  */
 export const NoidCompactionDoc = defineDoc<{ counted: number[] }>({
-    kind: "pocket.pip-compaction",
+    kind: "pocket.noid-compaction",
     version: 1,
     scope: "conversation",
     history: "latest",

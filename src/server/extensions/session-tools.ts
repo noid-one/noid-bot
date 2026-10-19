@@ -150,8 +150,7 @@ export default function createSessionTools(host: PocketHost) {
     };
 
     const key = (api: { taskId: unknown; callId: string }) =>
-        // "pip-": as pi-pocket keyed its calls, so a call replayed across an upgrade finds what it made.
-        `pip-${String(api.taskId)}-${api.callId}`;
+        `session-${String(api.taskId)}-${api.callId}`;
     const session = Type.Number({ description: "The session's id, from the sessions tool" });
     const report = Type.Optional(
         Type.Boolean({
@@ -269,13 +268,12 @@ export default function createSessionTools(host: PocketHost) {
                 );
             }
 
-            // "pip.session": the memo's stored name, from pi-pocket.
-            let id = await api.memo<number>("pip.session", context);
+            let id = await api.memo<number>("session_start.session", context);
 
             if (id === undefined) {
                 const made = await host.sessionTools.start(api.conversationId, args);
 
-                id = await api.memo("pip.session", Number(made), context);
+                id = await api.memo("session_start.session", Number(made), context);
             }
 
             const link = `/s/${String(id)}`;
