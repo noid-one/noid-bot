@@ -1243,14 +1243,10 @@ export function SessionList({ compact = false }) {
         class=${`sessions ${compact ? "compact" : ""} pane-${pane}`}
         data-part="session-list"
     >
-        ${
-            compact
-                ? html`<div class="pane-head">${tabsHead}</div>`
-                : html`<div class="sidebar-head" data-part="sidebar-head">
-                      <span class="wordmark">noid</span>
-                      ${tabsHead}
-                  </div>`
-        }
+        <div class="sidebar-head" data-part="sidebar-head">
+            <span class="wordmark">noid</span>
+            ${tabsHead}
+        </div>
         ${pane === "bots" && html`<${BotList} compact=${compact} canStart=${canStart} />`}
         ${
             pane === "sessions" &&

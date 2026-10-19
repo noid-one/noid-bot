@@ -4060,12 +4060,13 @@ pre.diff .del {
     border-bottom: 1px solid var(--hair);
 }
 
-.sessions:not(.compact) {
+/* The head starts the list, in the sidebar and the drawer, so its line meets the rail's. */
+.sessions {
     padding-top: 0;
 }
 
 /* noid: the sidebar's tabs at the head's end, as Claude's chat and code ones: icons in a quiet well, the one shown
- * raised. In the drawer they head the list on their own. */
+ * raised. */
 .pane-tabs {
     display: flex;
     gap: 2px;
@@ -4109,16 +4110,6 @@ pre.diff .del {
     height: 6px;
     border-radius: 50%;
     background: var(--accent);
-}
-
-.pane-head {
-    display: flex;
-    flex: none;
-    margin-bottom: 8px;
-}
-
-.pane-head > .pane-tabs {
-    margin-left: 0;
 }
 
 .wordmark {
