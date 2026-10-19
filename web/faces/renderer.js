@@ -10,6 +10,16 @@ import { FRAGMENT, VERTEX } from "./shader.js";
 /** Frames per second faces animate at: smooth enough for breathing and blinks, light on batteries. */
 const FPS = 30;
 
+/**
+ * Frames per second while every face in sight rests (idle or asleep) and the pointer is still: breathing and the
+ * shimmer are slow enough for it, and a page left open costs a third as much. Work, a change, or the pointer brings
+ * back the full rate at once.
+ */
+const RESTING_FPS = 10;
+const AT_REST = new Set(["idle", "asleep"]);
+/** How long after the pointer moves the eyes may still be following it. */
+const POINTER_SETTLE_MS = 1500;
+
 /** The largest backing-store scale used, so a 4x screen does not draw 16 times the pixels. */
 const MAX_SCALE = 2;
 
@@ -129,9 +139,11 @@ function createRenderer() {
     }
 
     const faces = new Set();
-    const pointer = { x: 0, y: 0, known: false };
+    const pointer = { x: 0, y: 0, known: false, at: 0 };
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0;
+    /** While every face rests: the wait for the next frame, so no frame is asked for in between. */
+    let resting = 0;
     let lastDraw = 0;
     let lost = false;
     const fallbacks = new Set();
@@ -155,6 +167,9 @@ function createRenderer() {
             pointer.x = event.clientX;
             pointer.y = event.clientY;
             pointer.known = true;
+            pointer.at = performance.now();
+            // The eyes follow it: back to the full rate now, not at the next resting frame.
+            schedule();
         },
         { passive: true },
     );
@@ -285,12 +300,14 @@ function createRenderer() {
 
         // A face off screen that changed is drawn when it shows again: it does not lift the frame cap meanwhile.
         let dirty = false;
+        let calm = now - pointer.at > POINTER_SETTLE_MS;
 
         for (const face of faces) {
             dirty ||= face.visible && face.dirty;
+            calm &&= !face.visible || AT_REST.has(face.motion.state);
         }
 
-        if (elapsed >= 1000 / FPS - 2 || dirty) {
+        if (elapsed >= 1000 / (calm ? RESTING_FPS : FPS) - 2 || dirty) {
             const clock = now / 1000;
             const dt = Math.min(0.1, elapsed / 1000);
 
@@ -307,8 +324,22 @@ function createRenderer() {
             }
         }
 
-        // With reduced motion, faces are drawn only when something changes.
-        if (!still) {
+        // With reduced motion, faces are drawn only when something changes. At rest, nothing until the next frame is
+        // due: a change, a face coming into sight, or the pointer asks for one sooner (`schedule`).
+        if (still) {
+            return;
+        }
+
+        if (calm) {
+            clearTimeout(resting);
+            resting = setTimeout(
+                () => {
+                    resting = 0;
+                    schedule();
+                },
+                Math.max(0, 1000 / RESTING_FPS - (performance.now() - lastDraw) - 8),
+            );
+        } else {
             schedule();
         }
     }

@@ -4,10 +4,11 @@
  */
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { gzipSync } from "node:zlib";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import type { Client } from "../room.ts";
-import { conversationId, json } from "./io.ts";
+import { conversationId, json, send } from "./io.ts";
 
 /** How long a poll waits for events before answering empty, and how long an unpolled session lives. */
 const POLL_HOLD_MS = 25_000;
@@ -144,10 +145,24 @@ export function createEventStreams(app: PocketApp) {
         poller.waiting = undefined;
 
         if (response !== undefined && !response.writableEnded) {
-            json(response, 200, {
+            const body = JSON.stringify({
                 session: poller.id,
                 events: poller.queue.map(({ seq, event, data }) => ({ seq, event, data })),
             });
+
+            // Polling is for tunnels, where bytes are slow: a session's first view (its whole transcript) goes gzipped,
+            // a fifth of its size or less.
+            if (
+                body.length > 2048 &&
+                /\bgzip\b/.test(String(response.req?.headers["accept-encoding"] ?? ""))
+            ) {
+                send(response, 200, gzipSync(body), "application/json", {
+                    "content-encoding": "gzip",
+                    vary: "accept-encoding",
+                });
+            } else {
+                send(response, 200, body, "application/json");
+            }
 
             // Until it polls again it takes this: a large answer on a slow link takes long, and only it knows when it is in.
             if (poller.queue.length > 0) {

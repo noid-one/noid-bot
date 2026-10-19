@@ -68,6 +68,7 @@ export function createHandler(options: HttpOptions) {
 
             if (parts[0] === "vendor" && parts[1] !== undefined && VENDOR[parts[1]] !== undefined) {
                 return serveFile(
+                    request,
                     response,
                     VENDOR[parts[1]]!,
                     TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
@@ -103,7 +104,7 @@ export function createHandler(options: HttpOptions) {
                 return serveApp(response);
             }
 
-            return serveFile(response, file);
+            return serveFile(request, response, file);
         } catch (error) {
             const status = error instanceof HttpError ? error.status : 500;
 

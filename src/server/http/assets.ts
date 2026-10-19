@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { closeSync, createReadStream, openSync, readFileSync, readSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { APP_ROOT } from "../config.ts";
 import { HttpError } from "../errors.ts";
 import { send } from "./io.ts";
@@ -148,27 +149,86 @@ export function serveApp(response: ServerResponse): void {
     });
 }
 
-export function serveFile(response: ServerResponse, file: string, fallbackType?: string): void {
-    let body: Buffer;
+/** The app's files as last read: sent from here while unchanged on disk, gzipped once for browsers that take it. */
+const served = new Map<
+    string,
+    { mtimeMs: number; size: number; etag: string; body: Buffer; gzipped?: Buffer }
+>();
+/** How many files `served` keeps; the app has about a hundred. */
+const SERVED_MAX = 400;
+/** Types worth gzipping: text. Fonts and images are compressed already. */
+const COMPRESSIBLE = /^(text\/|application\/(javascript|json|manifest\+json|xml)|image\/svg)/;
+
+/**
+ * A file of the app. Every request checks the file on disk (the app is edited live, and a reload gets the newest), but
+ * one unchanged since the browser had it is answered 304 with nothing, and text goes gzipped: a reload no longer sends
+ * the whole app again, and a first load sends a third of it.
+ */
+export function serveFile(
+    request: IncomingMessage,
+    response: ServerResponse,
+    file: string,
+    fallbackType?: string,
+): void {
+    let entry = served.get(file);
 
     try {
-        body = readFileSync(file);
+        const stat = statSync(file);
+
+        if (entry === undefined || entry.mtimeMs !== stat.mtimeMs || entry.size !== stat.size) {
+            const body = readFileSync(file);
+
+            entry = {
+                mtimeMs: stat.mtimeMs,
+                size: stat.size,
+                etag: `"${createHash("sha1").update(body).digest("base64url").slice(0, 20)}"`,
+                body,
+            };
+            served.delete(file);
+            served.set(file, entry);
+
+            for (const key of served.keys()) {
+                if (served.size <= SERVED_MAX) {
+                    break;
+                }
+
+                served.delete(key);
+            }
+        }
     } catch {
+        served.delete(file);
         send(response, 404, "Not found");
 
         return;
     }
 
-    // No caching: the app is edited live, and a reload should always get the newest files.
-    send(
-        response,
-        200,
-        body,
-        fallbackType ?? TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
-        {
-            "cache-control": "no-cache",
-        },
-    );
+    const type = fallbackType ?? TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
+    const headers: Record<string, string> = {
+        "cache-control": "no-cache",
+        etag: entry.etag,
+        vary: "accept-encoding",
+    };
+
+    if (request.headers["if-none-match"] === entry.etag) {
+        response.writeHead(304, headers);
+        response.end();
+
+        return;
+    }
+
+    if (
+        COMPRESSIBLE.test(type) &&
+        entry.body.length > 1024 &&
+        /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))
+    ) {
+        entry.gzipped ??= gzipSync(entry.body, { level: 6 });
+        headers["content-encoding"] = "gzip";
+        send(response, 200, entry.gzipped, type, headers);
+
+        return;
+    }
+
+    send(response, 200, entry.body, type, headers);
 }
 
 /**

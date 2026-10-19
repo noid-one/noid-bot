@@ -460,7 +460,15 @@ function startServer(first: boolean): void {
     // Node 22 calls node:sqlite experimental and says so at every start, right above the panel.
     const proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...args], {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
-        env: { ...process.env, PI_POCKET_SUPERVISED: "1", PI_POCKET_LAUNCHER: "1" },
+        env: {
+            ...process.env,
+            PI_POCKET_SUPERVISED: "1",
+            PI_POCKET_LAUNCHER: "1",
+            // Node keeps what it compiled (keyed by each file's content, so an edit is never stale): a start or restart
+            // is about 90 ms (a sixth) quicker.
+            NODE_COMPILE_CACHE:
+                process.env.NODE_COMPILE_CACHE ?? join(options.data, "cache", "compile"),
+        },
     });
 
     child = proc;
