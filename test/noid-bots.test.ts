@@ -571,6 +571,20 @@ test("bots ask before reaching this machine through a new bot or a session", () 
         true,
     );
     assert.ok(alwaysAsks("bot_create", { kind: "host" }), "every time");
+
+    // The folder on the card is the one the bot gets, spaces and length and all.
+    const folder = `/home/me/a  b/${"x/../".repeat(80)}secrets`;
+
+    assert.ok(
+        classify(helper, "computer", "bot_create", { kind: "host", folder }).ask &&
+            JSON.parse(
+                (
+                    classify(helper, "computer", "bot_create", { kind: "host", folder }) as {
+                        subject: string;
+                    }
+                ).subject,
+            ).folder === folder,
+    );
     assert.equal(classify(helper, "computer", "bot_create", { kind: "computer" }).ask, false);
     assert.equal(classify(helper, "computer", "session_start", { folder: "~" }).ask, true);
     assert.equal(classify(helper, "computer", "session_send", { session: 1 }).ask, true);

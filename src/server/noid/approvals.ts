@@ -27,7 +27,6 @@ import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
 import { AutoReviewDoc, consequential, review } from "./auto-review.ts";
 import { onlyReads } from "./read-only.ts";
-import { snippet } from "../projection.ts";
 import type { BotProfile } from "./bots.ts";
 
 /** The start of the id of every question noid asks, which only it may turn into an "always allow" rule. */
@@ -169,9 +168,12 @@ export function classify(
         return {
             ask: true,
             reason: "makes a bot on your machine",
-            subject: snippet(
-                `${String(args.name ?? args.role ?? "")} in ${String(args.folder ?? "")}`,
-            ),
+            // Whole and as written: the folder the bot works in is the one the owner reads here.
+            subject: subjectOf("bot_create", {
+                name: args.name,
+                role: args.role,
+                folder: args.folder,
+            }),
         };
     }
 
