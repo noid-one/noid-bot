@@ -499,6 +499,13 @@ export function MenuSheet() {
                     keys: "Mod F",
                     run: instead({ type: "find" }),
                 },
+                {
+                    id: "artifacts",
+                    icon: "artifact",
+                    label: "Artifacts",
+                    value: view.artifacts.length > 0 ? String(view.artifacts.length) : "",
+                    run: instead({ type: "artifacts" }),
+                },
                 browserAvailable() && {
                     id: "browser",
                     icon: "globe",
@@ -583,8 +590,10 @@ export function MenuSheet() {
                 },
             })),
             [
+                // Noid, the main bot, is never archived (the server refuses).
                 session &&
-                    steer && {
+                    steer &&
+                    bot?.main !== true && {
                         id: "archive",
                         icon: conversation.archived ? "unarchive" : "archive",
                         label: conversation.archived ? "Unarchive" : "Archive",
