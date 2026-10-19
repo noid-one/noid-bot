@@ -6,7 +6,6 @@ import { NotificationsSheet } from "./notify.js";
 import { ShareSheet } from "./share.js";
 import { AppearanceSheet } from "./sheets/appearance.js";
 import { AutoReviewSheet } from "./sheets/auto-review.js";
-import { GroupsSheet } from "./sheets/groups.js";
 import { BotSheet } from "./sheets/bot.js";
 import { BranchPicker } from "./sheets/branch.js";
 import { ExtensionsSheet } from "./sheets/extensions.js";
@@ -343,9 +342,6 @@ export function sheetBody(sheet) {
             break;
         case "auto-review":
             body = me?.role === "owner" ? html`<${AutoReviewSheet} />` : null;
-            break;
-        case "groups":
-            body = me?.role === "owner" ? html`<${GroupsSheet} />` : null;
             break;
         case "instructions":
             body = html`<${TextSheet}

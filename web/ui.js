@@ -897,6 +897,8 @@ const ICONS = {
     bell: "M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a2 2 0 003.4 0",
     coin: "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6.5V8M12 16v1.5",
     plug: "M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 01-12 0V8z",
+    // Group threads: two speech bubbles, one over the other.
+    chats: "M14 9a2 2 0 01-2 2H6l-4 4V4a2 2 0 012-2h8a2 2 0 012 2zM18 9h2a2 2 0 012 2v11l-4-4h-6a2 2 0 01-2-2v-1",
     // Memory: a stack of cards.
     memory: "M4 8l8-4 8 4-8 4zM4 12l8 4 8-4M4 16l8 4 8-4",
 };

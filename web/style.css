@@ -12522,6 +12522,52 @@ textarea.notes {
     margin: 0;
 }
 
+/* The desktop's picture, and what shows on it while nothing is open (it has no wallpaper: all black). */
+.desktop-frame {
+    position: relative;
+    align-self: center;
+    max-width: 100%;
+}
+
+.desktop-frame .desktop-shot {
+    margin: 0;
+}
+
+.desktop-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.desktop-empty strong {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.desktop-empty > span {
+    max-width: 360px;
+    line-height: 1.5;
+}
+
+.desktop-empty .row {
+    margin-top: 6px;
+    pointer-events: auto;
+}
+
+.tool-head .button .icon {
+    margin-right: 4px;
+}
+
 .place {
     display: flex;
     flex-direction: column;
@@ -15088,68 +15134,306 @@ pre.gallery-code {
     cursor: crosshair;
 }
 
-.group-new,
-.group-thread {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+/* Group threads: the groups down the left, as a chat app lists its chats, and the one open beside them. */
+.tool-page[data-tool="groups"] .tool-body {
+    padding: 0;
+    overflow: hidden;
 }
 
-.group-members {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 16px;
+.groups-split {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
 }
 
-.group-member {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13.5px;
+.groups-split.single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.groups-list {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px;
+    border-right: 1px solid var(--hair);
+}
+
+.groups-split.single .groups-list {
+    border-right: 0;
 }
 
 .group-row {
     display: flex;
+    align-items: center;
+    gap: 10px;
     width: 100%;
-    padding: 10px 14px;
-    text-align: left;
-    color: inherit;
-    background: none;
+    min-height: 56px;
+    padding: 8px 10px;
     border: 0;
     border-radius: var(--r-row);
-    cursor: pointer;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
 }
 
-.group-row:hover {
-    background: var(--accent-soft);
+@media (hover: hover) {
+    .group-row:hover {
+        background: var(--hover);
+    }
+}
+
+.group-row[aria-current] {
+    background: var(--hover);
+}
+
+.group-row-text {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+}
+
+.group-row-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.group-row-last {
+    color: var(--faint);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* A group's bots: their faces, a little over each other. */
+.group-faces {
+    flex: none;
+    display: flex;
+}
+
+.group-faces > * + * {
+    margin-left: -8px;
+}
+
+.groups-main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.group-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+}
+
+.group-empty strong {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.group-empty .button {
+    margin-top: 6px;
+}
+
+.group-thread {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.group-thread-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 56px;
+    padding: 8px 12px 8px 16px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.group-thread-title {
+    min-width: 0;
+    display: grid;
+}
+
+.group-thread-title strong {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.group-thread-title .muted {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.button.danger {
+    color: var(--err);
 }
 
 .group-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    max-height: min(55vh, 520px);
-    overflow-y: auto;
-    padding: 4px 2px;
+    gap: 14px;
+    padding: 16px;
+}
+
+.group-messages > .group-empty {
+    flex: none;
+    margin: auto 0;
 }
 
 .group-message {
     display: flex;
-    gap: 10px;
-    align-items: flex-start;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: min(640px, 88%);
 }
 
 .group-message.mine {
-    padding-left: 34px;
+    flex-direction: row-reverse;
+    align-self: flex-end;
+}
+
+.group-bubble {
+    min-width: 0;
+    padding: 8px 12px;
+    border-radius: var(--r-card);
+    background: var(--card);
+    border: 1px solid var(--hair);
+}
+
+.group-message.mine .group-bubble {
+    background: var(--accent-soft);
+    border-color: var(--accent-line);
+}
+
+.group-meta {
+    margin-bottom: 2px;
+    color: var(--faint);
+    font-size: 11.5px;
+}
+
+.group-text {
+    color: var(--body);
+    font-size: 13.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .group-message.failed .group-text {
     color: var(--err);
 }
 
-.group-text {
-    white-space: pre-wrap;
-    font-size: 13.5px;
+.group-answering {
+    margin: 0;
+}
+
+.group-compose {
+    flex: none;
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--hair);
+}
+
+.group-compose input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* A new group: its name, and its bots picked by their faces, numbered in the order they answer. */
+.group-new {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 560px;
+    padding: 20px 24px;
+}
+
+.group-new h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.group-picks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.group-pick {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 92px;
+    padding: 10px 6px 8px;
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    background: var(--card);
+    color: var(--body);
+    font: inherit;
+    font-size: 12.5px;
+}
+
+.group-pick span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.group-pick.on {
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.group-pick-order {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--accent-fill);
+    color: var(--accent-ink);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.group-new .row {
+    justify-content: flex-end;
+}
+
+.check-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .teach-banner {

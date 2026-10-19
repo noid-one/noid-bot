@@ -1,10 +1,13 @@
-// noid: group threads, the owner and several bots in one room. The list of groups, a new one, and a thread: what was
-// said, refreshed while it is open, and a message to the bots in it (all of them, or those named with @).
+// noid: group threads, the owner and several bots in one room, as a page in the conversation's place: the groups down
+// the left, as a chat app lists its chats, and the one open beside them (what was said, refreshed while it is open,
+// and a message to the bots in it, all of them or those named with @). On a phone, the list, then a thread.
 import { useEffect, useRef, useState } from "preact/hooks";
+import { Avatar } from "../avatar.js";
 import { Face } from "../faces/face.js";
 import { usePoll } from "../poll.js";
-import { api, attempt, closeSheet, store } from "../store.js";
-import { formatWhen, html, Sheet } from "../ui.js";
+import { api, attempt, openSheet, store } from "../store.js";
+import { ToolFrame } from "../tool-page.js";
+import { BOTTOM_SHEETS, formatWhen, html, Icon } from "../ui.js";
 
 const EVERY_MS = 2000;
 
@@ -17,7 +20,7 @@ function botsById() {
     );
 }
 
-function NewGroup({ onMade }) {
+function NewGroup({ onMade, onCancel }) {
     const bots = [...botsById().values()];
     const [name, setName] = useState("");
     const [members, setMembers] = useState([]);
@@ -29,32 +32,79 @@ function NewGroup({ onMade }) {
         });
 
     return html`<div class="group-new">
-        <input
-            placeholder="Group name, such as Launch"
-            value=${name}
-            onInput=${(event) => setName(event.currentTarget.value)}
-        />
-        <div class="group-members">
-            ${bots.map(
-                (bot) => html`<label class="group-member" key=${bot.id}>
-                    <input
-                        type="checkbox"
-                        checked=${members.includes(bot.id)}
-                        onChange=${() => flip(bot.id)}
-                    />
-                    ${bot.name}
-                </label>`,
-            )}
+        <h3>New group</h3>
+        <label class="field">
+            <span class="label">Name</span>
+            <input
+                autofocus
+                placeholder="Launch, Research, Trip…"
+                value=${name}
+                onInput=${(event) => setName(event.currentTarget.value)}
+            />
+        </label>
+        <div class="field">
+            <span class="label">Bots, two or more: they answer in the order picked</span>
+            <div class="group-picks">
+                ${bots.map((bot) => {
+                    const at = members.indexOf(bot.id);
+
+                    return html`<button
+                        type="button"
+                        class=${`group-pick ${at >= 0 ? "on" : ""}`}
+                        key=${bot.id}
+                        aria-pressed=${at >= 0 ? "true" : "false"}
+                        onClick=${() => flip(bot.id)}
+                    >
+                        <${Face}
+                            id=${bot.id}
+                            color=${bot.color}
+                            skin=${bot.skin}
+                            eyes=${bot.eyes}
+                            size=${36}
+                            label=${bot.name}
+                        />
+                        <span>${bot.name}</span>
+                        ${at >= 0 && html`<span class="group-pick-order">${at + 1}</span>`}
+                    </button>`;
+                })}
+            </div>
+            ${
+                bots.length < 2 &&
+                html`<p class="muted small">A group needs two bots or more: make another first.</p>`
+            }
         </div>
-        <button
-            class="button primary"
-            disabled=${name.trim() === "" || members.length < 2}
-            onClick=${make}
-        >
-            Make the group
-        </button>
-        <p class="muted small">Pick two bots or more. They answer in this order.</p>
+        <div class="row">
+            <button class="button ghost" onClick=${onCancel}>Cancel</button>
+            <button
+                class="button primary"
+                disabled=${name.trim() === "" || members.length < 2}
+                onClick=${make}
+            >
+                Make the group
+            </button>
+        </div>
     </div>`;
+}
+
+/** A group's bots as a small stack of faces. */
+function Faces({ members, bots, size = 22 }) {
+    return html`<span class="group-faces">
+        ${members.slice(0, 3).map((id) => {
+            const bot = bots.get(id);
+
+            return bot
+                ? html`<${Face}
+                      key=${id}
+                      id=${bot.id}
+                      color=${bot.color}
+                      skin=${bot.skin}
+                      eyes=${bot.eyes}
+                      size=${size}
+                      label=${bot.name}
+                  />`
+                : null;
+        })}
+    </span>`;
 }
 
 /** Messages by id, in order: what a refresh brought, with any just sent that it did not have yet. */
@@ -67,7 +117,7 @@ function merged(found, now) {
     return { ...found, messages: [...found.messages, ...extra] };
 }
 
-function Thread({ id, onBack }) {
+function Thread({ id, onBack, onSaid }) {
     const [group, setGroup] = useState(undefined);
     const [text, setText] = useState("");
     const [sending, setSending] = useState(false);
@@ -106,6 +156,8 @@ function Thread({ id, onBack }) {
 
     useEffect(() => {
         list.current?.scrollTo({ top: list.current.scrollHeight });
+        // The list beside it shows each group's last line: it reads them again.
+        onSaid?.();
     }, [count]);
 
     // One at a time, with a key: a retry of the same send posts it once.
@@ -141,52 +193,75 @@ function Thread({ id, onBack }) {
         });
 
     if (group === undefined) {
-        return html`<p class="muted small" role="status">Loading…</p>`;
+        return html`<p class="group-empty muted small" role="status">Loading…</p>`;
     }
 
     const names = group.members.map((member) => bots.get(member)?.name ?? "a bot gone");
+    const me = store.state.me;
 
     return html`<div class="group-thread">
-        <div class="row">
-            <button class="button ghost small" onClick=${onBack}>All groups</button>
-            <span class="grow muted small">${names.join(", ")}</span>
-            <button class="button ghost small" onClick=${remove}>Delete</button>
-        </div>
+        <header class="group-thread-head">
+            ${
+                BOTTOM_SHEETS.matches &&
+                html`<button class="icon-button" aria-label="All groups" onClick=${onBack}>
+                    <${Icon} name="back" size=${18} />
+                </button>`
+            }
+            <${Faces} members=${group.members} bots=${bots} size=${26} />
+            <div class="grow group-thread-title">
+                <strong>${group.name}</strong>
+                <span class="muted small">${names.join(", ")}</span>
+            </div>
+            ${
+                group.answering &&
+                html`<button class="button ghost small" onClick=${stop}>Stop</button>`
+            }
+            <button class="button ghost small danger" onClick=${remove}>Delete</button>
+        </header>
         <div class="group-messages" ref=${list}>
             ${
                 group.messages.length === 0 &&
-                html`<p class="muted small">
-                Write to the group: each bot answers in turn, after reading what the others said.
-            </p>`
+                html`<p class="group-empty muted small">
+                    Write to the group: each bot answers in turn, after reading what the others said.
+                    Name one with @ to ask it alone.
+                </p>`
             }
             ${group.messages.map((message) => {
                 const bot = bots.get(message.from);
+                const mine = message.from === "owner";
 
                 return html`<div
-                    class=${`group-message ${message.from === "owner" ? "mine" : ""} ${message.failed ? "failed" : ""}`}
+                    class=${`group-message ${mine ? "mine" : ""} ${message.failed ? "failed" : ""}`}
                     key=${message.id}
                 >
                     ${
-                        bot &&
-                        html`<${Face}
-                        id=${bot.id}
-                        color=${bot.color}
-                        skin=${bot.skin}
-                        eyes=${bot.eyes}
-                        size=${24}
-                        label=${bot.name}
-                    />`
+                        bot
+                            ? html`<${Face}
+                                  id=${bot.id}
+                                  color=${bot.color}
+                                  skin=${bot.skin}
+                                  eyes=${bot.eyes}
+                                  size=${28}
+                                  label=${bot.name}
+                              />`
+                            : mine && me
+                              ? html`<${Avatar} person=${me} size=${28} />`
+                              : null
                     }
-                    <div class="grow">
-                        <div class="muted small">${message.name} · ${formatWhen(message.at)}</div>
+                    <div class="group-bubble">
+                        <div class="group-meta">${message.name} · ${formatWhen(message.at)}</div>
                         <div class="group-text">${message.text}</div>
                     </div>
                 </div>`;
             })}
+            ${
+                group.answering &&
+                html`<p class="group-answering muted small" role="status">The bots are answering…</p>`
+            }
         </div>
-        <div class="row">
+        <div class="group-compose">
             <input
-                placeholder="Write to the group; @Name for one bot"
+                placeholder=${`Write to ${group.name}; @Name for one bot`}
                 value=${text}
                 onInput=${(event) => setText(event.currentTarget.value)}
                 onKeyDown=${(event) => event.key === "Enter" && !event.isComposing && send()}
@@ -199,21 +274,18 @@ function Thread({ id, onBack }) {
                 Send
             </button>
         </div>
-        ${
-            group.answering &&
-            html`<div class="row">
-                <span class="grow muted small">The bots are answering…</span>
-                <button class="button ghost small" onClick=${stop}>Stop</button>
-            </div>`
-        }
     </div>`;
 }
 
-/** Group threads: the list, a new one, or one open. */
-export function GroupsSheet() {
+/** Group threads: the groups, and the one open or a new one beside them. */
+export function GroupsPage() {
     const [groups, setGroups] = useState(undefined);
     const [open, setOpen] = useState(undefined);
     const [making, setMaking] = useState(false);
+    const bots = botsById();
+    const phone = BOTTOM_SHEETS.matches;
+    const none = groups?.length === 0;
+    const enough = bots.size >= 2;
     const load = () =>
         api("groups")
             .then((found) => setGroups(found.groups))
@@ -223,43 +295,95 @@ export function GroupsSheet() {
         void load();
     }, [open, making]);
 
-    const body =
-        open !== undefined
-            ? html`<${Thread} id=${open} onBack=${() => setOpen(undefined)} />`
-            : making
-              ? html`<${NewGroup}
-                    onMade=${(group) => {
-                        setMaking(false);
-                        setOpen(group.id);
-                    }}
-                />`
-              : html`<div class="sheet-list">
+    // Wide, the newest group opens at first, so the page is never half empty.
+    useEffect(() => {
+        if (!phone && open === undefined && !making && groups?.length > 0) {
+            setOpen(groups[0].id);
+        }
+    }, [groups]);
+
+    const main = making
+        ? html`<${NewGroup}
+              onCancel=${() => setMaking(false)}
+              onMade=${(group) => {
+                  setMaking(false);
+                  setOpen(group.id);
+              }}
+          />`
+        : open !== undefined
+          ? html`<${Thread}
+                key=${open}
+                id=${open}
+                onBack=${() => setOpen(undefined)}
+                onSaid=${load}
+            />`
+          : (!phone || none) &&
+            html`<div class="group-empty">
+                <${Icon} name="chats" size=${28} />
+                <strong>You and several bots in one room</strong>
+                ${
+                    enough
+                        ? html`<span>
+                              Each bot answers in turn, after reading what the others said.
+                          </span>
+                          <button class="button primary" onClick=${() => setMaking(true)}>
+                              New group
+                          </button>`
+                        : html`<span>
+                              A group needs two bots or more, and you have
+                              ${bots.size === 1 ? " one" : " none"}. Make another, then a group.
+                          </span>
+                          <button class="button primary" onClick=${() => openSheet({ type: "bot" })}>
+                              New bot
+                          </button>`
+                }
+            </div>`;
+    // No groups yet: the welcome alone, without an empty list beside it.
+    const showList = !none && (!phone || (open === undefined && !making));
+
+    return html`<${ToolFrame}
+        kind="groups"
+        title="Group threads"
+        sub="You and several bots in one room"
+        actions=${
+            enough &&
+            html`<button
+                class="button ghost small"
+                onClick=${() => {
+                    setOpen(undefined);
+                    setMaking(true);
+                }}
+            >
+                <${Icon} name="plus" size=${14} /> New group
+            </button>`
+        }
+    >
+        <div class=${`groups-split ${showList ? "" : "single"}`}>
+            ${
+                showList &&
+                html`<nav class="groups-list" aria-label="Groups">
                     ${(groups ?? []).map(
                         (group) => html`<button
                             class="group-row"
                             key=${group.id}
-                            onClick=${() => setOpen(group.id)}
+                            aria-current=${open === group.id ? "true" : undefined}
+                            onClick=${() => {
+                                setMaking(false);
+                                setOpen(group.id);
+                            }}
                         >
-                            <div class="grow">
-                                <div>${group.name}</div>
-                                <div class="muted small">
-                                    ${
-                                        group.last
-                                            ? `${group.last.name}: ${group.last.text.slice(0, 80)}`
-                                            : "Nothing said yet"
-                                    }
-                                </div>
-                            </div>
+                            <${Faces} members=${group.members} bots=${bots} />
+                            <span class="group-row-text">
+                                <span class="group-row-name">${group.name}</span>
+                                <span class="group-row-last">
+                                    ${group.last ? `${group.last.name}: ${group.last.text}` : "Nothing said yet"}
+                                </span>
+                            </span>
                         </button>`,
                     )}
-                    ${
-                        groups?.length === 0 &&
-                        html`<p class="muted small">
-                        No groups yet. A group is you and several bots in one room.
-                    </p>`
-                    }
-                    <button class="button" onClick=${() => setMaking(true)}>New group</button>
-                </div>`;
-
-    return html`<${Sheet} title="Group threads" onClose=${closeSheet} wide>${body}<//>`;
+                </nav>`
+            }
+            ${main && html`<div class="groups-main">${main}</div>`}
+        </div>
+    <//>`;
 }

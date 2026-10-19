@@ -1605,19 +1605,19 @@ export function RailNav({ foldable = false, folded = false }) {
 }
 
 /**
- * noid: the owner's tools on the shared computer, on the rail as rakazo keeps its agent computer by hand: group threads
- * (a sheet), and the terminal and the desktop, pages in the conversation's place. Each is lit while it is open.
+ * noid: the owner's tools, on the rail as rakazo keeps its agent computer by hand: group threads, and the shared
+ * computer's terminal and desktop, each a page in the conversation's place, lit while it is open.
  */
 function ComputerRailButtons() {
-    const { tool, sheet, view } = store.state;
+    const { tool, view } = store.state;
     const buttons = [
         {
             id: "groups",
-            icon: "users",
+            icon: "chats",
             label: "Group threads",
             title: "Group threads: you and several bots",
-            open: sheet?.type === "groups",
-            run: () => openSheet({ type: "groups" }),
+            open: tool?.kind === "groups",
+            run: () => (tool?.kind === "groups" ? closeTool() : openTool("groups")),
         },
         {
             id: "terminal",
