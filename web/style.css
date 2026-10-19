@@ -11916,11 +11916,11 @@ textarea.notes {
 /* ─── Menus: the top bar's ⋯ and the rail's avatar ───────── */
 
 /* Kept out of the layout's flex row, including its gap. */
-.pop-menu-host {
+.act-menu-host {
     display: contents;
 }
 
-.pop-menu .sheet-body {
+.act-menu .sheet-body {
     padding: 4px;
     gap: 0;
 }
@@ -12058,18 +12058,18 @@ textarea.notes {
 }
 
 @media (max-width: 699px) {
-    .pop-menu .sheet-body {
+    .act-menu .sheet-body {
         padding: 4px 8px 12px;
     }
 }
 
 @media (min-width: 700px) {
     /* Sheet still owns focus and Esc; with no scrim, a press outside closes it. */
-    .pop-menu-host .overlay {
+    .act-menu-host .overlay {
         padding: 0;
         background: none;
     }
-    .pop-menu {
+    .act-menu {
         position: fixed;
         left: var(--menu-left, calc(100vw - 272px));
         top: var(--menu-top, 58px);
@@ -12083,11 +12083,11 @@ textarea.notes {
         animation: pop-in 0.14s var(--ease-out);
         transform-origin: top right;
     }
-    .pop-menu.beside {
+    .act-menu.beside {
         transform-origin: bottom left;
     }
     /* A menu has no title bar: what it is for is the button that opened it. */
-    .pop-menu .sheet-head {
+    .act-menu .sheet-head {
         display: none;
     }
 }
@@ -12099,112 +12099,424 @@ textarea.notes {
     }
 }
 
-/* ─── Settings ───────── */
-
-.settings-sheet .sheet-body {
-    gap: 18px;
+/* The conversation, at the top of its menu: its face, name, and where it works; a click edits it. */
+.pop-row.pop-card {
+    min-height: 48px;
+    gap: 10px;
+    margin-bottom: 4px;
+    padding: 6px 10px;
 }
 
-.settings-group {
-    display: grid;
-    gap: 6px;
-}
-
-.settings-title {
-    margin: 0;
-    padding: 0 4px;
-    color: var(--faint);
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: normal;
-    text-transform: none;
-}
-
-.settings-card {
-    display: grid;
-    border: 1px solid var(--hair);
-    border-radius: var(--r-card);
-    background: var(--card);
-    overflow: hidden;
-}
-
-.settings-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    min-height: 44px;
-    padding: 0 12px;
-    border: 0;
-    background: none;
-    color: var(--text);
-    font: inherit;
-    font-size: 13.5px;
-    text-align: left;
-}
-
-.settings-row + .settings-row {
-    box-shadow: inset 0 1px 0 var(--hair);
-}
-
-.settings-icon {
+.pop-card-mark {
     flex: none;
     display: grid;
     place-items: center;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: var(--r-control);
+    color: var(--muted);
+}
+
+.pop-card-mark:has(> .icon) {
     background: var(--hover);
-    color: var(--body);
 }
 
-.settings-label {
-    flex: none;
-    white-space: nowrap;
-}
-
-.settings-value {
+.pop-card-text {
     flex: 1;
     min-width: 0;
-    text-align: right;
-    color: var(--faint);
-    font-size: 12.5px;
+    display: grid;
+}
+
+.pop-card-name {
+    font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.settings-chevron {
-    flex: none;
-    margin-left: auto;
+.pop-card-sub {
     color: var(--faint);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.settings-value + .settings-chevron {
-    margin-left: 0;
+.pop-card-edit {
+    flex: none;
+    color: var(--faint);
+    font-size: 12px;
 }
 
 @media (hover: hover) {
-    .settings-row:hover {
-        background: var(--hover);
+    .pop-card:hover .pop-card-edit {
+        color: var(--accent);
     }
 }
 
-.settings-row:active {
-    background: var(--pressed);
+.pop-card:disabled {
+    cursor: default;
+    background: none;
 }
 
-.settings-row:focus-visible {
+.pop-card + [role="menu"] > .pop-group:first-child {
+    padding-top: 4px;
+    border-top: 1px solid var(--hair);
+}
+
+/* ─── Settings, as pi-web-desktop has them: a large dialog, its pages down the left ───────── */
+
+.overlay.settings-overlay {
+    z-index: 19;
+    align-items: center;
+    padding: 16px;
+}
+
+.settings-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(1120px, 100%);
+    height: min(820px, 90dvh);
+    border: 1px solid var(--hair-2);
+    border-radius: var(--r-window);
+    background: var(--bg);
+    box-shadow: var(--pop);
+    overflow: hidden;
+    outline: none;
+    animation: pop 0.22s var(--ease-out);
+}
+
+.leaving .settings-dialog {
+    animation: pop-out var(--t-out) linear forwards;
+}
+
+.settings-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 0 8px 0 18px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.settings-crumbs {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    font-size: 13.5px;
+    white-space: nowrap;
+}
+
+.settings-crumbs .crumb-root {
+    color: var(--text);
+    font-weight: 650;
+}
+
+.settings-crumbs .crumb-sep {
+    color: var(--faint);
+    font-size: 11px;
+}
+
+.settings-crumbs .crumb-group {
+    color: var(--faint);
+}
+
+.settings-crumbs .crumb-current {
+    color: var(--muted);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settings-split {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.settings-nav {
+    flex: none;
+    width: 228px;
+    overflow-y: auto;
+    padding: 8px;
+    border-right: 1px solid var(--hair);
+    background: var(--panel);
+}
+
+.settings-nav-section + .settings-nav-section {
+    margin-top: 6px;
+}
+
+.settings-nav-group {
+    padding: 10px 10px 4px;
+    color: var(--faint);
+    font-size: 10.5px;
+    font-weight: 650;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--r-row);
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.settings-nav-item .icon {
+    flex: none;
+}
+
+.settings-nav-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (hover: hover) {
+    .settings-nav-item:hover:not([aria-current="page"]) {
+        background: var(--hover);
+        color: var(--text);
+    }
+}
+
+.settings-nav-item[aria-current="page"] {
+    background: var(--hover);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.settings-nav-item:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
 }
 
-.settings-row.danger {
-    color: var(--err);
+.settings-nav-badge {
+    flex: none;
+    padding: 1px 6px;
+    border-radius: var(--r-pill);
+    background: var(--hover);
+    color: var(--faint);
+    font-size: 10.5px;
+    font-weight: 600;
 }
 
-.settings-row.danger .settings-icon {
-    background: var(--err-soft);
-    color: var(--err);
+.settings-nav-chevron {
+    flex: none;
+    color: var(--faint);
+}
+
+.settings-body {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+}
+
+.settings-page {
+    max-width: 760px;
+    padding: 22px 28px 40px;
+}
+
+.settings-page-head {
+    margin-bottom: 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.settings-page-head h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 650;
+}
+
+.settings-page-head p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+/* A setting: its name with the control at its end, and what it does on a line of its own. */
+.settings-rows {
+    display: grid;
+}
+
+.settings-row {
+    display: grid;
+    gap: 3px;
+    padding: 12px 0;
+}
+
+.settings-row + .settings-row {
+    border-top: 1px solid var(--hair);
+}
+
+.settings-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.settings-row-title {
+    color: var(--text);
+    font-size: 13.5px;
+    font-weight: 550;
+}
+
+.settings-row-description {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* The default model's picker as a page of Settings: the list in the page, bordered, not floating. */
+.pop-menu.model-menu.embedded {
+    position: static;
+    width: auto;
+    max-height: min(560px, 62dvh);
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    box-shadow: none;
+    animation: none;
+}
+
+.pop-menu.model-menu.embedded > .grip {
+    display: none;
+}
+
+/* A sheet drawn as a page of Settings: its contents alone, in the page's flow. */
+.sheet.embedded {
+    position: static;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+    animation: none;
+}
+
+.sheet.embedded > .sheet-body {
+    padding: 0;
+    overflow: visible;
+}
+
+.embedded-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+/* A phone: Settings fills the screen; the list first, then a page with back to it. */
+@media (max-width: 699px) {
+    .overlay.settings-overlay {
+        padding: 0;
+    }
+    .settings-dialog {
+        width: 100%;
+        height: 100dvh;
+        border: 0;
+        border-radius: 0;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    .settings-head {
+        padding-left: 12px;
+    }
+    .settings-crumbs .crumb-root:not(:last-child),
+    .settings-crumbs .crumb-sep,
+    .settings-crumbs .crumb-group {
+        display: none;
+    }
+    .settings-crumbs .crumb-current {
+        color: var(--text);
+        font-weight: 650;
+    }
+    .settings-nav {
+        width: 100%;
+        border-right: 0;
+        background: none;
+    }
+    .settings-nav-item {
+        min-height: 46px;
+        font-size: 15px;
+        color: var(--text);
+    }
+    .settings-page {
+        padding: 16px 16px 32px;
+    }
+    .settings-page-head h2 {
+        display: none;
+    }
+}
+
+/* ─── The shared computer's tools, as pages in the conversation's place ───────── */
+
+.tool-page {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    animation: fade var(--t-fade) var(--ease-almost);
+}
+
+.tool-head .board-sub {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tool-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px 16px;
+    overflow-y: auto;
+}
+
+.tool-page[data-tool="terminal"] .tool-body {
+    overflow: hidden;
+}
+
+.tool-page[data-tool="terminal"] .terminal-host {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+}
+
+.tool-page[data-tool="desktop"] .desktop-shot {
+    max-height: calc(100dvh - 220px);
+    width: auto;
+    max-width: 100%;
+    align-self: center;
+}
+
+.tool-status {
+    margin: 0;
 }
 
 .place {

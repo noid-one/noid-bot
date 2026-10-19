@@ -5,7 +5,16 @@ import { branchAvailable } from "./sheets/branch.js";
 import { memoryAvailable, remember } from "./sheets/memory.js";
 import { togglePeeks } from "./peeks.js";
 import { askNoid, mainBot, toNoid } from "./noid.js";
-import { actions, collab, navigate, notify, openSheet, scoped, store } from "./store.js";
+import {
+    actions,
+    collab,
+    navigate,
+    notify,
+    openSettings,
+    openSheet,
+    scoped,
+    store,
+} from "./store.js";
 import {
     BASE_LOOK,
     BASE_LOOK_NAME,
@@ -408,7 +417,7 @@ const COMMANDS = [
         description: "Sign in to a model provider",
         run: () => openSheet({ type: "providers" }),
     },
-    { name: "settings", description: "Open Settings", run: () => openSheet({ type: "settings" }) },
+    { name: "settings", description: "Open Settings", run: () => openSettings() },
     {
         name: "trust",
         description: "Whether Pi trusts this project, for its own skills",

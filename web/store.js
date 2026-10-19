@@ -109,6 +109,10 @@ export const store = {
         boardAgents: null,
         /** An extension's page in the conversation's place, as the board shows (`extension-ui.js`): `{ module, id }`. */
         page: null,
+        /** noid: a tool of the shared computer in the conversation's place (`tool-page.js`): `{ kind, cwd }`. */
+        tool: null,
+        /** noid: Settings, over the app (`sheets/settings.js`): `{ page }`, the page shown, or null on a phone's list. */
+        settings: null,
         /** Counts changes to what extensions' browser modules add (`extension-ui.js`), so what shows them draws again. */
         extensionsRev: 0,
         /** Counts the lists of files for @ mentions that arrived; the lists themselves are kept in `files.js`. */
@@ -919,8 +923,8 @@ export function navigate(conversationId, { replace = false, sheet = null } = {})
 
     // The subagents board and extensions' pages show in the conversation's place: going to one, even the one under it,
     // closes them.
-    if (store.state.board || store.state.page) {
-        store.set({ board: false, boardAgents: null, page: null });
+    if (store.state.board || store.state.page || store.state.tool) {
+        store.set({ board: false, boardAgents: null, page: null, tool: null });
     }
 
     // Its row tapped again counts too.
@@ -1267,6 +1271,27 @@ store.subscribe((state) => {
 export function closeSheet() {
     store.set({ sheet: null });
 }
+
+/** noid: open a tool of the shared computer (`terminal`, `desktop`) in the conversation's place, as the board shows. */
+export function openTool(kind, { cwd } = {}) {
+    store.set({
+        tool: { kind, cwd },
+        board: false,
+        boardAgents: null,
+        page: null,
+        sheet: null,
+        drawer: false,
+    });
+}
+
+export const closeTool = () => store.set({ tool: null });
+
+/** noid: open Settings at `page`, or at the first one (a phone shows the list first). */
+export function openSettings(page = null) {
+    store.set({ settings: { page }, sheet: null, drawer: false, launcher: false });
+}
+
+export const closeSettings = () => store.set({ settings: null });
 
 // Per-conversation composer drafts survive reloads, including the automatic ones after a live edit.
 export const drafts = {

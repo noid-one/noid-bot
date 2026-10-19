@@ -16,6 +16,8 @@ import {
     notify,
     isUnread,
     openSheet,
+    openTool,
+    closeTool,
     scoped,
     sessionUnread,
     setUnread,
@@ -1586,16 +1588,8 @@ export function RailNav({ foldable = false, folded = false }) {
                 html`<span class="rail-trouble" aria-hidden="true"></span>`
             }
         </button>
+        ${me?.role === "owner" && html`<${ComputerRailButtons} />`}
         <${ExtensionRailButtons} />
-        <button
-            class="rail-button"
-            data-part="rail-button"
-            title="Appearance: theme, colors, layout"
-            aria-label="Appearance"
-            onClick=${() => openSheet({ type: "appearance" })}
-        >
-            <${Icon} name="palette" size=${19} />
-        </button>
         <button
             class="rail-button rail-me"
             data-part="rail-button"
@@ -1608,6 +1602,58 @@ export function RailNav({ foldable = false, folded = false }) {
             ${me && html`<${Avatar} person=${me} size=${30} />`}
         </button>
     </nav>`;
+}
+
+/**
+ * noid: the owner's tools on the shared computer, on the rail as rakazo keeps its agent computer by hand: group threads
+ * (a sheet), and the terminal and the desktop, pages in the conversation's place. Each is lit while it is open.
+ */
+function ComputerRailButtons() {
+    const { tool, sheet, view } = store.state;
+    const buttons = [
+        {
+            id: "groups",
+            icon: "users",
+            label: "Group threads",
+            title: "Group threads: you and several bots",
+            open: sheet?.type === "groups",
+            run: () => openSheet({ type: "groups" }),
+        },
+        {
+            id: "terminal",
+            icon: "terminal",
+            label: "Terminal",
+            title: "Terminal on the shared computer",
+            open: tool?.kind === "terminal",
+            run: () =>
+                tool?.kind === "terminal"
+                    ? closeTool()
+                    : openTool("terminal", { cwd: view.agent?.cwd }),
+        },
+        {
+            id: "desktop",
+            icon: "monitor",
+            label: "Desktop",
+            title: "The shared computer's desktop",
+            open: tool?.kind === "desktop",
+            run: () => (tool?.kind === "desktop" ? closeTool() : openTool("desktop")),
+        },
+    ];
+
+    return buttons.map(
+        (each) => html`<button
+            key=${each.id}
+            class=${`rail-button ${each.open ? "open" : ""}`}
+            data-part="rail-button"
+            data-rail=${each.id}
+            title=${each.title}
+            aria-label=${each.label}
+            aria-pressed=${each.open ? "true" : "false"}
+            onClick=${each.run}
+        >
+            <${Icon} name=${each.icon} size=${19} />
+        </button>`,
+    );
 }
 
 /** The sidebar's usual width, the rail and its list together: the one a new browser starts with (theme.js). */

@@ -1,7 +1,7 @@
 // One text field and a button: renaming, resetting, instructions, compacting, and your name.
-import { useState } from "preact/hooks";
-import { attempt, closeSheet } from "../store.js";
-import { html, Sheet } from "../ui.js";
+import { useContext, useState } from "preact/hooks";
+import { attempt, closeSheet, notify } from "../store.js";
+import { html, Sheet, SheetEmbed } from "../ui.js";
 
 export function TextSheet({
     title,
@@ -15,10 +15,19 @@ export function TextSheet({
     footer = null,
 }) {
     const [value, setValue] = useState(initial);
+    const [saved, setSaved] = useState(initial);
+    // A page of Settings: nothing to cancel, and saving keeps the page.
+    const embedded = useContext(SheetEmbed) !== null;
     const save = () =>
         attempt(async () => {
             await submit(value);
-            closeSheet();
+
+            if (embedded) {
+                setSaved(value);
+                notify("info", "Saved.");
+            } else {
+                closeSheet();
+            }
         });
 
     return html`<${Sheet} title=${title} onClose=${closeSheet}>
@@ -45,8 +54,14 @@ export function TextSheet({
             }
         </div>
         <div class="sheet-actions">
-            <button class="button" onClick=${closeSheet}>Cancel</button>
-            <button class="button primary" onClick=${save}>${button}</button>
+            ${!embedded && html`<button class="button" onClick=${closeSheet}>Cancel</button>`}
+            <button
+                class="button primary"
+                disabled=${embedded && value.trim() === saved.trim()}
+                onClick=${save}
+            >
+                ${button}
+            </button>
         </div>
         ${footer}
     <//>`;

@@ -1226,6 +1226,12 @@ export const BOTTOM_SHEETS = matchMedia("(max-width: 699px)");
 export const SheetBack = createContext(null);
 
 /**
+ * noid: a sheet shown as a page of Settings, not over the app: it draws its contents alone, under Settings' own head,
+ * and leaves Esc, dragging, and focus to Settings. `{ type }`, the sheet it stands for, or null.
+ */
+export const SheetEmbed = createContext(null);
+
+/**
  * The open sheet's type and whether it is closing (`sheets.js`), which `Sheet` puts on itself for themes: `data-sheet`,
  * and `data-state="closing"`.
  */
@@ -1247,11 +1253,16 @@ export function Sheet({ title, onClose, children, wide = false, actions = null, 
     const ref = useRef(null);
     const onBack = useContext(SheetBack);
     const info = useContext(SheetInfo);
+    const embed = useContext(SheetEmbed);
 
-    useDragToClose(ref, { dir: "down", onClose, enabled: BOTTOM_SHEETS.matches });
+    useDragToClose(ref, { dir: "down", onClose, enabled: !embed && BOTTOM_SHEETS.matches });
 
     // Not the Esc that ends an input method's composing, which belongs to the field.
     useEffect(() => {
+        if (embed) {
+            return;
+        }
+
         const onKey = (event) =>
             event.key === "Escape" && !event.isComposing && event.keyCode !== 229 && onClose();
 
@@ -1265,7 +1276,7 @@ export function Sheet({ title, onClose, children, wide = false, actions = null, 
     useEffect(() => {
         const sheet = ref.current;
 
-        if (sheet && !sheet.contains(document.activeElement)) {
+        if (sheet && !embed && !sheet.contains(document.activeElement)) {
             const field = matchMedia("(pointer: coarse)").matches
                 ? null
                 : sheet.querySelector("[autofocus]");
@@ -1273,6 +1284,18 @@ export function Sheet({ title, onClose, children, wide = false, actions = null, 
             (field ?? sheet).focus({ preventScroll: true });
         }
     }, []);
+
+    if (embed) {
+        return html`<section
+            class=${`sheet embedded ${wide ? "wide" : ""} ${className}`}
+            data-sheet=${embed.type}
+            ref=${ref}
+            aria-label=${title}
+        >
+            ${actions && html`<div class="embedded-actions">${actions}</div>`}
+            <div class="sheet-body" data-part="sheet-body">${children}</div>
+        </section>`;
+    }
 
     return html`<div
         class="overlay"

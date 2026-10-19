@@ -7,7 +7,6 @@ import { schedulesAvailable, watchAvailable, watchPr } from "../commands.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
-import { setArchived } from "../sessions.js";
 import { onComputer } from "./terminal.js";
 import { openSubagent } from "../subagents.js";
 import {
@@ -18,7 +17,9 @@ import {
     closeSheet,
     collab,
     notify,
+    openSettings,
     openSheet,
+    openTool,
     scoped,
     signOut,
     store,
@@ -27,7 +28,9 @@ import { isPinned, lookLabel, togglePin } from "../theme.js";
 import { currentTrust, trustAvailable } from "../trust.js";
 import { branchAvailable } from "./branch.js";
 import { memoryAvailable, useMemory } from "./memory.js";
-import { copyText, html, Icon, item, Keys, Sheet } from "../ui.js";
+import { Face } from "../faces/face.js";
+import { botFaceState, setArchived } from "../sessions.js";
+import { copyText, html, Icon, item, Keys, modelLabel, Sheet } from "../ui.js";
 
 // Key hints are for people with a keyboard: a touch screen has none.
 const touch = matchMedia("(pointer: coarse)").matches;
@@ -298,13 +301,13 @@ function PopMenu({ title, anchor, beside = false, width, label, header = null, g
     const shown = groups.map((group) => group.filter(Boolean)).filter((group) => group.length > 0);
 
     return html`<div
-        class="pop-menu-host"
+        class="act-menu-host"
         data-part="menu"
         ref=${host}
         style=${`--menu-width:${width}px`}
         onKeyDown=${onKey}
     >
-        <${Sheet} title=${title} onClose=${closeSheet} className=${`pop-menu ${beside ? "beside" : ""}`}>
+        <${Sheet} title=${title} onClose=${closeSheet} className=${`act-menu ${beside ? "beside" : ""}`}>
             ${header}
             <div role="menu" aria-label=${label ?? title}>
                 ${shown.map(
@@ -404,56 +407,100 @@ export function MenuSheet() {
         return null;
     }
 
+    const botSession = bot && sessions.find((each) => each.id === conversation.id);
+    const edit = bot
+        ? instead({ type: "bot", id: conversation.id })
+        : session && steer
+          ? instead({ type: "rename" })
+          : null;
+    const where = [folderName(view.agent?.cwd), view.agent?.model && modelLabel(view.agent)]
+        .filter(Boolean)
+        .join(" · ");
+
     return html`<${PopMenu}
-        title=${bot?.name ?? conversation.title ?? "Conversation"}
-        label="Conversation"
+        title="Conversation"
         anchor='.topbar [aria-label="Menu"]'
-        width=${264}
+        width=${272}
+        header=${html`<button
+            type="button"
+            class="pop-card pop-row"
+            role="menuitem"
+            data-row="edit"
+            disabled=${edit === null}
+            onClick=${edit}
+        >
+            <span class="pop-card-mark">
+                ${
+                    bot
+                        ? html`<${Face}
+                              id=${bot.id}
+                              color=${bot.color}
+                              skin=${bot.skin}
+                              eyes=${bot.eyes}
+                              state=${botFaceState(botSession)}
+                              size=${30}
+                              label=${bot.name}
+                          />`
+                        : html`<${Icon} name="chat" size=${16} />`
+                }
+            </span>
+            <span class="pop-card-text">
+                <span class="pop-card-name">${bot?.name ?? conversation.title ?? "New session"}</span>
+                ${where && html`<span class="pop-card-sub">${where}</span>`}
+            </span>
+            ${edit && html`<span class="pop-card-edit">${bot ? "Edit" : "Rename"}</span>`}
+        </button>`}
         groups=${[
             [
-                bot && {
-                    id: "bot",
-                    icon: "pencil",
-                    label: `Edit ${bot.name}`,
-                    run: instead({ type: "bot", id: conversation.id }),
-                },
-                !bot &&
-                    session &&
-                    steer && {
-                        id: "rename",
-                        icon: "pencil",
-                        label: "Rename",
-                        run: instead({ type: "rename" }),
-                    },
-                !bot &&
-                    session && {
-                        id: "pin",
-                        icon: "pin",
-                        label: isPinned(conversation.id) ? "Unpin" : "Pin to the top",
-                        run: () => {
-                            togglePin(conversation.id);
-                            closeSheet();
-                        },
-                    },
                 {
-                    id: "link",
-                    icon: "link",
-                    label: "Copy link",
+                    id: "find",
+                    icon: "search",
+                    label: "Find in conversation",
+                    keys: "Mod F",
+                    run: instead({ type: "find" }),
+                },
+                {
+                    id: "artifacts",
+                    icon: "artifact",
+                    label: "Artifacts",
+                    value: view.artifacts.length > 0 ? String(view.artifacts.length) : "",
+                    run: instead({ type: "artifacts" }),
+                },
+                browserAvailable() && {
+                    id: "browser",
+                    icon: "globe",
+                    label: browserOpen ? "Close the browser" : "Browser",
+                    keys: "Alt B",
                     run: () => {
+                        setBrowserOpen(!browserOpen);
                         closeSheet();
-                        copyText(location.href).then(
-                            () =>
-                                notify("info", "Link copied. Other signed-in devices can open it."),
-                            () => notify("error", "Could not copy."),
-                        );
                     },
                 },
-                {
-                    id: "export",
-                    icon: "download",
-                    label: "Export as Markdown",
-                    href: `/api/c/${conversation.id}/export`,
+                owner && {
+                    id: "terminal",
+                    icon: "terminal",
+                    label: "Terminal",
+                    run: () => openTool("terminal", { cwd: view.agent?.cwd }),
                 },
+                company && {
+                    id: "chat",
+                    icon: "chat",
+                    label: "Chat with people here",
+                    value: unread > 0 ? String(unread) : "",
+                    run: instead({ type: "chat" }),
+                },
+                company &&
+                    canToggleTurns() &&
+                    (turns?.on || others) && {
+                        id: "turns",
+                        icon: "wheel",
+                        label: turns?.on ? "Stop taking turns" : "Take turns",
+                        run: () =>
+                            attempt(async () => {
+                                await actions.turns(turns?.on ? "off" : "on");
+                                closeSheet();
+                            }),
+                    },
             ],
             [
                 session &&
@@ -492,51 +539,6 @@ export function MenuSheet() {
                 },
             ],
             [
-                {
-                    id: "find",
-                    icon: "search",
-                    label: "Find in conversation",
-                    keys: "Mod F",
-                    run: instead({ type: "find" }),
-                },
-                {
-                    id: "artifacts",
-                    icon: "artifact",
-                    label: "Artifacts",
-                    value: view.artifacts.length > 0 ? String(view.artifacts.length) : "",
-                    run: instead({ type: "artifacts" }),
-                },
-                browserAvailable() && {
-                    id: "browser",
-                    icon: "globe",
-                    label: browserOpen ? "Close the browser" : "Open the browser",
-                    keys: "Alt B",
-                    run: () => {
-                        setBrowserOpen(!browserOpen);
-                        closeSheet();
-                    },
-                },
-                company && {
-                    id: "chat",
-                    icon: "chat",
-                    label: "Chat with people here",
-                    value: unread > 0 ? String(unread) : "",
-                    run: instead({ type: "chat" }),
-                },
-                company &&
-                    canToggleTurns() &&
-                    (turns?.on || others) && {
-                        id: "turns",
-                        icon: "wheel",
-                        label: turns?.on ? "Stop taking turns" : "Take turns",
-                        run: () =>
-                            attempt(async () => {
-                                await actions.turns(turns?.on ? "off" : "on");
-                                closeSheet();
-                            }),
-                    },
-            ],
-            [
                 conversation.worktree && steer
                     ? {
                           id: "worktree",
@@ -553,12 +555,6 @@ export function MenuSheet() {
                           value: folderName(view.agent?.cwd),
                           run: instead({ type: "cwd", mode: "change" }),
                       },
-                owner && {
-                    id: "terminal",
-                    icon: "terminal",
-                    label: onComputer(view.agent?.cwd) ? "Terminal in this folder" : "Terminal",
-                    run: instead({ type: "terminal", cwd: view.agent?.cwd }),
-                },
                 trustAvailable() && {
                     id: "trust",
                     icon: "shield",
@@ -589,6 +585,37 @@ export function MenuSheet() {
                     openSubagent(agent.conversationId);
                 },
             })),
+            [
+                !bot &&
+                    session && {
+                        id: "pin",
+                        icon: "pin",
+                        label: isPinned(conversation.id) ? "Unpin" : "Pin to the top",
+                        run: () => {
+                            togglePin(conversation.id);
+                            closeSheet();
+                        },
+                    },
+                {
+                    id: "link",
+                    icon: "link",
+                    label: "Copy link",
+                    run: () => {
+                        closeSheet();
+                        copyText(location.href).then(
+                            () =>
+                                notify("info", "Link copied. Other signed-in devices can open it."),
+                            () => notify("error", "Could not copy."),
+                        );
+                    },
+                },
+                {
+                    id: "export",
+                    icon: "download",
+                    label: "Export as Markdown",
+                    href: `/api/c/${conversation.id}/export`,
+                },
+            ],
             [
                 // Noid, the main bot, is never archived (the server refuses).
                 session &&
@@ -644,7 +671,7 @@ export function AccountSheet() {
                     icon: "sliders",
                     label: "Settings",
                     keys: "Mod ,",
-                    run: instead({ type: "settings" }),
+                    run: openSettings,
                 },
                 !touch && {
                     id: "shortcuts",

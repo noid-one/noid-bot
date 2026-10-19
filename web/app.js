@@ -44,6 +44,8 @@ import {
 import "./rich.js";
 import { takeShare } from "./share.js";
 import { Sheets } from "./sheets.js";
+import { Settings } from "./sheets/settings.js";
+import { ToolPage } from "./tool-page.js";
 import { branchAvailable, headLabel } from "./sheets/branch.js";
 import { SignIn } from "./signin.js";
 import { openSubagents } from "./subagents.js";
@@ -57,6 +59,7 @@ import {
     holdNotice,
     navigate,
     notify,
+    openSettings,
     openSheet,
     panelsBeside,
     peopleDocked,
@@ -459,7 +462,8 @@ function App() {
     // their room.
     const board = state.board;
     const page = !board && state.page !== null;
-    const placed = board || page;
+    const tool = !board && !page && state.tool !== null && state.me?.role === "owner";
+    const placed = board || page || tool;
     const browsing =
         inConversation && !placed && state.browserOpen && browserAvailable() && !state.missing;
     const filing = !placed && filesShown(state);
@@ -487,8 +491,10 @@ function App() {
                     ? html`<${SubagentsBoard} />`
                     : page
                       ? html`<${ExtensionPage} key=${`${state.page.module}:${state.page.id}`} />`
-                      : inConversation
-                        ? html`<${Topbar} />
+                      : tool
+                        ? html`<${ToolPage} />`
+                        : inConversation
+                          ? html`<${Topbar} />
                     ${
                         peeking &&
                         tiles.length > 0 &&
@@ -501,7 +507,7 @@ function App() {
                         !state.missing &&
                         html`<${Composer} key=${state.conversationId} />`
                     }`
-                        : html`<div class="home-list" data-part="home-list">
+                          : html`<div class="home-list" data-part="home-list">
                           <${RailNav} />
                           <${SessionList} />
                       </div>
@@ -524,6 +530,7 @@ function App() {
         <${PanelHost} key=${`files:${state.conversationId}`} shown=${filing} panel=${FilesPanel} />
         ${inConversation && html`<${PeopleHost} shown=${people} replaced=${browsing || filing} />`}
         <${Drawer} />
+        ${state.settings && html`<${Settings} />`}
         <${Sheets} />
         <${LauncherHost} />
         <${Notices} />
@@ -609,7 +616,7 @@ addEventListener("keydown", (event) => {
     // Settings, where apps keep them.
     if (mod && !event.altKey && !event.shiftKey && key === ",") {
         event.preventDefault();
-        openSheet({ type: "settings" });
+        openSettings();
 
         return;
     }

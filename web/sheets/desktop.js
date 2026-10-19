@@ -1,9 +1,10 @@
-// noid: the shared computer's desktop, for the owner: what it shows, refreshed while it is in view, and the owner's own
-// clicks and typing, which take it over from any bot for a while.
+// noid: the shared computer's desktop, for the owner, as a page in the conversation's place: what it shows, refreshed
+// while it is in view, and the owner's own clicks and typing, which take it over from any bot for a while.
 import { useRef, useState } from "preact/hooks";
 import { usePoll } from "../poll.js";
-import { api, attempt, closeSheet, store } from "../store.js";
-import { html, Sheet } from "../ui.js";
+import { api, attempt, store } from "../store.js";
+import { ToolFrame } from "../tool-page.js";
+import { html } from "../ui.js";
 import { onComputer } from "./terminal.js";
 
 const WIDTH = 1280;
@@ -12,7 +13,7 @@ const HEIGHT = 800;
 const EVERY_MS = 1500;
 const AFTER_FAILURE_MS = 6000;
 
-export function DesktopSheet() {
+export function DesktopPage() {
     const [shot, setShot] = useState(undefined);
     const [holder, setHolder] = useState(null);
     const [error, setError] = useState(undefined);
@@ -105,12 +106,14 @@ export function DesktopSheet() {
             setSaved(result.folder);
         });
 
-    return html`<${Sheet} title="Computer desktop" onClose=${closeSheet} wide>
-        <p class="muted small">
-            Programs with windows that bots run on the shared computer.
-            ${holder ? ` ${holder} is using it.` : " Nobody is using it."} A click or typing here
-            takes it over from any bot for two minutes.
-        </p>
+    return html`<${ToolFrame}
+        kind="desktop"
+        title="Desktop"
+        sub=${`${holder ? `${holder} is using it` : "Nobody is using it"} · a click or typing here takes it over for two minutes`}
+        actions=${html`<button class="button ghost small" onClick=${() => act({ action: "release" })}>
+            Give back
+        </button>`}
+    >
         ${error && html`<p class="muted small" role="status">${error.message}</p>`}
         ${
             teaching &&
@@ -205,9 +208,6 @@ export function DesktopSheet() {
             <button class="button" onClick=${type}>Type</button>
             <button class="button" onClick=${() => act({ action: "key", keys: "Return" })}>
                 Enter
-            </button>
-            <button class="button ghost" onClick=${() => act({ action: "release" })}>
-                Give back
             </button>
             ${
                 !teaching &&

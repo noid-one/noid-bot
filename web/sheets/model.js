@@ -1,6 +1,6 @@
 // The model picker: a menu over the model chip, searchable once there are many models; and the same menu for the model
 // and thinking level new sessions start with.
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useContext, useEffect, useRef, useState } from "preact/hooks";
 import { actions, attempt, closeSheet, openSheet, store } from "../store.js";
 import { useDragToClose } from "../gestures.js";
 import {
@@ -11,6 +11,7 @@ import {
     Icon,
     popAnchor,
     scrimPress,
+    SheetEmbed,
 } from "../ui.js";
 
 /** Models past this many get a search box in the picker. */
@@ -98,12 +99,14 @@ export function ModelPicker() {
     // Arrows scroll the list to the model they reach; the mouse does not, or the list would run away under it.
     const keyed = useRef(false);
     const agent = view.agent;
+    // noid: the default model as a page of Settings: the list in the page, not a menu over it.
+    const embedded = useContext(SheetEmbed) !== null;
 
     // On a phone, a swipe away from where it opens closes it, as a sheet's does.
     useDragToClose(box, {
         dir: anchor?.down ? "up" : "down",
         onClose: closeSheet,
-        enabled: BOTTOM_SHEETS.matches,
+        enabled: !embedded && BOTTOM_SHEETS.matches,
     });
     const owner = me?.role === "owner";
     const chosen = server?.defaultModel ?? null;
@@ -140,6 +143,10 @@ export function ModelPicker() {
         );
 
     useEffect(() => {
+        if (embedded) {
+            return;
+        }
+
         // The default's picker has no chip to open from: it stays in the middle.
         const place = () => setAnchor(forDefault ? null : modelAnchor());
         const onKey = (event) => event.key === "Escape" && closeSheet();
@@ -226,13 +233,9 @@ export function ModelPicker() {
         }
     };
 
-    return html`<div
-        class="overlay pop-overlay"
-        onMouseDown=${scrimPress(closeSheet)}
-    >
-        <section
-            class=${`pop-menu model-menu ${anchor ? (anchor.down ? "down" : "") : "free"}`}
-            style=${anchorStyle(anchor && { ...anchor, width: widthOf(anchor) })}
+    const menu = html`<section
+            class=${`pop-menu model-menu ${embedded ? "embedded" : anchor ? (anchor.down ? "down" : "") : "free"}`}
+            style=${embedded ? "" : anchorStyle(anchor && { ...anchor, width: widthOf(anchor) })}
             ref=${box}
             role="dialog"
             aria-modal="true"
@@ -393,6 +396,9 @@ export function ModelPicker() {
                             }
                         </div>`
             }
-        </section>
-    </div>`;
+        </section>`;
+
+    return embedded
+        ? menu
+        : html`<div class="overlay pop-overlay" onMouseDown=${scrimPress(closeSheet)}>${menu}</div>`;
 }

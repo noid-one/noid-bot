@@ -6,7 +6,6 @@ import { NotificationsSheet } from "./notify.js";
 import { ShareSheet } from "./share.js";
 import { AppearanceSheet } from "./sheets/appearance.js";
 import { AutoReviewSheet } from "./sheets/auto-review.js";
-import { DesktopSheet } from "./sheets/desktop.js";
 import { GroupsSheet } from "./sheets/groups.js";
 import { BotSheet } from "./sheets/bot.js";
 import { BranchPicker } from "./sheets/branch.js";
@@ -24,7 +23,6 @@ import {
 import { CwdSheet } from "./sheets/folder.js";
 import { MemorySheet } from "./sheets/memory.js";
 import { AccountSheet, MenuSheet, PlacesSheet } from "./sheets/menu.js";
-import { SettingsSheet } from "./sheets/settings.js";
 import { MessageSheet } from "./sheets/message.js";
 import { ModelPicker } from "./sheets/model.js";
 import { InviteSheet, PeopleSheet } from "./sheets/people.js";
@@ -35,7 +33,6 @@ import { SchedulesSheet } from "./sheets/schedules.js";
 import { SessionSheet } from "./sheets/session.js";
 import { ShortcutsSheet } from "./sheets/shortcuts.js";
 import { SpendSheet } from "./sheets/spend.js";
-import { TerminalSheet } from "./sheets/terminal.js";
 import { TextSheet } from "./sheets/text.js";
 import { ArtifactsSheet, ArtifactViewer, ImageViewer } from "./sheets/viewers.js";
 import { PiSessionSheet, PiSessionsSheet, piSessionsAvailable } from "./sheets/pi-sessions.js";
@@ -174,7 +171,7 @@ export function Sheets() {
     ${auth}`;
 }
 
-function sheetBody(sheet) {
+export function sheetBody(sheet) {
     const { view, me } = store.state;
     let body = null;
 
@@ -256,9 +253,6 @@ function sheetBody(sheet) {
             break;
         case "account":
             body = html`<${AccountSheet} />`;
-            break;
-        case "settings":
-            body = html`<${SettingsSheet} />`;
             break;
         case "session":
             body = store.state.sessions.some((each) => each.id === sheet.id)
@@ -352,12 +346,6 @@ function sheetBody(sheet) {
             break;
         case "groups":
             body = me?.role === "owner" ? html`<${GroupsSheet} />` : null;
-            break;
-        case "desktop":
-            body = me?.role === "owner" ? html`<${DesktopSheet} />` : null;
-            break;
-        case "terminal":
-            body = me?.role === "owner" ? html`<${TerminalSheet} cwd=${sheet.cwd} />` : null;
             break;
         case "instructions":
             body = html`<${TextSheet}

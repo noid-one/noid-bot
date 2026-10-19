@@ -22,6 +22,7 @@ import {
     collab,
     navigate,
     notify,
+    openSettings,
     openSheet,
     scoped,
     signOut,
@@ -267,7 +268,7 @@ function actionItems() {
             keywords: "preferences options",
             icon: "sliders",
             keys: "Mod ,",
-            run: () => openSheet({ type: "settings" }),
+            run: () => openSettings(),
         },
         session &&
             steer && {

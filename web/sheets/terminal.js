@@ -1,9 +1,11 @@
-// noid: a shell on the shared computer, for the owner. Output is read by long polling from an offset; input goes out in
-// order, one request at a time. Closing the sheet leaves the shell running: opening it again (or reloading) reads on
-// in the same shell, with what it showed. End shell stops it; one nobody reads for 10 minutes stops by itself.
+// noid: a shell on the shared computer, for the owner, as a page in the conversation's place. Output is read by long
+// polling from an offset; input goes out in order, one request at a time. Closing the page leaves the shell running:
+// opening it again (or reloading) reads on in the same shell, with what it showed. End shell stops it; one nobody
+// reads for 10 minutes stops by itself.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { api, closeSheet } from "../store.js";
-import { html, Sheet } from "../ui.js";
+import { api, closeTool, store } from "../store.js";
+import { ToolFrame } from "../tool-page.js";
+import { html, shortPath } from "../ui.js";
 
 const HOME = "/home/noid";
 /** The most input sent in one request: a long paste goes in pieces (the server takes up to 64K characters). */
@@ -38,7 +40,7 @@ const bytes = (base64) => Uint8Array.from(atob(base64), (char) => char.charCodeA
 const folderOf = (cwd) => (onComputer(cwd) ? cwd.replace(/\/+$/, "") : HOME);
 
 /** `cwd`: the folder on the computer to start in; the computer's home when it is elsewhere. */
-export function TerminalSheet({ cwd }) {
+export function TerminalPage({ cwd }) {
     const host = useRef(null);
     const shell = useRef(undefined);
     const [status, setStatus] = useState("Starting the computer…");
@@ -187,18 +189,22 @@ export function TerminalSheet({ cwd }) {
             void api(`terminals/${id}/close`, {}).catch(() => {});
         }
 
-        closeSheet();
+        closeTool();
     };
 
-    return html`<${Sheet} title="Computer terminal" onClose=${closeSheet} wide>
-        <p class="muted small">
-            A shell on the shared computer, in ${folder}. Bots work here too: what you change, they
-            see. Closing this keeps it running for a while; End shell stops it.
-        </p>
-        ${status && html`<p class="muted small" role="status">${status}</p>`}
+    return html`<${ToolFrame}
+        kind="terminal"
+        title="Terminal"
+        sub=${`${shortPath(folder, store.state.server?.home)} on the shared computer · bots see what you change`}
+        actions=${html`<button
+            class="button ghost small"
+            title="Stop this shell. Closing the page keeps it running for a while."
+            onClick=${end}
+        >
+            End shell
+        </button>`}
+    >
+        ${status && html`<p class="tool-status muted small" role="status">${status}</p>`}
         <div class="terminal-host" ref=${host}></div>
-        <div class="sheet-actions">
-            <button class="button" onClick=${end}>End shell</button>
-        </div>
     <//>`;
 }
