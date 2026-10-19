@@ -1,5 +1,5 @@
 // Bot faces (web/faces/): each id gives its own steady face, palettes stay readable, the body shape stays in its box,
-// the motion blinks, celebrates finished work once, and sleeps, and the SVG fallback draws the same face.
+// the motion blinks, looks around and spins at work, celebrates finished work once, and sleeps, and the SVG fallback draws the same face.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -19,9 +19,12 @@ type Pose = {
     dim: number;
     offset: number[];
     squash: number[];
+    tilt: number;
+    look: [number, number];
 };
 type Motion = {
     state: string;
+    gesture: string | undefined;
     setState: (state: string, now?: number) => void;
     step: (now: number, dt: number, pointer?: [number, number]) => Pose;
 };
@@ -36,6 +39,7 @@ type Params = {
 };
 type MotionModule = {
     DONE_SECONDS: number;
+    SPIN_SECONDS: number;
     createMotion: (traits: Traits, options?: { reducedMotion?: boolean }) => Motion;
 };
 type Svg = {
@@ -161,6 +165,56 @@ test("finished work is celebrated once, then the face is idle again", () => {
     face.setState("error", 10);
     face.setState("idle", 11);
     assert.equal(face.state, "idle");
+});
+
+test("at work a face reads, looks around, thinks, and spins, and a spin ends where it began", () => {
+    const face = motion.createMotion(params.traitsOf("Worker"));
+    const gestures = new Set<string>();
+    // Read through a call: an assertion on the getter would narrow it for the rest of the test.
+    const gesture = () => face.gesture;
+    let turned = 0;
+
+    face.setState("working", 0);
+    assert.equal(gesture(), "look", "work begins with a look around");
+
+    for (let frame = 0; frame < 120 * 30; frame++) {
+        const pose = face.step(frame / 30, 1 / 30);
+
+        gestures.add(gesture()!);
+        turned = Math.max(turned, Math.abs(pose.tilt));
+        assert.ok(Math.abs(pose.look[0]) <= 1 && Math.abs(pose.look[1]) <= 1, "eyes stay in");
+
+        if (gesture() !== "spin") {
+            assert.ok(Math.abs(pose.tilt) < 0.3, "only a spin turns it far");
+        }
+    }
+
+    assert.deepEqual([...gestures].sort(), ["look", "scan", "spin", "think"]);
+    assert.ok(turned > Math.PI, "it spun");
+
+    // Cut short mid-spin, it turns on to a whole turn and stands upright.
+    let now = 120;
+
+    while (gesture() !== "spin") {
+        now += 1 / 30;
+        face.step(now, 1 / 30);
+    }
+
+    for (const end = now + motion.SPIN_SECONDS / 2; now < end; now += 1 / 30) {
+        face.step(now, 1 / 30);
+    }
+
+    assert.ok(Math.abs(face.step(now, 1 / 30).tilt) > 1, "mid-spin");
+    face.setState("waiting", now);
+
+    let pose = face.step(now, 1 / 30);
+
+    for (let frame = 0; frame < 60; frame++) {
+        pose = face.step(now + frame / 30, 1 / 30);
+    }
+
+    assert.equal(gesture(), undefined);
+    assert.ok(Math.abs(pose.tilt) < 0.05, `upright again (${String(pose.tilt)})`);
 });
 
 test("asleep, the eyes close and the face dims; upset, the eyes droop", () => {

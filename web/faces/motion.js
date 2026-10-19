@@ -10,6 +10,21 @@ export const DONE_SECONDS = 1.8;
 /** How long one blink takes, in seconds. */
 const BLINK_SECONDS = 0.16;
 
+/** How long a spin at work takes, in seconds. */
+export const SPIN_SECONDS = 0.9;
+
+/**
+ * What a face does while its bot works, after Grok's: reads (its eyes scan a line), looks around (quick darts), thinks
+ * (eyes up to one side, a little squint), or spins once. Each is held a while, then another follows: `weight` is how
+ * often it is picked, `seconds` how long it lasts (a minimum and a spread).
+ */
+const WORK_GESTURES = {
+    scan: { weight: 3, seconds: [2, 1.5] },
+    look: { weight: 3, seconds: [1.6, 1.2] },
+    think: { weight: 2, seconds: [1.4, 1] },
+    spin: { weight: 1.5, seconds: [SPIN_SECONDS + 0.25, 0] },
+};
+
 /** Each state's resting pose: what the face eases toward. */
 const TARGETS = {
     idle: { open: 1, smile: 0, sad: 0, glow: 0, dim: 0, ripple: 1, rippleSpeed: 1 },
@@ -54,6 +69,33 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
     let spring = 0;
     let springSpeed = 0;
     let nextHop = 0;
+    // At work: the gesture, when it began and ends, its side (-1 or 1), and where a darting look is aimed.
+    let gesture = "look";
+    let gestureSince = 0;
+    let gestureEnds = 0;
+    let side = 1;
+    let dart = [0, 0];
+    let nextDart = 0;
+    let spin = 0;
+    let leaning = 0;
+
+    /** The next gesture at work, never the one just done: a face does not spin twice running. */
+    function nextGesture(now) {
+        const choices = Object.entries(WORK_GESTURES).filter(([name]) => name !== gesture);
+        let pick = random() * choices.reduce((sum, [, each]) => sum + each.weight, 0);
+        const [name, { seconds }] =
+            choices.find(([, each]) => (pick -= each.weight) < 0) ?? choices[0];
+
+        gesture = name;
+        gestureSince = now;
+        gestureEnds = now + between(seconds[0], seconds[1]);
+        side = random() < 0.5 ? -1 : 1;
+        nextDart = now;
+
+        if (name === "spin") {
+            boop(0.45);
+        }
+    }
 
     function setState(next, now = clock) {
         const known = next in TARGETS ? next : "idle";
@@ -68,6 +110,14 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
         state = celebrated;
         stateSince = now;
         nextHop = now;
+
+        // Work begins with a look around.
+        if (state === "working") {
+            gesture = "look";
+            gestureSince = now;
+            gestureEnds = now + between(1.2, 0.8);
+            nextDart = now;
+        }
 
         if (state === "done") {
             boop(0.9);
@@ -139,8 +189,6 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
             pose[key] = ease(pose[key], target[key], rate, dt);
         }
 
-        openLevel = ease(openLevel, target.open, 14, dt);
-
         pose.glowTone = GLOW_TONE[state];
         pose.time += dt * pose.rippleSpeed;
 
@@ -156,11 +204,46 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
         let tilt = 0;
         let lookTarget = [0, 0];
 
+        let open = target.open;
+
         if (state === "working") {
-            // A busy bob with its eyes scanning, as if reading.
-            height = 0.035 * Math.abs(Math.sin(now * 3.4));
-            tilt = 0.035 * Math.sin(now * 1.7);
-            lookTarget = [Math.sin(now * 1.9) * 0.85, -0.25 + 0.1 * Math.sin(now * 3.8)];
+            if (now >= gestureEnds) {
+                nextGesture(now);
+            }
+
+            const into = now - gestureSince;
+
+            // A busy bob under every gesture.
+            height = 0.03 * Math.abs(Math.sin(now * 3.4));
+
+            if (gesture === "scan") {
+                // Reading: eyes along a line and back, a little low.
+                tilt = 0.035 * Math.sin(now * 1.7);
+                lookTarget = [Math.sin(now * 1.9) * 0.85, -0.25 + 0.1 * Math.sin(now * 3.8)];
+            } else if (gesture === "look") {
+                // Looking around: quick darts, each held a moment.
+                if (now >= nextDart) {
+                    dart = [between(-0.95, 1.9), between(-0.6, 1.2)];
+                    nextDart = now + between(0.3, 0.35);
+                }
+
+                tilt = dart[0] * 0.05;
+                lookTarget = dart;
+            } else if (gesture === "think") {
+                // Thinking: eyes up to one side, head tipped, a little squint.
+                height = 0.012 * Math.sin(now * 2);
+                tilt = side * 0.09;
+                lookTarget = [side * 0.75, 0.8];
+                open *= 0.8;
+            } else {
+                // A spin: once around, eased in and out, with a hop at its top.
+                const progress = Math.min(1, into / SPIN_SECONDS);
+                const eased = progress * progress * (3 - 2 * progress);
+
+                spin = side * Math.PI * 2 * eased;
+                height = 0.08 * Math.sin(Math.PI * progress);
+                lookTarget = [side * 0.6, 0.1];
+            }
         } else if (state === "waiting") {
             // Looking at you, with a small hop every so often.
             lookTarget = [0, 0.25];
@@ -202,10 +285,14 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
             }
         }
 
+        // Darting eyes move fast; the rest drift.
+        const lookRate = state === "working" && gesture === "look" ? 24 : 10;
+
         pose.look = [
-            ease(pose.look[0], lookTarget[0], 10, dt),
-            ease(pose.look[1], lookTarget[1], 10, dt),
+            ease(pose.look[0], lookTarget[0], lookRate, dt),
+            ease(pose.look[1], lookTarget[1], lookRate, dt),
         ];
+        openLevel = ease(openLevel, open, 14, dt);
 
         // The spring: hops and boops settle with a little overshoot.
         springSpeed += (-60 * spring - 7 * springSpeed) * dt;
@@ -216,7 +303,16 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
 
         pose.offset = [0, height + Math.max(0, -spring) * 0.12 + breathe * 0.4];
         pose.squash = [1 + squeeze - breathe * 0.6, 1 - squeeze + breathe];
-        pose.tilt = ease(pose.tilt, tilt, 6, dt);
+
+        // A whole turn is no turn: a spin done ends where it began, and one cut short turns on to the nearest whole.
+        if (state !== "working" || gesture !== "spin") {
+            const whole = Math.round(spin / (Math.PI * 2)) * Math.PI * 2;
+
+            spin = Math.abs(spin - whole) < 0.01 ? 0 : ease(spin, whole, 8, dt);
+        }
+
+        leaning = ease(leaning, tilt, 6, dt);
+        pose.tilt = leaning + spin;
 
         const blink = blinkAmount(now);
 
@@ -228,6 +324,10 @@ export function createMotion(traits, { reducedMotion = false } = {}) {
     return {
         get state() {
             return state;
+        },
+        /** What it does at work (scan, look, think, spin), while it works. */
+        get gesture() {
+            return state === "working" ? gesture : undefined;
         },
         setState,
         boop,
