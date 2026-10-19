@@ -12612,6 +12612,23 @@ textarea.notes {
     margin-right: 4px;
 }
 
+/* On a phone the tool's actions go under its name, which keeps × beside it, rather than off the screen's edge. */
+@media (max-width: 699px) {
+    .tool-head {
+        flex-wrap: wrap;
+        gap: 6px 8px;
+        padding-bottom: 8px;
+    }
+
+    .tool-head .board-title {
+        flex-basis: calc(100% - 60px);
+    }
+
+    .tool-head > :not(.board-title, [aria-label="Close"]) {
+        order: 1;
+    }
+}
+
 .place {
     display: flex;
     flex-direction: column;
@@ -15490,4 +15507,30 @@ pre.gallery-code {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+/* Recording a skill: a red dot, as a recorder's, that pulses while it records. */
+.record-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--err);
+}
+
+.recording .record-dot {
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+.recording {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--err);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .recording .record-dot {
+        animation: none;
+    }
 }

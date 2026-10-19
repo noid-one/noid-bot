@@ -384,6 +384,25 @@ export function DesktopPage() {
                 ${program.label}
             </button>`,
         )}
+        ${
+            teaching
+                ? html`<span class="recording small" role="status">
+                      <span class="record-dot" aria-hidden="true"></span>
+                      Recording · ${teaching.steps} step${teaching.steps === 1 ? "" : "s"}
+                  </span>`
+                : html`<button
+                      class="button ghost small"
+                      title="Do a task here and keep it as a skill the bots can repeat"
+                      aria-expanded=${lesson !== undefined}
+                      onClick=${() =>
+                          setLesson(
+                              lesson === undefined ? { name: "", goal: "", bot: "" } : undefined,
+                          )}
+                  >
+                      <span class="record-dot" aria-hidden="true"></span>
+                      Record a skill
+                  </button>`
+        }
         <button
             class="button ghost small"
             title="Let the bots have it again; what you opened closes"
@@ -397,14 +416,13 @@ export function DesktopPage() {
             teaching &&
             html`<div class="row teach-banner">
                 <span class="grow small">
-                    Showing “${teaching.name}”: ${teaching.steps} step${teaching.steps === 1 ? "" : "s"} so far.
-                    What you do here is kept, and the screen before and after is saved with the skill:
-                    close anything private before you save.
+                    Recording “${teaching.name}”. What you do on the screen is kept, and how it looked before
+                    and after is saved with the skill: close anything private before you save.
                 </span>
                 <button class="button primary small" onClick=${() => finish(true)}>
-                    Save as a skill
+                    Stop and save
                 </button>
-                <button class="button ghost small" onClick=${() => finish(false)}>Drop it</button>
+                <button class="button ghost small" onClick=${() => finish(false)}>Discard</button>
             </div>`
         }
         ${
@@ -438,7 +456,7 @@ export function DesktopPage() {
                         disabled=${lesson.name.trim() === "" || lesson.goal.trim() === ""}
                         onClick=${begin}
                     >
-                        Start showing
+                        Start recording
                     </button>
                     <button class="button ghost" onClick=${() => setLesson(undefined)}>Cancel</button>
                 </div>
@@ -524,16 +542,6 @@ export function DesktopPage() {
                     />
                     What I type is secret
                 </label>`
-            }
-            ${
-                !teaching &&
-                lesson === undefined &&
-                html`<button
-                    class="button ghost"
-                    onClick=${() => setLesson({ name: "", goal: "", bot: "" })}
-                >
-                    Teach a skill
-                </button>`
             }
         </div>
     <//>`;
