@@ -1,6 +1,7 @@
 /**
  * The scripted model for the shared computer's tests: "run COMMAND" calls bash, and a tool result is answered with
- * its text, so the transcript shows what the tool saw. "prompt has WORD" says whether WORD is in the system prompt.
+ * its text, so the transcript shows what the tool saw. "prompt has WORD" says whether WORD is in the system prompt, and
+ * "desk {json}" uses the desktop.
  */
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -23,6 +24,13 @@ export const route: FauxResponseStep = (request) => {
         const given = JSON.stringify({ systemPrompt, messages: messages.slice(0, -1) });
 
         return fauxAssistantMessage([fauxText(`has ${word}: ${given.includes(word)}`)]);
+    }
+
+    // "desk {json}" uses the desktop tool with those arguments.
+    if (text.startsWith("desk ")) {
+        return fauxAssistantMessage([fauxToolCall("desktop", JSON.parse(text.slice(5)))], {
+            stopReason: "toolUse",
+        });
     }
 
     if (text.startsWith("run ")) {

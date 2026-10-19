@@ -15082,3 +15082,13 @@ pre.gallery-code {
     border-radius: var(--r-row);
     background: var(--bg);
 }
+
+.desktop-shot {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1280 / 800;
+    margin: 8px 0;
+    border-radius: var(--r-row);
+    background: var(--bg);
+    cursor: crosshair;
+}

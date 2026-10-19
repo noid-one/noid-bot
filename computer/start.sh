@@ -3,5 +3,8 @@
 mkdir -p "$HOME/bots" "$HOME/shared" "$HOME/.local/bin"
 # /tmp survives `docker restart`: a display that stopped hard leaves its lock, and Xvfb would refuse to start.
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+rm -f /tmp/.X100-lock /tmp/.X11-unix/X100
 Xvfb :99 -screen 0 3840x2160x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+# The desktop: a display of its own for programs with windows, so they never cover a bot's browser window.
+Xvfb :100 -screen 0 1280x800x24 -nolisten tcp >/tmp/xvfb-desktop.log 2>&1 &
 exec sleep infinity

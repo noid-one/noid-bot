@@ -455,7 +455,23 @@ test("someone other than the owner reaches only the session's folder, links incl
 
 // ─── The Computer's lifecycle, with a fake docker ───────────────────────────────────────────
 
-/** A docker that remembers what it was asked, with a container in `state` and an image present or not. */
+test("a computer made from an older image is made again when it next starts, never while running", async () => {
+    const old = fakeDocker({ state: "stopped", image: true, made: "noid-computer:1" });
+
+    await new Computer({}, old.docker).start();
+    assert.ok(old.calls.includes("rm noid-computer"));
+    assert.ok(
+        old.calls.some((call) => call.startsWith("run")),
+        "made again",
+    );
+    assert.ok(old.calls.includes("image rm"), "the old image is removed");
+
+    const busy = fakeDocker({ state: "running", image: true, made: "noid-computer:1" });
+
+    await new Computer({}, busy.docker).start();
+    assert.deepEqual(busy.calls, ["inspect --type"], "a running one is left alone");
+});
+
 test("a computer on another machine: every docker command names its engine", async () => {
     const engines = new Set<string>();
     const inner = fakeDocker({ state: "stopped", image: true });
@@ -476,9 +492,16 @@ test("a computer on another machine: every docker command names its engine", asy
     assert.ok(inner.calls.some((call) => call.startsWith("stop")));
 });
 
-function fakeDocker(initial: { state: "missing" | "stopped" | "running"; image: boolean }) {
+/** A docker that remembers what it was asked, with a container in `state` and an image present or not. */
+function fakeDocker(initial: {
+    state: "missing" | "stopped" | "running";
+    image: boolean;
+    /** The image the container was made from. */
+    made?: string;
+}) {
     const calls: string[] = [];
     let { state, image } = initial;
+    const made = initial.made ?? new Computer({}, async () => "").image;
 
     const docker: Docker = async (args) => {
         calls.push(args.slice(0, 2).join(" "));
@@ -489,7 +512,15 @@ function fakeDocker(initial: { state: "missing" | "stopped" | "running"; image: 
                 throw new Error("No such container");
             }
 
+            if (args.includes("{{.Config.Image}}")) {
+                return made;
+            }
+
             return state === "running" ? "true" : "false";
+        }
+
+        if (args[0] === "rm") {
+            state = "missing";
         }
 
         if (args[0] === "image") {

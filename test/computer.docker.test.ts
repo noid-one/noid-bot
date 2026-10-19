@@ -402,3 +402,59 @@ test("skills every bot shares, and git, work on the real computer", { skip }, as
     );
     assert.match(await app!.workspace.changeDiff(id, owner(app!), "note.txt"), /^\+hi$/m);
 });
+
+test(
+    "a bot drives a program on the desktop, one bot at a time, and the owner watches",
+    { skip },
+    async () => {
+        const make = async (name: string) => {
+            const { id } = await app!.bots.create(owner(app!), {
+                name: `${name}-${run}`,
+                kind: "computer",
+            });
+
+            await app!.commands.configure(id, owner(app!), {
+                model: { provider: "faux", modelId: "faux-1" },
+                thinkingLevel: "off",
+            });
+
+            return id;
+        };
+
+        const painter = await make("Painter");
+        const sculptor = await make("Sculptor");
+        const mark = `desk-ok-${run}`;
+
+        // A run cut short earlier may have left one open.
+        await onComputer(`pkill -x xterm; rm -f /tmp/${mark}; true`);
+        await say(app!, painter, 'desk {"action":"open","command":"xterm -geometry 80x24+0+0"}');
+        assert.match(await answer(painter), /Did open\. Take a screenshot/);
+        await say(app!, painter, 'desk {"action":"screenshot"}');
+        assert.match(await answer(painter), /The desktop, 1280×800/);
+        await say(app!, painter, 'desk {"action":"click","x":100,"y":100}');
+        await say(app!, painter, `desk {"action":"type","text":"echo ok > /tmp/${mark}"}`);
+        await say(app!, painter, 'desk {"action":"key","keys":"Return"}');
+        await until(
+            async () => (await onComputer(`cat /tmp/${mark} 2>/dev/null || true`)).trim() === "ok",
+            "the typed command to run in xterm",
+        );
+
+        // xterm stayed open across Painter's turns (each run ended). While Painter holds it, Sculptor may look, not act.
+        app!.desktop.lease.take({ id: String(painter), name: `Painter-${run}` });
+        await say(app!, sculptor, 'desk {"action":"screenshot"}');
+        assert.match(await answer(sculptor), new RegExp(`\\(Painter-${run} is using it\\)`));
+        await say(app!, sculptor, 'desk {"action":"click","x":5,"y":5}');
+        assert.match(await answer(sculptor), new RegExp(`Painter-${run} is using the desktop now`));
+
+        const view = await app!.desktop.view(owner(app!));
+
+        assert.ok(view.image.startsWith("iVBORw0KGgo"), "a PNG");
+        // Released, what Painter opened closes.
+        await say(app!, painter, 'desk {"action":"release"}');
+        await until(
+            async () => (await onComputer("pgrep -x xterm || true")).trim() === "",
+            "Painter's xterm to close",
+        );
+        await onComputer(`rm -f /tmp/${mark}`);
+    },
+);

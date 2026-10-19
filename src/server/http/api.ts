@@ -499,6 +499,28 @@ export function createApi(options: HttpOptions, auth: Auth) {
             });
         }
 
+        // noid: the computer's desktop, which the owner watches and can take over.
+        if (first === "desktop" && second === undefined && method === "GET") {
+            return json(response, 200, await app.desktop.view(user));
+        }
+
+        // The owner restarts the computer: what it runs stops, and an older image is replaced.
+        if (first === "computer" && second === "restart" && method === "POST") {
+            if (user.role !== "owner") {
+                throw new HttpError(403, "Only the owner can restart the computer.");
+            }
+
+            await app.computer.restart();
+
+            return json(response, 200, { ok: true });
+        }
+
+        if (first === "desktop" && second === "input" && method === "POST") {
+            await app.desktop.act(user, await readJson<Record<string, unknown>>(request));
+
+            return json(response, 200, { ok: true });
+        }
+
         // noid: the owner's terminals on the shared computer. Output is read by long polling from an offset.
         if (first === "terminals" && second === undefined) {
             return method === "POST"

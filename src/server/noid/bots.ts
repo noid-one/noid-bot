@@ -295,11 +295,15 @@ export class Bots {
         return (await this.create(owner, NOID_REQUEST)).id;
     }
 
-    /** A bot's own tools: mail for every bot, and the overseer's for Noid. */
+    /** A bot's own tools: mail for every bot, the overseer's for Noid, and the desktop for bots on the computer. */
     #toolsOf(bot: BotProfile) {
         const mail = this.#app.botMail;
 
-        return bot.main === true ? [mail.extension, mail.overseer] : [mail.extension];
+        return [
+            mail.extension,
+            ...(bot.main === true ? [mail.overseer] : []),
+            ...(bot.kind === "computer" ? [this.#app.desktop.extension] : []),
+        ];
     }
 
     /**

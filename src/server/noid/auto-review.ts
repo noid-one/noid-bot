@@ -72,7 +72,11 @@ const NOT_CHECKED = new Set([
  * address, the way a page's injected text sends what a bot read out (`navigate` to a URL carrying it).
  */
 export function consequential(tool: string, args: Record<string, unknown>, readOnly: boolean) {
-    if (NOT_CHECKED.has(tool)) {
+    // Looking at the desktop, or letting it go, changes nothing.
+    if (
+        NOT_CHECKED.has(tool) ||
+        (tool === "desktop" && (args.action === "screenshot" || args.action === "release"))
+    ) {
         return false;
     }
 

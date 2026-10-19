@@ -15,9 +15,10 @@ import {
 } from "@earendil-works/pi-durable/env";
 import { Connection, packagedDaemon, RemoteExecutionEnv } from "@earendil-works/pi-env";
 import { type ChildProcess, spawn } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join, posix, relative } from "node:path";
 import { APP_ROOT } from "../config.ts";
 
 /** The computer's home inside the container. A session works on the computer when its folder is under it. */
@@ -115,6 +116,39 @@ const BROWSER_FLAGS = [
     "--window-size=1280,800",
 ];
 
+/** A short hash of what the image is built from: the files of `computer/`, and pi-env's daemon (which goes in). */
+export function imageTag(buildContext: string): string {
+    const hash = createHash("sha256");
+
+    const add = (folder: string) => {
+        for (const name of readdirSync(folder).sort()) {
+            const path = join(folder, name);
+
+            if (statSync(path).isDirectory()) {
+                add(path);
+            } else {
+                hash.update(`${relative(buildContext, path)}\0`).update(readFileSync(path));
+            }
+        }
+    };
+
+    try {
+        add(buildContext);
+    } catch {
+        // No build folder (a test's): the tag says only which daemon.
+    }
+
+    try {
+        hash.update(
+            `pi-env ${statSync(packagedDaemon({ platform: "linux", arch: process.arch === "arm64" ? "arm64" : "x64" })).size}`,
+        );
+    } catch {
+        // No daemon for this machine: the build would say so.
+    }
+
+    return hash.digest("hex").slice(0, 12);
+}
+
 /** A folder as noid keeps it: absolute, `..` and `.` resolved, no slash at the end. */
 export function normalFolder(cwd: string): string {
     const normal = posix.normalize(cwd.trim());
@@ -170,10 +204,12 @@ export class Computer {
         this.#docker = (args, input) => run([...this.#hostArgs, ...args], input);
         this.container = options.container ?? "noid-computer";
         this.volume = options.volume ?? "noid-computer-home";
-        this.image = options.image ?? "noid-computer:1";
+        this.#buildContext = options.buildContext ?? join(APP_ROOT, "computer");
+        // Tagged by what it is built from: a change to computer/ (or to pi-env's daemon) is a new image, and a container
+        // made from an older one is made again at its next start.
+        this.image = options.image ?? `noid-computer:${imageTag(this.#buildContext)}`;
         this.#idleMs = options.idleMs ?? 15 * 60_000;
         this.#now = options.now ?? Date.now;
-        this.#buildContext = options.buildContext ?? join(APP_ROOT, "computer");
         this.#log = options.log ?? (() => {});
         this.#lastActive = this.#now();
         this.connection = new Connection({
@@ -274,6 +310,20 @@ export class Computer {
         return made;
     }
 
+    /** The image the container was made from. */
+    async #containerImage(): Promise<string> {
+        return (
+            await this.#docker([
+                "inspect",
+                "--type",
+                "container",
+                "--format",
+                "{{.Config.Image}}",
+                this.container,
+            ])
+        ).trim();
+    }
+
     async state(): Promise<ComputerState> {
         try {
             const running = await this.#docker([
@@ -303,11 +353,26 @@ export class Computer {
                 return;
             }
 
-            if (state === "stopped") {
-                this.#log(`starting ${this.container}`);
-                await this.#docker(["start", this.container]);
+            let replaced: string | undefined;
 
-                return;
+            if (state === "stopped") {
+                // Made from an older image: made again from this one (its home is a volume, and stays). One still
+                // running moves to the new image the next time it stops, rather than cut off work under way.
+                const old = await this.#containerImage();
+
+                if (old === this.image) {
+                    this.#log(`starting ${this.container}`);
+                    await this.#docker(["start", this.container]);
+
+                    return;
+                }
+
+                // What was installed outside its home goes with the old container: bots install into ~/.local.
+                this.#log(
+                    `replacing ${this.container}: it was made from ${old}, not ${this.image}`,
+                );
+                await this.#docker(["rm", this.container]);
+                replaced = old;
             }
 
             if (!(await this.#imageExists())) {
@@ -328,6 +393,13 @@ export class Computer {
                 `${this.volume}:${COMPUTER_HOME}`,
                 this.image,
             ]);
+
+            // The old image takes gigabytes and nothing uses it now (one still in use stays, and says so).
+            if (replaced !== undefined) {
+                await this.#docker(["image", "rm", replaced]).catch((error: unknown) =>
+                    this.#log(`kept ${replaced}: ${toError(error).message}`),
+                );
+            }
         })().finally(() => {
             this.#starting = undefined;
         });
@@ -445,6 +517,12 @@ export class Computer {
         this.#made.delete(folder);
 
         return this.#make(folder);
+    }
+
+    /** Stop the computer and start it again: what it runs stops, and an older image is replaced. */
+    async restart(): Promise<void> {
+        await this.stop();
+        await this.start();
     }
 
     /** Keep the computer from stopping while something outside a tool call uses it (a browser window being watched). */

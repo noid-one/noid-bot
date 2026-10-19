@@ -419,6 +419,14 @@ export function MenuSheet({ places = true }) {
             ${
                 me?.role === "owner" &&
                 item(
+                    "Computer desktop",
+                    () => openSheet({ type: "desktop" }),
+                    "what bots' programs show",
+                )
+            }
+            ${
+                me?.role === "owner" &&
+                item(
                     "Computer terminal",
                     () => openSheet({ type: "terminal", cwd: view.agent?.cwd }),
                     onComputer(view.agent?.cwd) ? "in this folder" : "a shell on the computer",

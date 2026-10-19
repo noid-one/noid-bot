@@ -87,6 +87,7 @@ import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.
 import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
+import { Desktop, DESKTOP_EXTENSION } from "./noid/desktop.ts";
 import { Terminals } from "./noid/terminal.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
@@ -346,6 +347,8 @@ export class PocketApp {
         idleMs: idleMinutes() * 60_000,
         log: (message) => this.#log(`computer: ${message}`),
     });
+    /** The shared computer's desktop, and the lease of its one mouse. */
+    readonly desktop = new Desktop(this);
     /** The owner's shells on the shared computer. */
     readonly terminals = new Terminals(this.computer);
     #stopIdleWatch: () => void = () => {};
@@ -562,6 +565,7 @@ export class PocketApp {
         // noid: bots' own tools, which bots select (`Bots.create`) and other conversations do not.
         registry.install(this.botMail.extension);
         registry.install(this.botMail.overseer);
+        registry.install(this.desktop.extension);
         // Durable work of the app itself, whatever extension modules are on.
         registry.install(
             defineExtension({
@@ -889,6 +893,7 @@ export class PocketApp {
 
                 if (!busy) {
                     this.workspace.runEnded(id);
+                    this.desktop.runEnded(id);
                 }
 
                 if (!busy) {
@@ -1023,7 +1028,8 @@ export class PocketApp {
                         (extension) =>
                             extension.name !== PIP_EXTENSION &&
                             extension.name !== BOT_MAIL_EXTENSION &&
-                            extension.name !== OVERSEER_EXTENSION,
+                            extension.name !== OVERSEER_EXTENSION &&
+                            extension.name !== DESKTOP_EXTENSION,
                     );
             },
             get stream() {

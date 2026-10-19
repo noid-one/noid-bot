@@ -3,12 +3,15 @@
 #
 # Adapted from rakazo's infra/sandboxes/computer/Dockerfile (Apache-2.0, see LICENSE-rakazo): its tool set, the pinned
 # and checksummed uv and gh downloads, the UTF-8 locale, uv's folders in the home, and restoring ~/.local/bin on PATH.
-# Changed for noid: no VNC/noVNC stack, screen capture library, or fluxbox (the browser is driven over CDP); tini as
+# Changed for noid: no VNC/noVNC stack or fluxbox (the browser is driven over CDP; the desktop by xdotool and scrot); tini as
 # PID 1 so finished processes are reaped; pi-env's daemon (put beside this file by the build) at /opt/pi-env/pi-env.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     xvfb \
+    xdotool \
+    scrot \
+    xterm \
     chromium \
     fonts-liberation \
     fonts-dejavu-core \
