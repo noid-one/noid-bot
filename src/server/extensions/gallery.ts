@@ -1,7 +1,7 @@
 /**
  * The extension gallery: find drop-ins and themes other people wrote in a reviewed index, install them (drop-ins off),
  * read their code, update them with a diff, remove them, and share your own. Its routes are the
- * owner's alone; the web app shows it in Menu → Extensions and as the launcher's Find extensions (`gallery.ts` does the
+ * owner's alone; the web app shows it in Settings → Extensions and as the launcher's Find extensions (`gallery.ts` does the
  * work).
  */
 import { defineExtension } from "@earendil-works/pi-durable";
@@ -28,7 +28,10 @@ export default function createGallery(host: PocketHost, web: ExtensionWeb) {
     if (gallery === undefined) {
         // A server from before the gallery: its next start has it.
         web.route("GET", "index", () => {
-            throw web.error(503, "Restart the server (menu → Restart server) to use the gallery");
+            throw web.error(
+                503,
+                "Restart the server (Settings → Restart server) to use the gallery",
+            );
         });
 
         return defineExtension({ name: "pocket-gallery" });

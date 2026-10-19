@@ -96,7 +96,7 @@ subagentModels(): readonly string[];
 
 Since 0.13.1 · Stable
 
-The models that the owner lets subagents use, as `provider/modelId`. A subagent can always use the model of its own session. The list is empty by default. The owner sets it in Menu → Providers → Models for subagents.
+The models that the owner lets subagents use, as `provider/modelId`. A subagent can always use the model of its own session. The list is empty by default. The owner sets it in Settings → Providers → Models for subagents.
 
 ### `modelProblem`
 

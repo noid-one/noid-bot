@@ -264,7 +264,7 @@ export default function createSessionTools(host: PocketHost) {
             // A server started before bots could find checkouts would start in the default folder instead.
             if (args.repo !== undefined && !github) {
                 throw new Error(
-                    "Starting a session from a repository needs a restart of the server (menu → Restart server); give a folder meanwhile.",
+                    "Starting a session from a repository needs a restart of the server (Settings → Restart server); give a folder meanwhile.",
                 );
             }
 
@@ -546,7 +546,7 @@ export default function createSessionTools(host: PocketHost) {
             anyone: Type.Optional(
                 Type.Boolean({
                     description:
-                        "Not yours to set: by default issues and pull requests come only from the repository's owner, and organization members and collaborators who can write to it. Only your person can let in anyone's, in Menu → Webhooks and watches; when they ask for it, make the watch without this and tell them so.",
+                        "Not yours to set: by default issues and pull requests come only from the repository's owner, and organization members and collaborators who can write to it. Only your person can let in anyone's, in Settings → Webhooks and watches; when they ask for it, make the watch without this and tell them so.",
                 }),
             ),
             to: Type.Optional(
@@ -598,7 +598,7 @@ export default function createSessionTools(host: PocketHost) {
             // Letting strangers' words in stays a person's choice.
             if (args.anyone === true) {
                 throw new Error(
-                    "You cannot set anyone: make the watch without it, then ask your person to turn on “from anyone” for it in Menu → Webhooks and watches.",
+                    "You cannot set anyone: make the watch without it, then ask your person to turn on “from anyone” for it in Settings → Webhooks and watches.",
                 );
             }
 

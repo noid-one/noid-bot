@@ -408,7 +408,7 @@ const COMMANDS = [
         description: "Sign in to a model provider",
         run: () => openSheet({ type: "providers" }),
     },
-    { name: "settings", description: "Open the menu", run: () => openSheet({ type: "menu" }) },
+    { name: "settings", description: "Open Settings", run: () => openSheet({ type: "settings" }) },
     {
         name: "trust",
         description: "Whether Pi trusts this project, for its own skills",

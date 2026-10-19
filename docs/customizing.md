@@ -4,7 +4,7 @@ Most changes that people ask for need no code: "always use pnpm", "review the wa
 
 ## Instructions for one session
 
-Use Menu → **Instructions for Pi**, or `/instructions use pnpm, not npm`.
+Use ⋯ → **Instructions**, or `/instructions use pnpm, not npm`.
 
 - Pi gets the instructions with each message in that session, after the rest of the system prompt.
 - All the people in the session see them.
@@ -40,7 +40,7 @@ When two skills have the same name, the project's skill wins. See Pi's `skills.m
 A project's `.agents/skills/` load only in a project that Pi trusts.
 
 - When a session's project has such skills and nobody decided about the project, Pi Pocket asks its owner above the message box.
-- `/trust`, or Menu → **Project trust**, shows the answer and changes it.
+- `/trust`, or ⋯ → **Project trust**, shows the answer and changes it.
 - The answer goes where Pi's CLI keeps its own (`~/.pi/agent/trust.json`). So each app uses what was decided in the other. In the CLI, trust also loads the project's `.pi` settings, extensions, and packages.
 - `"defaultProjectTrust": "always"` (or `"never"`) in `~/.pi/agent/settings.json` answers for each project that nobody decided about.
 - The CLI also asks before a project's `.pi/skills/`. Pi Pocket loads those until you answer "Don't trust", or until `defaultProjectTrust` is `"never"`. Then it leaves them out too.
@@ -54,7 +54,7 @@ Use a template for a message that people send often. Use a skill for steps that 
 
 ## Models and providers
 
-People sign in to providers in Menu → **Providers**, and pick a model for each session with the model chip in the message box. Pi Pocket uses Pi's sign-ins (`~/.pi/agent/auth.json`) and Pi's list of models. To add a model or a provider that Pi does not know, follow Pi's `models.md` and `custom-provider.md`.
+People sign in to providers in Settings → **Providers**, and pick a model for each session with the model chip in the message box. Pi Pocket uses Pi's sign-ins (`~/.pi/agent/auth.json`) and Pi's list of models. To add a model or a provider that Pi does not know, follow Pi's `models.md` and `custom-provider.md`.
 
 Models are the person's choice, never Pi's:
 
@@ -65,7 +65,7 @@ Instructions, skills, and `AGENTS.md` cannot change this. Tell the person where 
 
 ## Project model defaults for new sessions
 
-Menu → **Default model** sets the owner's model and thinking level for the whole app. This always wins. To use project defaults, open that menu and choose **Clear owner default: use project defaults, then last picked**.
+Settings → **Default model** sets the owner's model and thinking level for the whole app. This always wins. To use project defaults, open that menu and choose **Clear owner default: use project defaults, then last picked**.
 
 In the session folder's `.pi/settings.json`, set both `defaultProvider` and `defaultModel`. You can also set `defaultThinkingLevel`; without it, the level is `off`. For example:
 
@@ -82,7 +82,7 @@ Use a provider and model ID that Pi's list of models knows. Pi Pocket limits thi
 Project defaults need trust:
 
 - Each project with a `.pi/settings.json` can ask, also when it has no model keys. The same decision controls what Pi's terminal app loads.
-- A project with only settings asks the owner above the message box. **Review**, or Menu → **Project trust**, explains the choice.
+- A project with only settings asks the owner above the message box. **Review**, or ⋯ → **Project trust**, explains the choice.
 - Until the owner trusts the project, the usual order applies.
 - After trust, only new sessions use project defaults: the open session does not change.
 - No project setting can trust its own project. The decision is shared with Pi's terminal app. Pi Pocket reads `defaultProjectTrust` only from Pi's global settings.
@@ -108,8 +108,8 @@ These are in the app, not in files. Tell the person where they are. Do not chang
 
 - **Done when** (`/until npm test`): Pi continues until a check passes.
 - **Scheduled messages** (`/schedule in 2h check the deploy`): a message to Pi later, or again and again. Pi has a `schedule` tool for its own messages.
-- **Extensions** (Menu → Extensions, for the owner): turn on or off the browser, subagents, codemode, Lancet Guard, a drop-in, and the rest, for all sessions.
-- **Lancet Guard and approvals** (Menu → Extensions): when the guard is on, risky commands wait for a person to allow them. "Approvals need someone else" makes that person another than the one who asked.
+- **Extensions** (Settings → Extensions, for the owner): turn on or off the browser, subagents, codemode, Lancet Guard, a drop-in, and the rest, for all sessions.
+- **Lancet Guard and approvals** (Settings → Extensions): when the guard is on, risky commands wait for a person to allow them. "Approvals need someone else" makes that person another than the one who asked.
 
 See [features.md](features.md) for each of them.
 

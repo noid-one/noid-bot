@@ -250,7 +250,7 @@ export function TrustSheet() {
         ${
             info.settings &&
             html`<p>
-                In .pi/settings.json: model and thinking defaults apply only to later new sessions, after trust. This session will not change. The owner's Default model still wins; clear it in Menu → Default model to use project defaults. No project setting can grant trust to itself. Extra skill and prompt paths and per-project run policy are not supported yet.
+                In .pi/settings.json: model and thinking defaults apply only to later new sessions, after trust. This session will not change. The owner's Default model still wins; clear it in Settings → Default model to use project defaults. No project setting can grant trust to itself. Extra skill and prompt paths and per-project run policy are not supported yet.
             </p>`
         }
         <p class="muted small">

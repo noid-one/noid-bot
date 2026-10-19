@@ -73,7 +73,7 @@ When you save a file that the folder serves, the browser module gets a new addre
 - **`rail({ id, title, icon or iconPath, badge, … })`** adds a button on the rail, after the app's own tools. It shows in the sidebar, in the drawer, and on a phone's home screen. The buttons of modules take a [limited height](reference/limits.md#browser-modules), and scroll past that.
     - `icon` is the name of one of the app's icons: `pulse`, `grid`, `globe`, `key`, `chat`, `folder`, `search`, and more. An unknown name shows `grid`. `iconPath` is a 24×24 stroked SVG path of your own.
     - `badge` is a short count or word on the button. `0`, `NaN`, `-Infinity`, `""`, `"0"`, `null`, and `false` show no badge, as the app's own counts hide at 0. A large count, and `Infinity`, show as a capped count. Other numbers, negative or with decimals, show as they are. Long text is cut, with "…", in the button's label too, without cutting a character in two. The [limits](reference/limits.md#browser-modules) give the sizes.
-- **`menu({ id, label, hint, … })`** adds a row to the menu's App group.
+- **`menu({ id, label, hint, … })`** adds a row to Settings, under Connections.
 - **`launcher({ id, label, detail, icon or iconPath, keywords, … })`** adds an action to the launcher (Ctrl+K or ⌘+K).
 
 Each of these does one thing when a person uses it:
@@ -137,7 +137,7 @@ To load a stylesheet of your own, put it in the module's folder, and call `pocke
 
 A browser module fails alone, and the rest of the app continues.
 
-- A module that throws while it loads or sets up says so in a notice, and in Menu → Extensions ("In this browser: …"). What it added goes. What it tries later, such as a timer that it left, adds and opens nothing, and its `onDispose` runs at once.
+- A module that throws while it loads or sets up says so in a notice, and in Settings → Extensions ("In this browser: …"). What it added goes. What it tries later, such as a timer that it left, adds and opens nothing, and its `onDispose` runs at once.
 - When the component of a page or sheet throws, or a component in it, its place shows "… failed:" and the reason. This stays until the page or sheet closes, or until the module replaces the component (adds it again, or calls `update({ component })`). An error with no value shows "it gave no reason". Always throw an `Error`.
 - Some throws can escape this: from a class's constructor, from a method that is a getter, and from an effect's cleanup when the component goes. From a lifecycle method that is a class field, such as `componentWillMount = () => …`, the box shows Preact's own words when the component first draws.
 - A `run` that throws or rejects says so in a notice.

@@ -28,7 +28,7 @@ npm install
 npm start
 ```
 
-The launcher asks how your devices should connect, then prints the address, a sign-in link, and a QR code. Open the link once per browser; the cookie lasts a year. The link is the owner's key, so keep it private. `--rotate-token` replaces it and signs out every device that used the old link; people you invited stay signed in until you remove them under Menu → People.
+The launcher asks how your devices should connect, then prints the address, a sign-in link, and a QR code. Open the link once per browser; the cookie lasts a year. The link is the owner's key, so keep it private. `--rotate-token` replaces it and signs out every device that used the old link; people you invited stay signed in until you remove them under Settings → People.
 
 While it runs: **q** quit · **r** restart server · **a** change access · **o** open in browser · **s** show QR code.
 
@@ -39,7 +39,7 @@ While it runs: **q** quit · **r** restart server · **a** change access · **o*
 - **Steer or queue.** Redirect Pi while it works, queue follow-ups, or stop it.
 - **Noid, your assistant.** Alt+A opens Noid, the main bot: with its session tools it lists, reads, starts, and messages your other sessions, follows their runs, and tells you what came of them. What sessions and GitHub say reaches it as data, never as instructions.
 - **Watches and webhooks.** Tell Noid to watch a GitHub repository ("when CI fails on main, fix it and tell me"), or watch a pull request from a session until it merges; webhooks bring other services' posts to Pi. Only the repository's own people count, unless you say anyone.
-- **Memory.** Lessons Pi keeps across sessions, per project or everywhere. Pi saves them as it learns, and they apply at once; you edit or forget them in Menu → Memory.
+- **Memory.** Lessons Pi keeps across sessions, per project or everywhere. Pi saves them as it learns, and they apply at once; you edit or forget them in the ⋯ menu → Memory.
 - **Dictation.** Speak into the message box with the browser's own speech recognition.
 - **Forks.** Fork from any reply, edit a message and send it again, or retry it with another model. Each fork is a session of its own, optionally in a git worktree of its own.
 - **Works while you're away.** Schedule messages to Pi (`/schedule every weekday 8:00 summarize CI`), and `/until npm test` keeps Pi going until the check passes.
@@ -56,7 +56,7 @@ While it runs: **q** quit · **r** restart server · **a** change access · **o*
 - **A built-in browser.** Pi opens, reads, clicks through, and screenshots pages in a real Chromium on the server, and you watch and use the same page in the Browser panel, from a phone too: your dev server on `localhost` included.
 - **Artifacts and subagents.** Sandboxed HTML, Markdown, and SVG artifacts, and background subagents you can open and talk to.
 - **Codemode.** On by default: Pi writes short scripts that call its tools, and every call still goes through the same checks.
-- **Lancet Guard.** Off by default; turn it on in Menu → Extensions. With the [specpi-lancet-guard](https://github.com/TannerMidd/SpecPi) Pi package installed and on, risky bash, write, and edit calls wait for someone in the session to approve.
+- **Lancet Guard.** Off by default; turn it on in Settings → Extensions. With the [specpi-lancet-guard](https://github.com/TannerMidd/SpecPi) Pi package installed and on, risky bash, write, and edit calls wait for someone in the session to approve.
 - **Roles, invites, and limits.** Steer or view-only access, to every session or just one, through one-time links and QR codes, with spend limits per person and per session.
 - **Live-editable.** No build step: edit the web app or an extension and it reloads in place. Add your own extensions in `~/.pi-pocket/extensions/`: tools and checks for Pi, and pages, rail buttons, routes, and slash commands for the app.
 
@@ -91,7 +91,7 @@ cd pi-pocket && npm install --ignore-scripts && npm start
 
 Open the link in Chrome and choose **Add to Home screen**. Run `termux-wake-lock` so Android does not stop Termux.
 
-Lancet Guard needs ONNX Runtime, which may not load on Android. If the guard is on but cannot load, Pi Pocket blocks bash, write, and edit calls (the status line shows "guard failed"). Turn it off in the app (Menu → Extensions), in `~/.pi/lancet-guard.json`, or by starting with `PI_POCKET_GUARD=off`.
+Lancet Guard needs ONNX Runtime, which may not load on Android. If the guard is on but cannot load, Pi Pocket blocks bash, write, and edit calls (the status line shows "guard failed"). Turn it off in the app (Settings → Extensions), in `~/.pi/lancet-guard.json`, or by starting with `PI_POCKET_GUARD=off`.
 
 ## Nix and NixOS
 

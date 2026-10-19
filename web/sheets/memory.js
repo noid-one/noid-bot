@@ -329,7 +329,7 @@ export function MemorySheet({ draft: initial = "", conversationId, pendingOnly =
     if (pendingOnly && data.restartRequired) {
         return html`<${Sheet} title=${title} onClose=${closeSheet}>
             <p class="muted">
-                Restart the server from Menu → Restart server to review pending memories across projects.
+                Restart the server from Settings → Restart server to review pending memories across projects.
             </p>
         <//>`;
     }

@@ -48,6 +48,7 @@ Our own features go in `src/server/extensions/noid-*.ts`, with `x.noid.*` docume
 | `src/server/app.ts`                                                                               | The `claude-code` provider registered when a signed-in `claude` is on this machine (not in tests).                                                                                                                                            |
 | Built-in extensions and tests (`content` → `output`)                                              | Pi Durable 1.2+ tool results.                                                                                                                                                                                                                 |
 | `src/server/extensions/plan.ts` (removed), its commands, routes, UI, and docs                     | Plan mode removed, as Pi has none, and with it the gallery's **Ask Pi to review**, which relied on it to keep Pi from acting on the code it read. Its read-only checks moved to `src/server/noid/read-only.ts` for approvals and auto review. |
+| `web/sheets/menu.js`, `web/sheets/settings.js`, the rail's avatar                                 | The top bar's ⋯ is a small menu for the conversation alone, as rakazo's and pi-web-desktop's are; the app's settings moved to a Settings sheet (the rail's avatar, Ctrl/⌘+,), and the place tiles to the phone's places sheet.                |
 
 ## PiP is Noid
 

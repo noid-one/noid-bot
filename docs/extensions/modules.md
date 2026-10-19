@@ -13,11 +13,11 @@ Files that start with `_`, or end in `.test.ts`, are not modules. Use them for h
 
 ## Turning it on and off
 
-- A drop-in shows in Menu → Extensions when its file is there. It is off.
+- A drop-in shows in Settings → Extensions when its file is there. It is off.
 - When the owner turns it on, Pi Pocket loads it.
 - When the owner turns it off, Pi Pocket removes all that it installed, its routes and browser module too.
 
-You cannot turn on a drop-in yourself. Ask the owner to turn it on in Menu → Extensions.
+You cannot turn on a drop-in yourself. Ask the owner to turn it on in Settings → Extensions.
 
 ## Loading it again
 

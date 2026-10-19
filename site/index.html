@@ -670,7 +670,7 @@
                         <p class="note">
                             What sessions write, and what webhooks and GitHub send, reaches PiP as
                             data, never as instructions. Only the owner can open PiP, and it can be
-                            turned off in Menu → Extensions.
+                            turned off in Settings → Extensions.
                         </p>
                     </div>
                     <figure class="device">
@@ -756,11 +756,11 @@
                         </article>
                     </div>
                     <p class="note">
-                        Watches and webhooks are the Triggers extension (Menu → Extensions). Watches
-                        ask GitHub through the <code>gh</code> command signed in on the server, and
-                        a repository can be watched only if that account can push to it. Issues,
-                        pull requests, and comments count only from the repository's owner and the
-                        people GitHub says can write to it, unless you turn on
+                        Watches and webhooks are the Triggers extension (Settings → Extensions).
+                        Watches ask GitHub through the <code>gh</code> command signed in on the
+                        server, and a repository can be watched only if that account can push to it.
+                        Issues, pull requests, and comments count only from the repository's owner
+                        and the people GitHub says can write to it, unless you turn on
                         <b>From anyone</b> for a repository watch or a GitHub webhook.
                     </p>
                 </div>
@@ -851,7 +851,7 @@
                     <p class="note">
                         Your own extensions go in <code>~/.pi-pocket/extensions/</code>. They load
                         after the built-in ones, reload when edited, and stay off until the owner
-                        turns them on in Menu → Extensions.
+                        turns them on in Settings → Extensions.
                     </p>
                 </div>
             </section>
@@ -917,9 +917,9 @@
                         <ul class="points">
                             <li>
                                 <b>Lancet Guard.</b> Off by default. Once it is on in both Pi and Pi
-                                Pocket (Menu → Extensions), it checks every bash, write, and edit
-                                call. Risky calls wait for someone in the session to allow or deny
-                                them, and the answer is kept across restarts. With
+                                Pocket (Settings → Extensions), it checks every bash, write, and
+                                edit call. Risky calls wait for someone in the session to allow or
+                                deny them, and the answer is kept across restarts. With
                                 <b>Approvals need someone else</b> on, a guest cannot allow a call
                                 their own message led to.
                             </li>

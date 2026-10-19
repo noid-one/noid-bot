@@ -23,7 +23,8 @@ import {
 } from "./sheets/gallery.js";
 import { CwdSheet } from "./sheets/folder.js";
 import { MemorySheet } from "./sheets/memory.js";
-import { MenuSheet, PlacesSheet } from "./sheets/menu.js";
+import { AccountSheet, MenuSheet, PlacesSheet } from "./sheets/menu.js";
+import { SettingsSheet } from "./sheets/settings.js";
 import { MessageSheet } from "./sheets/message.js";
 import { ModelPicker } from "./sheets/model.js";
 import { InviteSheet, PeopleSheet } from "./sheets/people.js";
@@ -251,7 +252,13 @@ function sheetBody(sheet) {
             body = html`<${NotificationsSheet} />`;
             break;
         case "menu":
-            body = html`<${MenuSheet} places=${!sheet.fromPlaces} />`;
+            body = html`<${MenuSheet} />`;
+            break;
+        case "account":
+            body = html`<${AccountSheet} />`;
+            break;
+        case "settings":
+            body = html`<${SettingsSheet} />`;
             break;
         case "session":
             body = store.state.sessions.some((each) => each.id === sheet.id)

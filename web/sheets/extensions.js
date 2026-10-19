@@ -209,7 +209,7 @@ export function ExtensionsSheet() {
             (error) =>
                 setProblem(
                     error.status === 404
-                        ? "Restart the server (menu → Restart server) to manage extensions from here."
+                        ? "Restart the server (Settings → Restart server) to manage extensions from here."
                         : error.message,
                 ),
         );

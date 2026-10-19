@@ -256,9 +256,18 @@ function actionItems() {
             run: () => copyText(location.href).then(() => notify("info", "Link copied.")),
         },
         conversation && {
-            label: "Session menu",
+            label: "Conversation menu",
+            detail: "rename, context, export",
             icon: "more",
             run: () => openSheet({ type: "menu" }),
+        },
+        {
+            label: "Settings",
+            detail: "models, people, extensions, server",
+            keywords: "preferences options",
+            icon: "sliders",
+            keys: "Mod ,",
+            run: () => openSheet({ type: "settings" }),
         },
         session &&
             steer && {

@@ -57,7 +57,7 @@ The copy listens on `127.0.0.2:8899`. Browsers keep cookies for each host, not f
 
 ## Restarting
 
-Server changes outside `extensions/` need a restart. Only the owner can restart, from Menu → **Restart server**. This menu item shows when Pi Pocket runs under its launcher, as `pi-pocket` does.
+Server changes outside `extensions/` need a restart. Only the owner can restart, from Settings → **Restart server**. This menu item shows when Pi Pocket runs under its launcher, as `pi-pocket` does.
 
 - **Never restart while your own tool call runs**, and never on your own. Finish the edit, run `npm run check` and `npm test`, and then ask the person to restart.
 - Work that runs continues after a restart. A tool call that the restart stopped, and that is not safe to repeat, comes back to the model as interrupted.
@@ -66,7 +66,7 @@ Server changes outside `extensions/` need a restart. Only the owner can restart,
 ## Undo a change that breaks it
 
 - **A blank app** (a syntax error in `web/`): the server is good, and your work continues. Correct the file; each browser loads again.
-- **An extension that does not load:** the previous version still runs. Correct the file, or turn off the module in Menu → Extensions.
+- **An extension that does not load:** the previous version still runs. Correct the file, or turn off the module in Settings → Extensions.
 - **A server that does not start:** a person at the machine corrects the file, or puts it back with `git checkout -- <file>`. Look at `git diff` first: it can have other work in it. The launcher uses the file when it tries again.
 
 Work in small steps, and check each step. Then the step to undo is small.

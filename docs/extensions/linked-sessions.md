@@ -17,7 +17,7 @@ A linked session is an ordinary session. The session list shows it under the ses
 `start(source, { title?, message, model?, thinking? }, key)` makes the session, and sends `message` to it as its first message. It returns `{ session, address }`: the id of the new session, and the source's address for it.
 
 - Without `title`, the title is the first line of the message.
-- `model` is `provider/modelId`. It must be the source's model, or a model that the owner allows for subagents (Menu → Providers → Models for subagents). Without it, the session uses the source's model.
+- `model` is `provider/modelId`. It must be the source's model, or a model that the owner allows for subagents (Settings → Providers → Models for subagents). Without it, the session uses the source's model.
 - `thinking` can be at most the source's level. Without it, the session uses the source's level. Pi Pocket lowers it to the highest level that the model has.
 - When a model cannot be used now, Pi Pocket refuses the call before it makes anything.
 

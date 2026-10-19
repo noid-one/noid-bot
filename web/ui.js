@@ -891,6 +891,14 @@ const ICONS = {
     compact: "M4 3h16M4 21h16M12 6v5M9 8l3 3 3-3M12 18v-5M9 16l3-3 3 3",
     // Taking turns: a steering wheel.
     wheel: "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM12 10a2 2 0 1 0 0 4 2 2 0 1 0 0-4zM3.3 11.2l6.7.6M20.7 11.2l-6.7.6M12 14v6.9",
+    // Settings: three sliders.
+    sliders: "M4 6h9M17 6h3M15 4v4M4 12h3M11 12h9M9 10v4M4 18h11M19 18h1M17 16v4",
+    link: "M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7",
+    bell: "M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a2 2 0 003.4 0",
+    coin: "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.7 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6.5V8M12 16v1.5",
+    plug: "M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 01-12 0V8z",
+    // Memory: a stack of cards.
+    memory: "M4 8l8-4 8 4-8 4zM4 12l8 4 8-4M4 16l8 4 8-4",
 };
 
 /** How far each key scrolls a sheet's body, by its height. */

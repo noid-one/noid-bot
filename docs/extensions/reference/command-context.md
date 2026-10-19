@@ -96,7 +96,7 @@ readonly signal: AbortSignal;
 
 Since 0.14.0 · Stable
 
-It aborts when a person stops the command in Menu → Running now. A command has no time limit: the handler must watch `signal`, and end when it aborts. Stopping does not undo what the handler did.
+It aborts when a person stops the command in Settings → Running now. A command has no time limit: the handler must watch `signal`, and end when it aborts. Stopping does not undo what the handler did.
 
 ### `snapshot`
 

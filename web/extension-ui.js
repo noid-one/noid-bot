@@ -369,7 +369,7 @@ function sync(list) {
         safeTold = true;
         notify(
             "warning",
-            "Extensions' browser parts are off in this tab, and so is the theme. Menu → Extensions turns them back on.",
+            "Extensions' browser parts are off in this tab, and so is the theme. Settings → Extensions turns them back on.",
             () => openSheet({ type: "extensions" }),
         );
     }

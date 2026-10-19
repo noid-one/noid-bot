@@ -19,7 +19,7 @@ Besides Appearance: the launcher's **Themes** (Ctrl/⌘+K, then `#`) lists the t
 
 ## Make a theme
 
-1. Open Appearance: the palette button on the rail, Menu → **Appearance**, or **Appearance** in the launcher (Ctrl/⌘+K).
+1. Open Appearance: the palette button on the rail, Settings → **Appearance**, or **Appearance** in the launcher (Ctrl/⌘+K).
 2. Choose the theme to start from, and tap **Duplicate**. Give it a name. Pi Pocket copies it into a folder of its own and chooses it. **Duplicate colors** does the same for the colors in use.
 3. Tap **Edit with Pi**. A session starts in the theme's folder, with a message ready that tells Pi where this guide is. Say what you want: "make my messages bubbles on the right", "a warmer accent", "a square message box".
 
@@ -181,7 +181,7 @@ A theme is CSS. It runs no code, reads nothing, and sends nothing anywhere. It i
 
 ## Themes in the gallery
 
-From 0.14.0, the gallery lists themes with extensions: Menu → Extensions → **Find extensions**, then the **Themes** filter. Each theme has a **Theme** tag.
+From 0.14.0, the gallery lists themes with extensions: Settings → Extensions → **Find extensions**, then the **Themes** filter. Each theme has a **Theme** tag.
 
 - A theme's page shows its files, who made it, and where they are on GitHub. **View source** shows each file before you install it.
 - **Install** gets its files from the commit the index pins and checks each one against its SHA-256. Then Pi Pocket checks the theme as it checks every theme folder (the CSS check too), in a hidden folder. A theme that fails a check is not installed, and the gallery says why. A theme that passes goes into `themes/<id>/`.

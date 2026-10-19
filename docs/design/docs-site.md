@@ -180,4 +180,4 @@ Each phase is one pull request, useful alone.
 7. **The `_pocket.d.ts` link** (a small change to Pi Pocket's code)? Recommended: yes, in phase 3.
 8. **Map, architecture, self-editing, and features on the site?** Recommended: yes, in a closed group: they cost nothing, and search covers them.
 9. **Title: "Pi Pocket docs" or "Pi Pocket extensions"?** Recommended: "Pi Pocket docs", with "Extend Pi Pocket" on the home page, as the site also has the pages for changes without code.
-10. **A "How to write one" link from Menu → Extensions to the site?** Recommended: yes, in phase 4.
+10. **A "How to write one" link from Settings → Extensions to the site?** Recommended: yes, in phase 4.

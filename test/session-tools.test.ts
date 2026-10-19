@@ -489,7 +489,7 @@ test("Noid may not let strangers' issues into a repository watch", async () => {
             { repo: "acme/mine", events: ["issues"], anyone: true },
             "w-1",
         ),
-        /Menu → Webhooks and watches/,
+        /Settings → Webhooks and watches/,
     );
     await say(
         app,

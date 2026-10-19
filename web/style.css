@@ -11874,12 +11874,7 @@ textarea.notes {
 
 /* ─── Phones: places, pushed screens, and going back ───────── */
 
-/* Keep the anchored menu out of the layout's flex row, including its gap. */
-.nav-menu-host {
-    display: contents;
-}
-
-/* The menu and the phone's places share a three-column grid of soft tiles. */
+/* The places by the message box on a phone: a three-column grid of soft tiles, and a row for the rest. */
 .places {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -11887,39 +11882,18 @@ textarea.notes {
     padding: 8px 12px 12px;
 }
 
-.nav-menu .sheet-body,
 .places-sheet .sheet-body {
     padding: 0;
     gap: 0;
 }
 
-.nav-menu :is(.menu-session, .group) {
-    margin: 0;
-    padding: 6px 6px 8px;
-    border-top: 1px solid var(--hair);
-}
-
-.nav-menu .menu-session:empty {
-    display: none;
-}
-
-.nav-menu .group-title {
-    margin: 0;
-    padding: 8px 10px 4px;
-    color: var(--faint);
-    font-size: 12px;
-    font-weight: 500;
-    text-transform: none;
-    letter-spacing: normal;
-}
-
-.nav-menu .list-item,
 .places-sheet .list-item {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    min-height: 36px;
-    margin: 0;
+    width: auto;
+    min-height: 44px;
+    margin: 0 6px 8px;
     padding: 8px 10px;
     border: 0;
     border-radius: var(--r-row);
@@ -11928,27 +11902,6 @@ textarea.notes {
     font-size: 13.5px;
 }
 
-@media (hover: hover) {
-    .nav-menu .list-item:hover,
-    .places-sheet .list-item:hover {
-        background: var(--hover);
-    }
-}
-
-@media (hover: hover) {
-    .nav-menu .list-item:hover > span:first-child,
-    .places-sheet .list-item:hover > span:first-child {
-        color: var(--text);
-    }
-}
-
-.nav-menu .list-item > :first-child,
-.places-sheet .list-item > :first-child {
-    flex: none;
-    white-space: nowrap;
-}
-
-.nav-menu .list-item > :last-child:not(:first-child),
 .places-sheet .list-item > :last-child:not(:first-child) {
     flex: 1;
     min-width: 0;
@@ -11960,57 +11913,298 @@ textarea.notes {
     text-overflow: ellipsis;
 }
 
-.places-sheet .list-item {
-    width: auto;
-    margin: 0 6px 8px;
+/* ─── Menus: the top bar's ⋯ and the rail's avatar ───────── */
+
+/* Kept out of the layout's flex row, including its gap. */
+.pop-menu-host {
+    display: contents;
 }
 
-.nav-menu .menu-signout {
+.pop-menu .sheet-body {
+    padding: 4px;
+    gap: 0;
+}
+
+.pop-group + .pop-group {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--hair);
+}
+
+.pop-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: var(--r-row);
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    text-decoration: none;
+    cursor: default;
+}
+
+.pop-row .pop-icon {
+    flex: none;
+    color: var(--muted);
+}
+
+.pop-label {
+    flex: none;
+    white-space: nowrap;
+}
+
+.pop-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    color: var(--faint);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pop-keys {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+    color: var(--faint);
+}
+
+.pop-value + .pop-keys {
+    margin-left: 0;
+}
+
+.pop-keys kbd {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit;
+    font: 11.5px/1 var(--sans);
+}
+
+.pop-row:focus-visible {
+    outline: none;
+    background: var(--hover);
+}
+
+@media (hover: hover) {
+    .pop-row:hover {
+        background: var(--hover);
+    }
+    .pop-row:hover .pop-icon {
+        color: var(--text);
+    }
+}
+
+.pop-row:active {
+    background: var(--pressed);
+}
+
+.pop-row.danger,
+.pop-row.danger .pop-icon {
     color: var(--err);
 }
 
-@media (min-width: 700px) {
-    /* Sheet still owns focus and Esc; its existing sheet trail owns Back, even from a child sheet. */
-    .nav-menu-host .overlay {
-        padding: 0;
-        background: none;
-    }
-    .nav-menu {
-        position: fixed;
-        left: var(--menu-left, calc(100vw - 368px));
-        top: var(--menu-top, 64px);
-        width: 360px;
-        max-height: var(--menu-height, calc(100dvh - 72px));
-        border-radius: calc(var(--r-window) + 2px);
-        box-shadow: var(--pop);
-        animation: pop 0.25s var(--ease-out);
-    }
-    .nav-menu .sheet-head {
-        height: auto;
-        min-height: 0;
-        padding: 10px 12px 2px 16px;
-        border: 0;
-    }
-    .nav-menu .grip,
-    .nav-menu .sheet-head h2::before {
-        display: none;
-    }
-    .nav-menu .sheet-head h2 {
-        margin: 0;
-        font-size: 13px;
-        font-weight: 600;
-    }
-    .nav-menu .sheet-head .icon-button {
-        width: 28px;
-        height: 28px;
+@media (hover: hover) {
+    .pop-row.danger:hover {
+        background: var(--err-soft);
     }
 }
 
+/* You, at the top of the account menu. */
+.pop-me {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px 10px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--hair);
+}
+
+.pop-me-text {
+    display: grid;
+    min-width: 0;
+}
+
+.pop-me-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pop-me-role {
+    font-size: 12px;
+    color: var(--faint);
+}
+
+/* A phone: a sheet from the bottom edge, its rows a thumb tall. */
 @media (pointer: coarse) {
-    .nav-menu .list-item,
-    .places-sheet .list-item {
+    .pop-row {
         min-height: 44px;
+        font-size: 15px;
     }
+}
+
+@media (max-width: 699px) {
+    .pop-menu .sheet-body {
+        padding: 4px 8px 12px;
+    }
+}
+
+@media (min-width: 700px) {
+    /* Sheet still owns focus and Esc; with no scrim, a press outside closes it. */
+    .pop-menu-host .overlay {
+        padding: 0;
+        background: none;
+    }
+    .pop-menu {
+        position: fixed;
+        left: var(--menu-left, calc(100vw - 272px));
+        top: var(--menu-top, 58px);
+        bottom: var(--menu-bottom, auto);
+        width: var(--menu-width, 264px);
+        max-height: var(--menu-height, calc(100dvh - 72px));
+        border: 1px solid var(--hair-2);
+        border-radius: var(--r-card);
+        background: var(--raised);
+        box-shadow: var(--pop);
+        animation: pop-in 0.14s var(--ease-out);
+        transform-origin: top right;
+    }
+    .pop-menu.beside {
+        transform-origin: bottom left;
+    }
+    /* A menu has no title bar: what it is for is the button that opened it. */
+    .pop-menu .sheet-head {
+        display: none;
+    }
+}
+
+@keyframes pop-in {
+    from {
+        opacity: 0;
+        transform: scale(0.97) translateY(-2px);
+    }
+}
+
+/* ─── Settings ───────── */
+
+.settings-sheet .sheet-body {
+    gap: 18px;
+}
+
+.settings-group {
+    display: grid;
+    gap: 6px;
+}
+
+.settings-title {
+    margin: 0;
+    padding: 0 4px;
+    color: var(--faint);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+.settings-card {
+    display: grid;
+    border: 1px solid var(--hair);
+    border-radius: var(--r-card);
+    background: var(--card);
+    overflow: hidden;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13.5px;
+    text-align: left;
+}
+
+.settings-row + .settings-row {
+    box-shadow: inset 0 1px 0 var(--hair);
+}
+
+.settings-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--r-control);
+    background: var(--hover);
+    color: var(--body);
+}
+
+.settings-label {
+    flex: none;
+    white-space: nowrap;
+}
+
+.settings-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    color: var(--faint);
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.settings-chevron {
+    flex: none;
+    margin-left: auto;
+    color: var(--faint);
+}
+
+.settings-value + .settings-chevron {
+    margin-left: 0;
+}
+
+@media (hover: hover) {
+    .settings-row:hover {
+        background: var(--hover);
+    }
+}
+
+.settings-row:active {
+    background: var(--pressed);
+}
+
+.settings-row:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+
+.settings-row.danger {
+    color: var(--err);
+}
+
+.settings-row.danger .settings-icon {
+    background: var(--err-soft);
+    color: var(--err);
 }
 
 .place {

@@ -1,53 +1,36 @@
-// The menu: what can be done in this session and in the app.
+// The menus: the top bar's ⋯ (this conversation), the rail's avatar (you, and Settings), and the phone's places.
 import { useLayoutEffect, useRef } from "preact/hooks";
-import { browserAvailable, displayUrl, setBrowserOpen } from "../browser.js";
+import { Avatar } from "../avatar.js";
+import { browserAvailable, setBrowserOpen } from "../browser.js";
 import { chatUnread } from "../chat.js";
-import { schedulesAvailable, triggersOn, watchAvailable, watchPr } from "../commands.js";
-import { extensionMenuItems, safeMode } from "../extension-ui.js";
+import { schedulesAvailable, watchAvailable, watchPr } from "../commands.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
-import { modelRefreshAvailable, refreshModels } from "../model-refresh.js";
 import { setArchived } from "../sessions.js";
 import { onComputer } from "./terminal.js";
 import { openSubagent } from "../subagents.js";
 import {
     actions,
-    api,
     attempt,
     canSteer,
     canToggleTurns,
     closeSheet,
     collab,
-    navigate,
     notify,
     openSheet,
     scoped,
-    setUnread,
     signOut,
     store,
 } from "../store.js";
 import { isPinned, lookLabel, togglePin } from "../theme.js";
 import { currentTrust, trustAvailable } from "../trust.js";
 import { branchAvailable } from "./branch.js";
-import { memoryAvailable, memoryHint, useMemory } from "./memory.js";
-import { defaultLabel, defaultsKept } from "./model.js";
-import { copyText, html, Icon, item, Sheet, shortPath } from "../ui.js";
+import { memoryAvailable, useMemory } from "./memory.js";
+import { copyText, html, Icon, item, Keys, Sheet } from "../ui.js";
 
 // Key hints are for people with a keyboard: a touch screen has none.
 const touch = matchMedia("(pointer: coarse)").matches;
-
-/** The Extensions row's hint: that this tab loads none of their browser parts (safe mode), and Lancet Guard. */
-function extensionsHint() {
-    const { guard } = store.state;
-
-    return [
-        safeMode() && "browser parts off here",
-        guard?.enabled ? "Lancet Guard on" : guard?.available ? "Lancet Guard off" : "",
-    ]
-        .filter(Boolean)
-        .join(" · ");
-}
 
 /**
  * The session's places as big tiles at the top of the menu: Files, Changes, the browser, artifacts, the chat, find,
@@ -174,41 +157,71 @@ export function PlacesSheet() {
         className="places-sheet"
     >
         <${Places} />
-        ${item("Session menu", () => openSheet({ type: "menu", fromPlaces: true }), "rename, context, settings")}
+        ${item("More", instead({ type: "menu" }), "rename, context, export")}
     <//>`;
 }
 
-/** Keep Sheet's Esc, drag, and focus handling; the sheet trail already owns its back-stack layer. */
-function MenuFrame({ title, children }) {
+/**
+ * Open `sheet` in the menu's place: what a menu row opens is not a step after the menu, so back and Esc from it go to
+ * the conversation, not to a menu that was only a way there.
+ */
+const instead = (sheet) => () => {
+    closeSheet();
+    openSheet(sheet);
+};
+
+/**
+ * A small menu by the button that opened it, as rakazo's and pi-web-desktop's: rows of an icon, a label, and maybe a
+ * value or keys at the end, in groups between rules. On a phone it is a sheet from the bottom edge. It is a Sheet
+ * underneath, for Esc, dragging down, and focus.
+ *
+ * `anchor` is the selector of the button that opens it. `beside` puts it to that button's right, its bottom at the
+ * button's (the rail's avatar); otherwise it hangs below the button, right edges together (the top bar's ⋯). `groups`
+ * are lists of rows, `{ id, icon, label, value?, keys?, run?, href?, danger? }`: falsy rows and empty groups are left
+ * out.
+ */
+function PopMenu({ title, anchor, beside = false, width, label, header = null, groups }) {
     const host = useRef(null);
 
     useLayoutEffect(() => {
         const element = host.current;
-        const button = document.querySelector('.topbar [aria-label="Menu"]');
+        const button = document.querySelector(anchor);
         const active = document.activeElement;
         const opener = active === document.body ? button : active;
 
         const place = () => {
             const rect = button?.getBoundingClientRect();
-            const top = (rect?.bottom ?? 58) + 6;
-            const bottom =
-                (visualViewport?.offsetTop ?? 0) + (visualViewport?.height ?? innerHeight);
-            const left = Math.max(
-                8,
-                Math.min((rect?.right ?? innerWidth - 8) - 360, innerWidth - 368),
-            );
+            const top = visualViewport?.offsetTop ?? 0;
+            const bottom = top + (visualViewport?.height ?? innerHeight);
 
-            element.style.setProperty("--menu-left", `${left}px`);
-            element.style.setProperty("--menu-top", `${top}px`);
-            element.style.setProperty("--menu-height", `${Math.max(100, bottom - top - 8)}px`);
+            if (beside) {
+                const edge = Math.min(rect?.bottom ?? bottom - 8, bottom - 8);
+
+                element.style.setProperty("--menu-left", `${(rect?.right ?? 56) + 8}px`);
+                element.style.setProperty("--menu-top", "auto");
+                element.style.setProperty("--menu-bottom", `${innerHeight - edge}px`);
+                element.style.setProperty("--menu-height", `${Math.max(120, edge - top - 8)}px`);
+            } else {
+                // Opened from the top bar's title, it hangs under the title, left edges together.
+                const title = opener?.closest?.(".topbar .title")?.getBoundingClientRect();
+                const below = (title?.bottom ?? rect?.bottom ?? 52) + 6;
+                const left = Math.max(
+                    8,
+                    Math.min(
+                        title ? title.left : (rect?.right ?? innerWidth - 8) - width,
+                        innerWidth - width - 8,
+                    ),
+                );
+
+                element.style.setProperty("--menu-left", `${left}px`);
+                element.style.setProperty("--menu-top", `${below}px`);
+                element.style.setProperty("--menu-bottom", "auto");
+                element.style.setProperty(
+                    "--menu-height",
+                    `${Math.max(120, bottom - below - 8)}px`,
+                );
+            }
         };
-
-        const body = element.querySelector(".sheet-body");
-
-        if (menuScroll !== null) {
-            body.scrollTop = menuScroll;
-            menuScroll = null;
-        }
 
         place();
         addEventListener("resize", place);
@@ -218,18 +231,11 @@ function MenuFrame({ title, children }) {
             removeEventListener("resize", place);
             visualViewport?.removeEventListener("resize", place);
 
-            // Another sheet open now: the menu is going back under it, not closing.
-            if (store.state.sheet) {
-                menuScroll = body.scrollTop;
-            }
-
             const focused = document.activeElement;
             const back = opener?.isConnected ? opener : button;
             // As sheets.js does: not behind a sheet the menu opened, and not into a text field on a touch screen,
             // where its keyboard would pop up.
-            const field =
-                matchMedia("(pointer: coarse)").matches &&
-                back?.matches("input, textarea, [contenteditable]");
+            const field = touch && back?.matches("input, textarea, [contenteditable]");
 
             if (
                 !store.state.sheet &&
@@ -242,6 +248,7 @@ function MenuFrame({ title, children }) {
         };
     }, []);
 
+    // Arrows, Home, and End move between the rows; Tab goes round them and the close button.
     const onKey = (event) => {
         if (
             event.defaultPrevented ||
@@ -254,40 +261,32 @@ function MenuFrame({ title, children }) {
             return;
         }
 
-        const items = [...host.current.querySelectorAll(".place, .list-item")];
-        const active = document.activeElement;
-        const index = items.indexOf(active);
+        const rows = [...host.current.querySelectorAll(".pop-row")];
+        const index = rows.indexOf(document.activeElement);
         let target;
 
         if (event.key === "Tab") {
-            // Close stays reachable with Tab, but is not part of the menu's item navigation.
-            const controls = [...items, ...host.current.querySelectorAll(".sheet-head button")];
-            const at = controls.indexOf(active);
-            const next =
-                at < 0
-                    ? event.shiftKey
-                        ? controls.length - 1
-                        : 0
-                    : (at + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+            const controls = [...rows, ...host.current.querySelectorAll(".sheet-head button")];
+            const at = controls.indexOf(document.activeElement);
+            const step = event.shiftKey ? -1 : 1;
 
-            target = controls[next];
+            target =
+                controls[
+                    at < 0
+                        ? event.shiftKey
+                            ? controls.length - 1
+                            : 0
+                        : (at + step + controls.length) % controls.length
+                ];
         } else if (event.key === "Home") {
-            target = items[0];
+            target = rows[0];
         } else if (event.key === "End") {
-            target = items.at(-1);
-        } else if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) {
-            const down = event.key === "ArrowDown" || event.key === "ArrowRight";
-            const vertical = event.key === "ArrowDown" || event.key === "ArrowUp";
-            const tiles = host.current.querySelectorAll(".place").length;
-            const step = vertical && index >= 0 && index < tiles ? 3 : 1;
-            let next = index < 0 ? (down ? 0 : items.length - 1) : index + (down ? step : -step);
+            target = rows.at(-1);
+        } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            const down = event.key === "ArrowDown";
+            const next = index < 0 ? (down ? 0 : rows.length - 1) : index + (down ? 1 : -1);
 
-            // Down from the grid's last row enters the first text row; Up from its first row wraps to the last item.
-            if (vertical && index >= 0 && index < tiles) {
-                next = next < 0 ? items.length - 1 : Math.min(next, tiles);
-            }
-
-            target = items[(next + items.length) % items.length];
+            target = rows[(next + rows.length) % rows.length];
         }
 
         if (target) {
@@ -296,21 +295,44 @@ function MenuFrame({ title, children }) {
         }
     };
 
-    return html`<div class="nav-menu-host" data-part="menu" ref=${host} onKeyDown=${onKey}>
-        <${Sheet} title=${title} onClose=${closeSheet} className="nav-menu">
-            ${children}
+    const shown = groups.map((group) => group.filter(Boolean)).filter((group) => group.length > 0);
+
+    return html`<div
+        class="pop-menu-host"
+        data-part="menu"
+        ref=${host}
+        style=${`--menu-width:${width}px`}
+        onKeyDown=${onKey}
+    >
+        <${Sheet} title=${title} onClose=${closeSheet} className=${`pop-menu ${beside ? "beside" : ""}`}>
+            ${header}
+            <div role="menu" aria-label=${label ?? title}>
+                ${shown.map(
+                    (group, at) => html`<div class="pop-group" role="group" key=${at}>
+                        ${group.map((row) => html`<${PopRow} key=${row.id} ...${row} />`)}
+                    </div>`,
+                )}
+            </div>
         <//>
     </div>`;
 }
 
-/** The menu's scroll, kept while a sheet it opened shows, so back finds the menu where it was left. */
-let menuScroll = null;
+/** One row of a menu: a button, or a link when it downloads something. */
+function PopRow({ id, icon, label, value, keys, run, href, danger = false }) {
+    const parts = html`<${Icon} name=${icon} size=${16} class="pop-icon" />
+        <span class="pop-label">${label}</span>
+        ${value !== undefined && value !== "" && html`<span class="pop-value">${value}</span>`}
+        ${keys && !touch && html`<span class="pop-keys" aria-hidden="true"><${Keys} keys=${keys} /></span>`}`;
+    const className = `pop-row ${danger ? "danger" : ""}`;
 
-store.subscribe(({ sheet }) => {
-    if (!sheet) {
-        menuScroll = null;
-    }
-});
+    return href
+        ? html`<a class=${className} role="menuitem" data-row=${id} href=${href} download onClick=${closeSheet}>
+              ${parts}
+          </a>`
+        : html`<button type="button" class=${className} role="menuitem" data-row=${id} onClick=${run}>
+              ${parts}
+          </button>`;
+}
 
 /** The project's trust in a word, once the server said. */
 function trustHint() {
@@ -321,7 +343,7 @@ function trustHint() {
     }
 
     if (info.ask) {
-        return "not decided";
+        return "Not decided";
     }
 
     // No decision, and nothing waiting for one: there is nothing to say.
@@ -329,211 +351,301 @@ function trustHint() {
         return "";
     }
 
-    return info.trusted ? "trusted" : "not trusted";
+    return info.trusted ? "Trusted" : "Not trusted";
 }
 
-/** The menu; `places` is false when it opens from the places sheet, which just showed the tiles. */
-export function MenuSheet({ places = true }) {
-    const { view, me, server } = store.state;
+/** Memory at a glance: what waits for the owner's yes, else how many lessons Pi keeps for this conversation. */
+function memoryCount(data) {
+    if (!data) {
+        return "";
+    }
+
+    const waiting = data.owner
+        ? data.lessons.filter((lesson) => lesson.pending || lesson.proposal).length
+        : 0;
+
+    if (waiting > 0) {
+        return `${waiting} to approve`;
+    }
+
+    const live = data.lessons.filter((lesson) => !lesson.pending).length;
+
+    return live > 0 ? String(live) : "";
+}
+
+/** The last folder of a path: enough to say where, in a menu row. */
+const folderName = (path) => path?.split("/").filter(Boolean).at(-1) ?? "";
+
+/**
+ * The top bar's ⋯: what can be done with this conversation, and nothing else. The app's settings are in Settings
+ * (the rail's avatar); the places (Files, Changes, the browser…) are buttons in the top bar, and by the message box on
+ * a phone.
+ */
+export function MenuSheet() {
+    const { view, me, sessions, browserOpen, users, presence } = store.state;
     const conversation = view.conversation;
     const steer = canSteer();
     const session = conversation?.kind === "session";
+    const bot = sessions.find(
+        (each) => each.id === conversation?.id && each.bot !== undefined,
+    )?.bot;
+    const owner = me?.role === "owner";
     const turns = view.turns;
     // While take turns is on, settings belong to the driver.
     const driving = !turns?.on || turns.driver === me?.id;
-    const instructions = view.agent?.instructions;
+    const context = conversation && steer && driving;
     const memory = useMemory();
+    const unread = conversation && collab() ? chatUnread() : 0;
+    // Chat and take turns are for when there is someone else: people with access, and someone here now.
+    const others = presence.some((person) => person.id !== me?.id);
+    const company = collab() && (users.length > 1 || unread > 0);
 
-    return html`<${MenuFrame} title=${conversation?.title ?? "Menu"}>
-        ${places && html`<${Places} />`}
-        <div class="menu-session">
-            ${
-                conversation &&
-                collab() &&
-                canToggleTurns() &&
-                item(
-                    turns?.on ? "Turn off take turns" : "Take turns",
-                    () =>
-                        attempt(async () => {
-                            await actions.turns(turns?.on ? "off" : "on");
+    if (!conversation) {
+        return null;
+    }
+
+    return html`<${PopMenu}
+        title=${bot?.name ?? conversation.title ?? "Conversation"}
+        label="Conversation"
+        anchor='.topbar [aria-label="Menu"]'
+        width=${264}
+        groups=${[
+            [
+                bot && {
+                    id: "bot",
+                    icon: "pencil",
+                    label: `Edit ${bot.name}`,
+                    run: instead({ type: "bot", id: conversation.id }),
+                },
+                !bot &&
+                    session &&
+                    steer && {
+                        id: "rename",
+                        icon: "pencil",
+                        label: "Rename",
+                        run: instead({ type: "rename" }),
+                    },
+                !bot &&
+                    session && {
+                        id: "pin",
+                        icon: "pin",
+                        label: isPinned(conversation.id) ? "Unpin" : "Pin to the top",
+                        run: () => {
+                            togglePin(conversation.id);
                             closeSheet();
-                        }),
-                    turns?.on
-                        ? "anyone here can send to Pi again"
-                        : "one person drives Pi at a time",
-                )
-            }
-            ${session && steer && item("Rename", () => openSheet({ type: "rename" }))}
-            ${
+                        },
+                    },
+                {
+                    id: "link",
+                    icon: "link",
+                    label: "Copy link",
+                    run: () => {
+                        closeSheet();
+                        copyText(location.href).then(
+                            () =>
+                                notify("info", "Link copied. Other signed-in devices can open it."),
+                            () => notify("error", "Could not copy."),
+                        );
+                    },
+                },
+                {
+                    id: "export",
+                    icon: "download",
+                    label: "Export as Markdown",
+                    href: `/api/c/${conversation.id}/export`,
+                },
+            ],
+            [
                 session &&
-                item(
-                    isPinned(conversation.id) ? "Unpin from the top" : "Pin to the top",
-                    () => {
-                        togglePin(conversation.id);
+                    context && {
+                        id: "instructions",
+                        icon: "book",
+                        label: "Instructions",
+                        value: view.agent?.instructions ? "On" : "",
+                        run: instead({ type: "instructions" }),
+                    },
+                memoryAvailable() && {
+                    id: "memory",
+                    icon: "memory",
+                    label: "Memory",
+                    value: memoryCount(memory),
+                    run: instead({ type: "memory" }),
+                },
+                schedulesAvailable() && {
+                    id: "schedules",
+                    icon: "clock",
+                    label: bot ? "Routines" : "Scheduled messages",
+                    value: view.schedules.length > 0 ? String(view.schedules.length) : "",
+                    run: instead({ type: "schedules" }),
+                },
+                context && {
+                    id: "compact",
+                    icon: "compact",
+                    label: "Compact context",
+                    run: instead({ type: "compact" }),
+                },
+                context && {
+                    id: "reset",
+                    icon: "reload",
+                    label: "New context",
+                    run: instead({ type: "reset" }),
+                },
+            ],
+            [
+                {
+                    id: "find",
+                    icon: "search",
+                    label: "Find in conversation",
+                    keys: "Mod F",
+                    run: instead({ type: "find" }),
+                },
+                browserAvailable() && {
+                    id: "browser",
+                    icon: "globe",
+                    label: browserOpen ? "Close the browser" : "Open the browser",
+                    keys: "Alt B",
+                    run: () => {
+                        setBrowserOpen(!browserOpen);
                         closeSheet();
                     },
-                    "this browser",
-                )
-            }
-            ${
-                session &&
-                item(
-                    "Mark unread",
-                    () => {
-                        setUnread(conversation.id, true);
-                        closeSheet();
-                        navigate(null);
+                },
+                company && {
+                    id: "chat",
+                    icon: "chat",
+                    label: "Chat with people here",
+                    value: unread > 0 ? String(unread) : "",
+                    run: instead({ type: "chat" }),
+                },
+                company &&
+                    canToggleTurns() &&
+                    (turns?.on || others) && {
+                        id: "turns",
+                        icon: "wheel",
+                        label: turns?.on ? "Stop taking turns" : "Take turns",
+                        run: () =>
+                            attempt(async () => {
+                                await actions.turns(turns?.on ? "off" : "on");
+                                closeSheet();
+                            }),
                     },
-                    "this browser; opening it again clears it",
-                )
-            }
-            ${
-                conversation?.worktree && steer
-                    ? item(
-                          "Worktree",
-                          () => openSheet({ type: "worktree" }),
-                          conversation.worktree.branch,
-                      )
-                    : conversation &&
-                      steer &&
-                      driving &&
-                      !scoped() &&
-                      item(
-                          "Working directory",
-                          () => openSheet({ type: "cwd", mode: "change" }),
-                          shortPath(view.agent?.cwd, server?.home),
-                      )
-            }
-            ${
-                me?.role === "owner" &&
-                item("Group threads", () => openSheet({ type: "groups" }), "you and several bots")
-            }
-            ${
-                me?.role === "owner" &&
-                item(
-                    "Computer desktop",
-                    () => openSheet({ type: "desktop" }),
-                    "what bots' programs show",
-                )
-            }
-            ${
-                me?.role === "owner" &&
-                item(
-                    "Computer terminal",
-                    () => openSheet({ type: "terminal", cwd: view.agent?.cwd }),
-                    onComputer(view.agent?.cwd) ? "in this folder" : "a shell on the computer",
-                )
-            }
-            ${
-                conversation &&
-                browserAvailable() &&
-                store.state.browserOpen &&
-                item(
-                    "Close the browser",
-                    () => {
-                        setBrowserOpen(false);
-                        closeSheet();
-                    },
-                    store.state.browser?.open && displayUrl(store.state.browser.url),
-                )
-            }
-            ${conversation && trustAvailable() && item("Project trust", () => openSheet({ type: "trust" }), trustHint())}
-            ${session && steer && driving && item("Instructions for Pi", () => openSheet({ type: "instructions" }), instructions ? "on" : "none")}
-            ${conversation && steer && driving && item("Compact context", () => openSheet({ type: "compact" }), "summarize older messages")}
-            ${conversation && steer && driving && item("New context", () => openSheet({ type: "reset" }), "Pi starts fresh; history stays")}
-            ${conversation && memoryAvailable() && item("Memory", () => openSheet({ type: "memory" }), memoryHint(memory))}
-            ${schedulesAvailable() && item(store.state.sessions.some((each) => each.id === conversation?.id && each.bot !== undefined) ? "Routines" : "Scheduled messages", () => openSheet({ type: "schedules" }), view.schedules.length === 0 ? "none" : `${view.schedules.length} coming`)}
-            ${
+            ],
+            [
+                conversation.worktree && steer
+                    ? {
+                          id: "worktree",
+                          icon: "fork",
+                          label: "Worktree",
+                          value: conversation.worktree.branch,
+                          run: instead({ type: "worktree" }),
+                      }
+                    : context &&
+                      !scoped() && {
+                          id: "cwd",
+                          icon: "folder",
+                          label: "Working directory",
+                          value: folderName(view.agent?.cwd),
+                          run: instead({ type: "cwd", mode: "change" }),
+                      },
+                owner && {
+                    id: "terminal",
+                    icon: "terminal",
+                    label: onComputer(view.agent?.cwd) ? "Terminal in this folder" : "Terminal",
+                    run: instead({ type: "terminal", cwd: view.agent?.cwd }),
+                },
+                trustAvailable() && {
+                    id: "trust",
+                    icon: "shield",
+                    label: "Project trust",
+                    value: trustHint(),
+                    run: instead({ type: "trust" }),
+                },
                 watchAvailable() &&
-                steer &&
-                view.watch?.status !== "watching" &&
-                item(
-                    "Watch pull request",
-                    () => {
-                        closeSheet();
-                        attempt(() => watchPr());
-                    },
-                    "fix CI, answer reviews",
-                )
-            }
-            ${
-                conversation &&
-                item("Copy link", () =>
-                    copyText(location.href).then(
-                        () => notify("info", "Link copied. Other signed-in devices can open it."),
-                        () => notify("error", "Could not copy."),
-                    ),
-                )
-            }
-            ${
-                conversation &&
-                html`<a class="list-item" href=${`/api/c/${conversation.id}/export`} download>
-                    <span>Export as Markdown</span>
-                    <span class="muted small">the whole history</span>
-                </a>`
-            }
-            ${
-                session &&
-                steer &&
-                item(conversation.archived ? "Unarchive" : "Archive", () => {
-                    closeSheet();
-                    setArchived([conversation.id], !conversation.archived);
-                })
-            }
-        </div>
-        ${
-            view.subagents.length > 0 &&
-            html`<div class="group">
-                <div class="group-title">Subagents</div>
-                ${view.subagents.map((agent) =>
-                    item(
-                        html`${agent.busy ? html`<span class="pulse"></span> ` : ""}${agent.name}`,
-                        () => openSubagent(agent.conversationId),
-                        agent.busy ? "working" : "idle",
-                    ),
-                )}
-            </div>`
-        }
-        <div class="group">
-            <div class="group-title">App</div>
-            ${item("Appearance", () => openSheet({ type: "appearance" }), lookLabel())}
-            ${!touch && item("Keyboard shortcuts", () => openSheet({ type: "shortcuts" }), "?")}
-            ${
-                me?.role === "owner" &&
-                defaultsKept() &&
-                item(
-                    "Default model",
-                    () => openSheet({ type: "model", id: "default", forDefault: true }),
-                    defaultLabel(server?.defaultModel, store.state.models) ||
-                        "project, last picked, then Pi global",
-                )
-            }
-            ${item("Your name", () => openSheet({ type: "name" }), me?.name)}
-            ${collab() ? item("People", () => openSheet({ type: "people" }), me?.role === "viewer" ? "you can view" : "") : item("Sign in another device", () => openSheet({ type: "invite" }))}
-            ${collab() && item("Notifications", () => openSheet({ type: "notifications" }), "Pi finished, approvals, chat")}
-            ${item("Running now", () => openSheet({ type: "running" }), "everything Pi is doing")}
-            ${item("Spend", () => openSheet({ type: "spend" }), me?.role === "owner" ? "by person and session, limits" : "yours")}
-            ${triggersOn() && me?.role !== "viewer" && item("Webhooks and watches", () => openSheet({ type: "hooks" }), "GitHub, other services")}
-            ${me?.role === "owner" && item("Providers", () => openSheet({ type: "providers" }))}
-            ${me?.role === "owner" && item("Auto review", () => openSheet({ type: "auto-review" }), "a model checks bots' calls")}
-            ${modelRefreshAvailable() && item("Refresh models", refreshModels, store.state.modelRefresh.loading ? "refreshing…" : "models.json and providers")}
-            ${extensionMenuItems().map((each) => item(each.label, each.run, each.hint))}
-            ${item("Extensions", () => openSheet({ type: "extensions" }), extensionsHint())}
-            ${
-                me?.role === "owner" &&
-                server?.supervised &&
-                item(
-                    "Restart server",
-                    () =>
-                        attempt(async () => {
-                            await api("restart", {});
+                    steer &&
+                    view.branch?.branch &&
+                    view.watch?.status !== "watching" && {
+                        id: "watch",
+                        icon: "eye",
+                        label: "Watch pull request",
+                        run: () => {
                             closeSheet();
-                            notify("info", "Restarting. Running work continues after the restart.");
-                        }),
-                    "running work resumes",
-                )
-            }
-            ${item(html`<span class="menu-signout">Sign out</span>`, signOut)}
-        </div>
-    <//>`;
+                            attempt(() => watchPr());
+                        },
+                    },
+            ],
+            view.subagents.map((agent) => ({
+                id: `subagent:${agent.conversationId}`,
+                icon: "bot",
+                label: agent.name,
+                value: agent.busy ? "Working" : "",
+                run: () => {
+                    closeSheet();
+                    openSubagent(agent.conversationId);
+                },
+            })),
+            [
+                session &&
+                    steer && {
+                        id: "archive",
+                        icon: conversation.archived ? "unarchive" : "archive",
+                        label: conversation.archived ? "Unarchive" : "Archive",
+                        run: () => {
+                            closeSheet();
+                            setArchived([conversation.id], !conversation.archived);
+                        },
+                    },
+            ],
+        ]}
+    />`;
+}
+
+/** Who you are here, in a word. */
+const roleLabel = (role) => (role === "owner" ? "Owner" : role === "viewer" ? "Can view" : "Guest");
+
+/**
+ * The rail's avatar: you, and the way to the app's settings, as rakazo's and pi-web-desktop's user menus at the foot of
+ * their sidebars.
+ */
+export function AccountSheet() {
+    const { me } = store.state;
+
+    return html`<${PopMenu}
+        title="Account"
+        anchor=".rail-me"
+        beside=${true}
+        width=${240}
+        header=${html`<div class="pop-me">
+            ${me && html`<${Avatar} person=${me} size=${32} />`}
+            <span class="pop-me-text">
+                <span class="pop-me-name">${me?.name ?? "You"}</span>
+                <span class="pop-me-role">${roleLabel(me?.role)}</span>
+            </span>
+        </div>`}
+        groups=${[
+            [
+                { id: "name", icon: "pencil", label: "Your name", run: instead({ type: "name" }) },
+                {
+                    id: "appearance",
+                    icon: "palette",
+                    label: "Appearance",
+                    value: lookLabel(),
+                    run: instead({ type: "appearance" }),
+                },
+                {
+                    id: "settings",
+                    icon: "sliders",
+                    label: "Settings",
+                    keys: "Mod ,",
+                    run: instead({ type: "settings" }),
+                },
+                !touch && {
+                    id: "shortcuts",
+                    icon: "keyboard",
+                    label: "Keyboard shortcuts",
+                    keys: "?",
+                    run: instead({ type: "shortcuts" }),
+                },
+            ],
+            [{ id: "signout", icon: "logout", label: "Sign out", danger: true, run: signOut }],
+        ]}
+    />`;
 }

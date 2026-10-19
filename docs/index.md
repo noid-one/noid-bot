@@ -19,7 +19,7 @@ Each step goes further than the step before it, and needs more care. Use the fir
 
 | To change                                                          | Use                                                                             | Read                                         |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------- |
-| How Pi works in one session                                        | The session's instructions (Menu → Instructions for Pi)                         | [customizing.md](customizing.md)             |
+| How Pi works in one session                                        | The session's instructions (the ⋯ menu → Instructions)                          | [customizing.md](customizing.md)             |
 | How Pi works in a project, or everywhere                           | An `AGENTS.md` in the project, or Pi's own in `~/.pi/agent/`                    | [customizing.md](customizing.md)             |
 | A procedure that Pi follows on request                             | A skill, or a prompt template: both become slash commands                       | [customizing.md](customizing.md)             |
 | What Pi can do: a new tool, a rule in its prompt, a check on calls | A drop-in extension in `~/.pi-pocket/extensions/`, which the owner turns on     | [extensions.md](extensions.md)               |
@@ -50,5 +50,5 @@ The same pages are on the web, with search: https://tannermidd.github.io/pi-pock
 
 - **Ask first.** A change to Pi Pocket reaches each person who uses it, at once. Say what you will change and why. Then wait for a yes, unless the person asked for exactly that change.
 - **Do not test on the live data.** Check a change on a copy of Pi Pocket with its own data folder ([self-editing.md](self-editing.md#check-it-on-a-copy)), not on the server that people use.
-- **Do not restart while your own tool call runs**, and do not restart without asking. Tell the person to use Menu → Restart server.
+- **Do not restart while your own tool call runs**, and do not restart without asking. Tell the person to use Settings → Restart server.
 - **Do not commit, push, or publish** unless the person asks.

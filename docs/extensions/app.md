@@ -1,6 +1,6 @@
 # Adding to the app
 
-A module can add to the app what a tool cannot: a page that shows something without Pi, a button on the rail, or a row in the menu. This page tells about the three parts that it can add. The members of `web` are in [the web reference](reference/web.md).
+A module can add to the app what a tool cannot: a page that shows something without Pi, a button on the rail, or a row in Settings. This page tells about the three parts that it can add. The members of `web` are in [the web reference](reference/web.md).
 
 ## The three parts
 

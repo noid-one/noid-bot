@@ -5,7 +5,7 @@ This page tells where a change goes: into Pi Pocket's core, or into an extension
 ## Terms
 
 - **Core** is the code that Pi Pocket keeps for all people and all extensions. It is the server (`src/server/`, but not `src/server/extensions/`), the app (`web/`), and the interfaces that extensions use: `host`, `web`, and `pocket`.
-- An **extension** is a module that Pi Pocket loads through its extension loader. The owner can turn each one off in **Menu → Extensions**, except the system prompt (`prompt.ts`). There are three types:
+- An **extension** is a module that Pi Pocket loads through its extension loader. The owner can turn each one off in **Settings → Extensions**, except the system prompt (`prompt.ts`). There are three types:
     - A **built-in extension** is a module in `src/server/extensions/`. It comes with Pi Pocket.
     - A **gallery extension** is a drop-in that its author keeps in their own repository. The gallery lists it ([gallery-review.md](gallery-review.md)).
     - A **drop-in** is a module in the owner's `~/.pi-pocket/extensions/` folder.
@@ -60,7 +60,7 @@ Ask these questions in this order. The first "yes" gives the answer.
 
 ### Commands
 
-- **Core: `web.command`** (pull request #36). Core decides who may run a command. It makes a durable task for each run, so a retry runs the handler once. It shows the run in **Menu → Running now**, and stops it there. It keeps limits, and it writes cards that Pi does not read.
+- **Core: `web.command`** (pull request #36). Core decides who may run a command. It makes a durable task for each run, so a retry runs the handler once. It shows the run in **Settings → Running now**, and stops it there. It keeps limits, and it writes cards that Pi does not read.
 - **Extension: each command.** For example, `/clock-zone` in [examples/clock.ts](../../examples/clock.ts).
 - **Why:** the mechanism decides permissions and stored data (C1, C2). Each command is a workflow (C6).
 

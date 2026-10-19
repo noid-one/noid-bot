@@ -1600,8 +1600,10 @@ export function RailNav({ foldable = false, folded = false }) {
             class="rail-button rail-me"
             data-part="rail-button"
             title=${`${me?.name ?? ""} · ${role}`}
-            aria-label="Your name"
-            onClick=${() => openSheet({ type: "name" })}
+            aria-label="You and settings"
+            aria-haspopup="menu"
+            aria-expanded=${store.state.sheet?.type === "account"}
+            onClick=${() => openSheet({ type: "account" })}
         >
             ${me && html`<${Avatar} person=${me} size=${30} />`}
         </button>

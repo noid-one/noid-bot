@@ -81,7 +81,7 @@ A copy of Pi Pocket runs your code on a temporary data folder, with a scripted m
 
 1. In Pi Pocket's folder, start a copy: `node test/serve.ts`. It prints its data folder, and sign-in links for an owner and a guest.
 2. Copy your module into `extensions/` in the copy's `data/` folder.
-3. Open the owner's link, and turn on the module in Menu → Extensions.
+3. Open the owner's link, and turn on the module in Settings → Extensions.
 4. Keep the browser's console open, and use what the module adds.
 5. Stop the copy with the `kill` command that it printed. This also deletes its data.
 
@@ -91,8 +91,8 @@ A copy of Pi Pocket runs your code on a temporary data folder, with a scripted m
 
 For a drop-in, you can also check it by hand on your own Pi Pocket:
 
-1. Turn it on in Menu → Extensions.
+1. Turn it on in Settings → Extensions.
 2. Ask Pi to use it, in a session that you make for this purpose.
-3. Watch Menu → Extensions, and the app's notices, for errors.
+3. Watch Settings → Extensions, and the app's notices, for errors.
 
 Remember that a drop-in runs with your rights, in each session. Turn it off when it does something wrong.

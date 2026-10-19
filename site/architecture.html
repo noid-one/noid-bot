@@ -3223,7 +3223,7 @@
                     rsBusy = true;
                     rsReset();
                     const lines = [
-                        "$ menu → Restart server",
+                        "$ Settings → Restart server",
                         "server exits with code 75 · launcher starts it again",
                         "get lock · load models · install extensions",
                         "open pocket.sqlite · #recover sessions, runs, chat, authors",
@@ -3431,7 +3431,7 @@
                     srv: {
                         label: "src/server/commands.ts",
                         steps: [
-                            ["save", "A restart is necessary: menu → Restart server."],
+                            ["save", "A restart is necessary: Settings → Restart server."],
                             [
                                 "exit 75",
                                 "The server exits with code 75. The launcher keeps the tunnel open and starts the server again.",

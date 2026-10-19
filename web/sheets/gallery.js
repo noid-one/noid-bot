@@ -963,7 +963,7 @@ export function GalleryUpdateSheet({ name }) {
             if (result.restart) {
                 notify(
                     "warning",
-                    `${data.title}'s helper files changed while it is on: restart the server (Menu → Restart server) to load them.`,
+                    `${data.title}'s helper files changed while it is on: restart the server (Settings → Restart server) to load them.`,
                 );
             }
 

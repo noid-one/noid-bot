@@ -8,7 +8,7 @@ In this tutorial, you write a drop-in extension. It gives Pi a tool that counts 
 - You must have Pi Pocket 0.14.0 or later.
 - You must be able to write a file on the machine where Pi Pocket runs. You can also ask Pi to write the file for you.
 
-Drop-ins go in the drop-in folder: `~/.pi-pocket/extensions/`, or `extensions/` in `PI_POCKET_DIR`. Menu → **Extensions** shows the path at the bottom of the sheet.
+Drop-ins go in the drop-in folder: `~/.pi-pocket/extensions/`, or `extensions/` in `PI_POCKET_DIR`. Settings → **Extensions** shows the path at the bottom of the sheet.
 
 ## 1. Write the module
 
@@ -67,7 +67,7 @@ What each part does:
 
 ## 2. Turn it on
 
-1. Open Menu → **Extensions**.
+1. Open Settings → **Extensions**.
 2. Find **my-words** in the group **Yours**. It is off: a new drop-in always starts off.
 3. Turn it on, and confirm.
 
@@ -94,7 +94,7 @@ Pi Pocket loads the new version of the module a moment after you save. A tool ca
 
 ## 6. Turn it off, or remove it
 
-To stop the module, turn it off in Menu → **Extensions**. To remove it, delete the file.
+To stop the module, turn it off in Settings → **Extensions**. To remove it, delete the file.
 
 ## Next steps
 

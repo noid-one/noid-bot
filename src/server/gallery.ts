@@ -5,7 +5,7 @@
  * A drop-in runs inside the server with the owner's rights, and nothing from the index is trusted: it is read strictly,
  * files come only over https from the pinned commit of the entry's GitHub repository, each must have the size and
  * SHA-256 the index pins, and their names keep to the drop-in folder's rules. What it installs arrives off, as every
- * drop-in does, whatever was chosen for that name before; only the owner turns it on, in Menu → Extensions. Updates are
+ * drop-in does, whatever was chosen for that name before; only the owner turns it on, in Settings → Extensions. Updates are
  * never automatic: the owner sees what changes, then applies it.
  *
  * Where each installed extension came from is kept beside it, in `<name>.gallery.json` in the drop-in folder, with its
@@ -656,7 +656,7 @@ export class Gallery {
                 this.#warned.add(key);
                 this.#app.ownerNotice(
                     "warning",
-                    `The gallery revoked the version of ${entry.title} you have, and it is on: ${reason} Turn it off in Menu → Extensions.`,
+                    `The gallery revoked the version of ${entry.title} you have, and it is on: ${reason} Turn it off in Settings → Extensions.`,
                 );
             }
         }

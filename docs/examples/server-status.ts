@@ -1,7 +1,7 @@
 /**
  * Server status: a page on the rail with this machine's load, memory, and uptime, which stays live while it shows.
  * An example drop-in extension with a web part: copy it and `server-status.js` into `~/.pi-pocket/extensions/`, then
- * turn it on in Menu → Extensions.
+ * turn it on in Settings → Extensions.
  */
 import { cpus, freemem, hostname, loadavg, totalmem, uptime } from "node:os";
 // A type import is gone when the module runs. In the drop-in folder, import the types from "./_pocket.d.ts".

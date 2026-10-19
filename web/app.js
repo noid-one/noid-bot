@@ -161,8 +161,8 @@ function Topbar() {
         <div class="title">
             <button
                 class="title-open"
-                aria-label=${`${title}${folder ? `, in ${folder}` : ""}: session menu`}
-                title=${cwd ? `${shortPath(cwd, server?.home)}\nSession menu` : "Session menu"}
+                aria-label=${`${title}${folder ? `, in ${folder}` : ""}: conversation menu`}
+                title=${cwd ? `${shortPath(cwd, server?.home)}\nConversation menu` : "Conversation menu"}
                 disabled=${!conversation}
                 onClick=${() => openSheet({ type: "menu" })}
             ></button>
@@ -602,6 +602,14 @@ addEventListener("keydown", (event) => {
     if (mod && !event.altKey && !event.shiftKey && key === "k") {
         event.preventDefault();
         store.set({ launcher: !store.state.launcher, drawer: false });
+
+        return;
+    }
+
+    // Settings, where apps keep them.
+    if (mod && !event.altKey && !event.shiftKey && key === ",") {
+        event.preventDefault();
+        openSheet({ type: "settings" });
 
         return;
     }

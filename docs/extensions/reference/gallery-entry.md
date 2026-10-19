@@ -192,7 +192,7 @@ Commits of the extension that people must not use, each with the reason. Where s
 
 ## What an entry declares
 
-These are the same lists that Menu → Extensions shows for a module that is on. The index's checks load the module in a test app and compare.
+These are the same lists that Settings → Extensions shows for a module that is on. The index's checks load the module in a test app and compare.
 
 ### `extensions`
 
