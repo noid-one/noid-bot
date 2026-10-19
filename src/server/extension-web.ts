@@ -87,7 +87,7 @@ export const BUILT_IN_COMMANDS: ReadonlySet<string> = new Set([
     "files",
     "changes",
     "branch",
-    "pip",
+    "noid",
     "peek",
     "artifacts",
     "login",

@@ -1,9 +1,9 @@
 /**
  * GitHub through the `gh` command signed in on this machine: running it with nobody there to answer, naming
- * repositories and pull requests in each way people write them, and whether its account can push to a repository.
- * PR watches (`watches.ts`), repository watches (`repo-watches.ts`), and PiP's checkouts (`pip.ts`) use it. Pi and PiP
- * act on GitHub only where `gh`'s account can push: a repository named in a page or a post that is someone else's
- * would let them hand Pi work.
+ * repositories and pull requests in each way people write them, and whether its account can push to a repository. PR
+ * watches (`watches.ts`), repository watches (`repo-watches.ts`), and bots' checkouts (`session-tools.ts`) use it. Pi
+ * and bots act on GitHub only where `gh`'s account can push: a repository named in a page or a post that is someone
+ * else's would let them hand Pi work.
  */
 import { execFile } from "node:child_process";
 import { describe, HttpError } from "./errors.ts";
@@ -259,7 +259,7 @@ export async function repoInfo(gh: Gh, repo: string): Promise<RepoInfo> {
 }
 
 /**
- * A repository Pi and PiP may act on: one `gh`'s account can push to. Throws a 403 for any other, saying why: what
+ * A repository Pi and bots may act on: one `gh`'s account can push to. Throws a 403 for any other, saying why: what
  * comes from someone else's repository could hand Pi work as if it were yours.
  */
 export async function requirePush(gh: Gh, repo: string): Promise<RepoInfo> {

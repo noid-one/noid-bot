@@ -1,9 +1,9 @@
 /**
  * The session tools: what Noid, and every other bot, does with the owner's sessions. Their extension
- * (`extensions/pip.ts`) is selected in bots' conversations only, and gives tools to list, read, start, message, stop,
- * archive, and schedule sessions, to see the calls waiting for approval and deny them (never allow: that stays a
- * person's), and to follow a session until its run ends. Every tool acts as the owner, with exactly their rights: the
- * checks are the ones their own requests meet.
+ * (`extensions/session-tools.ts`) is selected in bots' conversations only, and gives tools to list, read, start,
+ * message, stop, archive, and schedule sessions, to see the calls waiting for approval and deny them (never allow: that
+ * stays a person's), and to follow a session until its run ends. Every tool acts as the owner, with exactly their
+ * rights: the checks are the ones their own requests meet.
  *
  * A follow is a durable task in the bot's conversation: it waits for the message the bot sent (or for the session to go
  * idle), then sends the bot a report. Request ids keep a restart from sending a message or a report twice.
@@ -33,7 +33,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
 import type { User } from "./config.ts";
-import { AuthorsDoc, FollowsDoc, PipAskedDoc } from "./docs.ts";
+import { AuthorsDoc, FollowsDoc, ProviderAskedDoc } from "./docs.ts";
 import { NOTE_ENTRY } from "./entry-format.ts";
 import { describe } from "./errors.ts";
 import { clip, defang, quoted } from "./fence.ts";
@@ -50,7 +50,9 @@ import { describeMoment, describeRepeat } from "./when.ts";
 const context = BACKGROUND_CONTEXT;
 
 /** The session tools' extension: the tools, their prompt, and the follow task. Bots' conversations select it. */
-export const PIP_EXTENSION = "pocket-pip";
+export const SESSION_TOOLS_EXTENSION = "noid-sessions";
+/** Its name in pi-pocket, which selections stored before the rename hold (`Bots.ensureTools` renames it). */
+export const OLD_SESSION_TOOLS_EXTENSION = "pocket-pip";
 /** How reports from followed sessions start, so the bot knows what they are. */
 export const REPORT_HEAD = "[report] ";
 /** What sends for the owner when a conversation is no bot's: Noid, the main bot. */
@@ -102,7 +104,7 @@ type FollowState = { phase: "wait" } | { phase: "report"; text: string };
 type FollowRuntime = TaskRuntime<FollowInput, FollowState, null, object>;
 
 /** One session as the sessions tool lists it. */
-export type PipSession = {
+export type ListedSession = {
     id: number;
     title: string;
     state: "working" | "needs approval" | "idle";
@@ -159,7 +161,7 @@ export function ago(moment: number, now: number): string {
     return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`;
 }
 
-export class Pip {
+export class SessionTools {
     readonly #app: PocketApp;
     /** When each person's bots started their recent sessions, and made their messages and follows: for hourly limits. */
     readonly #recent = new Map<string, number[]>();
@@ -179,6 +181,7 @@ export class Pip {
     constructor(app: PocketApp) {
         this.#app = app;
         this.task = defineTask<FollowInput, FollowState, null>({
+            // "pip": the task's stored name, from pi-pocket.
             name: "pocket.pip-follow",
             version: 1,
             initial: () => ({ phase: "wait" }),
@@ -200,7 +203,10 @@ export class Pip {
 
     /** Whether this person's bots have the session tools: the owner's do, while their extension is on. */
     available(user: User): boolean {
-        return user.role === "owner" && this.#app.loader.extensionNames().includes(PIP_EXTENSION);
+        return (
+            user.role === "owner" &&
+            this.#app.loader.extensionNames().includes(SESSION_TOOLS_EXTENSION)
+        );
     }
 
     /** Noid's conversation: the main bot's, the owner's own assistant. */
@@ -217,7 +223,8 @@ export class Pip {
 
     /**
      * The session tools turned off: Noid's run stops, and any compaction of its context, which would go on without its
-     * own summary (`pip-compact.ts`) and read what came from outside as it is. Nothing new reaches it until they are back.
+     * own summary (`noid-compact.ts`) and read what came from outside as it is. Nothing new reaches it until they are
+     * back.
      */
     async stopAll(): Promise<void> {
         const app = this.#app;
@@ -273,7 +280,7 @@ export class Pip {
             : (this.#app.config.userById(userId)?.name ?? "the owner");
     }
 
-    /** Count one more of PiP's actions of a kind, or refuse when it made `max` in the last hour. */
+    /** Count one more of the bot's actions of a kind, or refuse when it made `max` in the last hour. */
     #count(user: User, kind: "start" | "act", max: number): void {
         const key = `${user.id}:${kind}`;
         const now = Date.now();
@@ -291,9 +298,9 @@ export class Pip {
     }
 
     /**
-     * A schedule set up in `conversationId` under `key` by `make`, counted as one of PiP's actions when PiP sets it up:
-     * in its own conversation (its schedule tool), or for `user` in a session. A key already used finds its schedule
-     * without counting again; a schedule `make` refuses (a `when` it cannot read) gives its count back.
+     * A schedule set up in `conversationId` under `key` by `make`, counted as one of the bot's actions when the bot
+     * sets it up: in its own conversation (its schedule tool), or for `user` in a session. A key already used finds its
+     * schedule without counting again; a schedule `make` refuses (a `when` it cannot read) gives its count back.
      */
     async countSchedule<T>(
         conversationId: ConversationId,
@@ -316,7 +323,7 @@ export class Pip {
         return this.#counted(counted, make);
     }
 
-    /** Do `make`, counted as one of PiP's actions; refused (nothing made), it gives its count back. */
+    /** Do `make`, counted as one of the bot's actions; refused (nothing made), it gives its count back. */
     async #counted<T>(user: User, make: () => Promise<T>): Promise<T> {
         this.#count(user, "act", ACTIONS_PER_HOUR);
 
@@ -330,11 +337,11 @@ export class Pip {
     }
 
     /**
-     * Send a message for PiP's person, once for a key however often the call runs: a message already sent under it is
-     * found, not sent again (nor checked again: a limit reached since does not undo it).
+     * Send a message for the bot's person, once for a key however often the call runs: a message already sent under it
+     * is found, not sent again (nor checked again: a limit reached since does not undo it).
      */
     async #submit(
-        pipId: ConversationId,
+        botId: ConversationId,
         id: ConversationId,
         user: User,
         text: string,
@@ -355,7 +362,7 @@ export class Pip {
             return requestId;
         }
 
-        // Only a message not sent yet: a replayed call finds the one it sent, whatever PiP knows after a restart.
+        // Only a message not sent yet: a replayed call finds the one it sent, whatever the bot knows after a restart.
         await checks();
         this.#count(user, "act", ACTIONS_PER_HOUR);
 
@@ -364,14 +371,14 @@ export class Pip {
                 id,
                 user,
                 { text, requestId: asked, ...(steer ? { mode: "steer" as const } : {}) },
-                this.#via(pipId),
+                this.#via(botId),
             )
         ).requestId;
     }
 
-    /** PiP's person, from its conversation; an error when the conversation is no PiP, or its person is gone. */
-    #person(pipId: ConversationId): User {
-        const userId = this.actsFor(pipId);
+    /** The bot's person, from its conversation; an error when the conversation is no bot's, or its person is gone. */
+    #person(botId: ConversationId): User {
+        const userId = this.actsFor(botId);
         const user = userId === undefined ? undefined : this.#app.config.userById(userId);
 
         if (user === undefined) {
@@ -381,11 +388,11 @@ export class Pip {
         return user;
     }
 
-    /** A session PiP may act on: one its person can see, and not PiP itself. */
-    #session(pipId: ConversationId, user: User, sessionId: number): ConversationId {
+    /** A session the bot may act on: one its person can see, and not the bot itself. */
+    #session(botId: ConversationId, user: User, sessionId: number): ConversationId {
         const id = sessionId as unknown as ConversationId;
 
-        if (id === pipId) {
+        if (id === botId) {
             throw new Error("That is your own conversation.");
         }
 
@@ -403,17 +410,17 @@ export class Pip {
         return id;
     }
 
-    /** PiP just looked at a session, and knows what it is doing. */
-    #looked(pipId: ConversationId, sessionId: ConversationId | number): void {
-        this.#checked.set(`${String(pipId)}:${String(sessionId)}`, Date.now());
+    /** The bot just looked at a session, and knows what it is doing. */
+    #looked(botId: ConversationId, sessionId: ConversationId | number): void {
+        this.#checked.set(`${String(botId)}:${String(sessionId)}`, Date.now());
     }
 
     /**
-     * Refuse to act on a session PiP has not looked at lately: what it would send or stop may be what the session does
-     * not need. `doing` says what in a few words ("message", "stop").
+     * Refuse to act on a session the bot has not looked at lately: what it would send or stop may be what the session
+     * does not need. `doing` says what in a few words ("message", "stop").
      */
-    #requireLooked(pipId: ConversationId, sessionId: number, doing: string): void {
-        const at = this.#checked.get(`${String(pipId)}:${String(sessionId)}`);
+    #requireLooked(botId: ConversationId, sessionId: number, doing: string): void {
+        const at = this.#checked.get(`${String(botId)}:${String(sessionId)}`);
 
         if (at === undefined || Date.now() - at > CHECKED_FOR_MS) {
             throw new Error(
@@ -423,16 +430,17 @@ export class Pip {
     }
 
     /**
-     * What PiP's person said to it in their own words: their messages in its context now, newest first (since its last
-     * new context, and those its last compaction kept), and the standing instructions of the watches and webhooks to it
-     * that they set up. Never the instructions of a watch PiP set up (its own words, checked against the models signed
-     * in then), what was posted to a webhook, what GitHub said, a report, or anything else sent for them. Each message
-     * apart: a short name's family word counts in its own message only. `messages`: their messages alone, with their
-     * entries, newest first. `newest`: the newest entry of PiP's conversation; `since`: where its context starts, as far
-     * as this read (its new context's entry, the oldest its last compaction kept, or the oldest read).
+     * What the bot's person said to it in their own words: their messages in its context now, newest first (since its
+     * last new context, and those its last compaction kept), and the standing instructions of the watches and webhooks
+     * to it that they set up. Never the instructions of a watch the bot set up (its own words, checked against the
+     * models signed in then), what was posted to a webhook, what GitHub said, a report, or anything else sent for them.
+     * Each message apart: a short name's family word counts in its own message only. `messages`: their messages alone,
+     * with their entries, newest first. `newest`: the newest entry of the bot's conversation; `since`: where its
+     * context starts, as far as this read (its new context's entry, the oldest its last compaction kept, or the oldest
+     * read).
      */
     async #personWords(
-        pipId: ConversationId,
+        botId: ConversationId,
         user: User,
     ): Promise<{
         words: string[];
@@ -441,8 +449,8 @@ export class Pip {
         since: number;
     }> {
         const app = this.#app;
-        const own = (await app.harness.snapshot(AuthorsDoc, pipId, context))?.entries ?? {};
-        const conversation = await app.conversation(pipId);
+        const own = (await app.harness.snapshot(AuthorsDoc, botId, context))?.entries ?? {};
+        const conversation = await app.conversation(botId);
         const messages: { id: number; text: string }[] = [];
         // A compaction keeps the newest messages before it as they were: down to its head, they are still in context.
         let keptFrom: number | undefined;
@@ -488,7 +496,7 @@ export class Pip {
             cursor = page.next;
         } while (cursor !== undefined && read < NAMED_IN_ENTRIES);
 
-        const target = Number(pipId);
+        const target = Number(botId);
         const standing = [
             ...(await app.repoWatches.list(user)).filter(
                 (watch) => watch.by === user.id && !watch.byPi && watch.target === target,
@@ -510,20 +518,21 @@ export class Pip {
     }
 
     /**
-     * Whether the person's newest message (`person`'s) answers the question PiP was last told to ask, which provider pays
-     * (`PipAskedDoc`), with `model`'s: asked in PiP's context now, it is their first message since, and just the whole
-     * name or id of the provider of one of the models asked about, `model` among them, and of no other provider asked
-     * about. Everyday words ("sure", "go") answer nothing, and no question from before PiP's context began is answered:
-     * one from before Start fresh (whenever that came: sent while PiP works, it waits for its next pause), one from
-     * before what its last compaction kept, or one an earlier build kept (without `at`).
+     * Whether the person's newest message (`person`'s) answers the question the bot was last told to ask, which
+     * provider pays (`ProviderAskedDoc`), with `model`'s: asked in the bot's context now, it is their first message
+     * since, and just the whole name or id of the provider of one of the models asked about, `model` among them, and of
+     * no other provider asked about. Everyday words ("sure", "go") answer nothing, and no question from before the
+     * bot's context began is answered: one from before Start fresh (whenever that came: sent while the bot works, it
+     * waits for its next pause), one from before what its last compaction kept, or one an earlier build kept (without
+     * `at`).
      */
     async #answered(
-        pipId: ConversationId,
+        botId: ConversationId,
         model: { provider: string; id: string },
         person: { messages: readonly { id: number; text: string }[]; since: number },
         providerName: (provider: string) => string,
     ): Promise<boolean> {
-        const asked = (await this.#app.harness.snapshot(PipAskedDoc, pipId, context))?.asked;
+        const asked = (await this.#app.harness.snapshot(ProviderAskedDoc, botId, context))?.asked;
         const [newest, before] = person.messages;
 
         if (
@@ -548,10 +557,10 @@ export class Pip {
     }
 
     /**
-     * The signed-in model PiP may start a session on: one its person named, whose sign-in works now. Anything else is
-     * refused, telling PiP to leave the model out or ask, never to pick another.
+     * The signed-in model the bot may start a session on: one its person named, whose sign-in works now. Anything else
+     * is refused, telling the bot to leave the model out or ask, never to pick another.
      */
-    async #personsModel(pipId: ConversationId, user: User, spec: string) {
+    async #personsModel(botId: ConversationId, user: User, spec: string) {
         const app = this.#app;
         const model = findModel(app.models, spec);
 
@@ -562,7 +571,7 @@ export class Pip {
         }
 
         // Read once for the checks below: it can be long.
-        const person = await this.#personWords(pipId, user);
+        const person = await this.#personWords(botId, user);
         const said = indexed(person.words);
         const available = app.models.getAvailableSnapshot();
         // Every model Pi knows: words that name one not signed in name no shorter one that is.
@@ -572,10 +581,10 @@ export class Pip {
         const theirs = modelsNamed(said, [model], true, [...available, ...known]).includes(model);
         const named =
             personNamed(said, model, available, providerName, known) ||
-            (theirs && (await this.#answered(pipId, model, person, providerName)));
+            (theirs && (await this.#answered(botId, model, person, providerName)));
 
-        // Their words name it, but at more than one provider: which one pays is theirs to say. What PiP asks about is kept,
-        // for their answer (`#answered`).
+        // Their words name it, but at more than one provider: which one pays is theirs to say. What the bot asks about
+        // is kept, for their answer (`#answered`).
         if (!named && theirs) {
             const asked = [
                 model,
@@ -585,7 +594,7 @@ export class Pip {
             ];
 
             await app.harness.commit(async (tx) => {
-                (await tx.doc(PipAskedDoc, pipId)).asked = {
+                (await tx.doc(ProviderAskedDoc, botId)).asked = {
                     models: asked.map((each) => ({ provider: each.provider, id: each.id })),
                     at: person.newest ?? 0,
                 };
@@ -617,11 +626,11 @@ export class Pip {
     }
 
     /**
-     * Refuse text from PiP that names a model its person did not name: which model to use is theirs to say. Words that
-     * name the same model at two providers pass when the person named either: text picks no provider (a subagent's
+     * Refuse text from the bot that names a model its person did not name: which model to use is theirs to say. Words
+     * that name the same model at two providers pass when the person named either: text picks no provider (a subagent's
      * model must be one the owner allows anyway).
      */
-    async #requireNoModelChoice(pipId: ConversationId, user: User, text: string): Promise<void> {
+    async #requireNoModelChoice(botId: ConversationId, user: User, text: string): Promise<void> {
         const app = this.#app;
         const available = app.models.getAvailableSnapshot();
         const known = app.models.getModels();
@@ -633,7 +642,7 @@ export class Pip {
         }
 
         const theirs = modelsNamed(
-            indexed((await this.#personWords(pipId, user)).words),
+            indexed((await this.#personWords(botId, user)).words),
             available,
             true,
             known,
@@ -651,13 +660,13 @@ export class Pip {
         }
     }
 
-    /** A session's state now, in a few words, for the results of PiP's tools that act on it. */
-    async status(pipId: ConversationId, sessionId: number): Promise<string> {
+    /** A session's state now, in a few words, for the results of the bot's tools that act on it. */
+    async status(botId: ConversationId, sessionId: number): Promise<string> {
         const app = this.#app;
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
         const meta = app.sessionMeta(id)!;
-        // Messages not taken yet, PiP's just now among them: a session about to start is not idle.
+        // Messages not taken yet, the bot's just now among them: a session about to start is not idle.
         const waiting = (await app.harness.snapshot(InboxDoc, id, context))?.items.length ?? 0;
         const state = app.approvals
             .all()
@@ -672,21 +681,21 @@ export class Pip {
         return `/s/${String(sessionId)} now: ${state}${waiting > 0 ? `, ${String(waiting)} message${waiting === 1 ? "" : "s"} waiting` : ""}${meta.archived === true ? ", archived" : ""}, last active ${ago(meta.updatedAt, Date.now())}.`;
     }
 
-    // ─── What PiP's tools do ────────────────────────────────────────────────
+    // ─── What the bot's tools do ────────────────────────────────────────────────
 
-    /** The sessions PiP's person can see, newest first. */
+    /** The sessions the bot's person can see, newest first. */
     sessions(
-        pipId: ConversationId,
+        botId: ConversationId,
         filter: { query?: string; state?: string; archived?: boolean; limit?: number } = {},
-    ): { sessions: PipSession[]; more: number; folders: string[] } {
+    ): { sessions: ListedSession[]; more: number; folders: string[] } {
         const app = this.#app;
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
         const words = (filter.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
         // noid: bots are not sessions here; the bots tool lists them.
         const all = app
             .sessions(user)
             .filter((session) => session.bot === undefined)
-            .map((session): PipSession => {
+            .map((session): ListedSession => {
                 const counts = session.subagents;
 
                 return {
@@ -742,11 +751,11 @@ export class Pip {
         };
     }
 
-    /** The newest part of a session, as text for PiP: its state, what waits there, and its last messages. */
-    async read(pipId: ConversationId, sessionId: number, entries = 40): Promise<string> {
+    /** The newest part of a session, as text for the bot: its state, what waits there, and its last messages. */
+    async read(botId: ConversationId, sessionId: number, entries = 40): Promise<string> {
         const app = this.#app;
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
         const meta = app.sessionMeta(id)!;
         const conversation = await app.conversation(id);
         const page = await conversation.entries(
@@ -829,7 +838,7 @@ export class Pip {
                   ]),
         ];
 
-        this.#looked(pipId, id);
+        this.#looked(botId, id);
         const head = [
             `#${String(sessionId)} ${quoted(meta.title ?? "New session")} · ${state}${meta.archived === true ? " · archived" : ""}`,
             `Folder: ${snippet(homePath(app.cwdOf(id)), 300)}${meta.worktree === undefined ? "" : ` (worktree, branch ${snippet(meta.worktree.branch, 120)})`}`,
@@ -843,12 +852,12 @@ export class Pip {
     }
 
     /**
-     * Start a session for PiP's person, in a folder (the default one when absent), with a model only when its person
-     * named it. Its first message goes with `send`, so a replayed call that made the session sends it once; it is checked
-     * here first (`message`), so a message that names a model nobody chose leaves no session behind.
+     * Start a session for the bot's person, in a folder (the default one when absent), with a model only when its
+     * person named it. Its first message goes with `send`, so a replayed call that made the session sends it once; it
+     * is checked here first (`message`), so a message that names a model nobody chose leaves no session behind.
      */
     async start(
-        pipId: ConversationId,
+        botId: ConversationId,
         request: {
             folder?: string;
             repo?: string;
@@ -859,15 +868,15 @@ export class Pip {
         },
     ): Promise<ConversationId> {
         const app = this.#app;
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
         // Before anything is made: a model that is not there, or that nobody chose, leaves no session behind.
         const model =
             request.model === undefined
                 ? undefined
-                : await this.#personsModel(pipId, user, request.model);
+                : await this.#personsModel(botId, user, request.model);
 
         await this.#requireNoModelChoice(
-            pipId,
+            botId,
             user,
             `${request.title ?? ""}\n${request.message ?? ""}`,
         );
@@ -878,7 +887,7 @@ export class Pip {
 
         this.#count(user, "start", STARTS_PER_HOUR);
         const folder =
-            request.repo === undefined ? request.folder : await this.checkout(pipId, request.repo);
+            request.repo === undefined ? request.folder : await this.checkout(botId, request.repo);
         const { id } = await app.commands.createSession(
             user,
             {
@@ -893,34 +902,34 @@ export class Pip {
             await app.commands.configure(id, user, { model });
         }
 
-        // PiP made it, and knows what it is doing: nothing yet.
-        this.#looked(pipId, id);
+        // The bot made it, and knows what it is doing: nothing yet.
+        this.#looked(botId, id);
 
         return id;
     }
 
     /**
-     * Send a session a message for PiP's person: queued behind its work, or steering it. Once for a key: a replayed call
-     * finds the message it sent.
+     * Send a session a message for the bot's person: queued behind its work, or steering it. Once for a key: a replayed
+     * call finds the message it sent.
      */
     async send(
-        pipId: ConversationId,
+        botId: ConversationId,
         sessionId: number,
         message: string,
         steer: boolean,
         key: string,
         options: { started?: boolean } = {},
     ): Promise<{ requestId: string }> {
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         return {
-            requestId: await this.#submit(pipId, id, user, message, key, steer, async () => {
+            requestId: await this.#submit(botId, id, user, message, key, steer, async () => {
                 // The first message of a session the same call started (`started`) needs no look, there being nothing to
                 // see, and was checked for model names as the session started.
                 if (options.started !== true) {
-                    this.#requireLooked(pipId, sessionId, "message");
-                    await this.#requireNoModelChoice(pipId, user, message);
+                    this.#requireLooked(botId, sessionId, "message");
+                    await this.#requireNoModelChoice(botId, user, message);
                 }
             }),
         };
@@ -929,15 +938,15 @@ export class Pip {
     // ─── GitHub ─────────────────────────────────────────────────────────────
 
     /**
-     * Where PiP's person works on a GitHub repository: the checkout a session they started works in (its `origin` is
-     * the repository), or else a clone, made now, in the data folder's `repos/`. Only their own sessions' folders: one
-     * a guest made could hold the guest's instructions (an AGENTS.md). Only a repository gh's account can push to:
+     * Where the bot's person works on a GitHub repository: the checkout a session they started works in (its `origin`
+     * is the repository), or else a clone, made now, in the data folder's `repos/`. Only their own sessions' folders:
+     * one a guest made could hold the guest's instructions (an AGENTS.md). Only a repository gh's account can push to:
      * someone else's would bring its own instructions into a session that can run commands. A clone is made beside its
      * place and moved there once complete, so a clone cut off midway is never taken for one.
      */
-    async checkout(pipId: ConversationId, repo: string): Promise<string> {
+    async checkout(botId: ConversationId, repo: string): Promise<string> {
         const app = this.#app;
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
         const named = parseRepo(repo);
 
         if (named === undefined) {
@@ -1032,7 +1041,7 @@ export class Pip {
         }
     }
 
-    /** A folder's GitHub repository, kept a few minutes: PiP asks of many folders. */
+    /** A folder's GitHub repository, kept a few minutes: the bot asks of many folders. */
     async #origin(folder: string): Promise<string | undefined> {
         const now = Date.now();
         const known = this.#origins.get(folder);
@@ -1048,14 +1057,14 @@ export class Pip {
         return repo;
     }
 
-    /** Watch a session's pull request for PiP's person: its branch's, or `pr` (a number, address, or owner/name#12). */
-    async watchPr(pipId: ConversationId, sessionId: number, pr: string | undefined, key: string) {
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+    /** Watch a session's pull request for the owner: its branch's, or `pr` (a number, address, or owner/name#12). */
+    async watchPr(botId: ConversationId, sessionId: number, pr: string | undefined, key: string) {
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         // A replayed call finds the watch it started; anything else is looked at first.
         if ((await this.#app.watches.get(id))?.key !== key) {
-            this.#requireLooked(pipId, sessionId, "watch a pull request from");
+            this.#requireLooked(botId, sessionId, "watch a pull request from");
         }
 
         // Counted even when refused: it asked GitHub, which the hourly count also keeps in bounds.
@@ -1069,37 +1078,37 @@ export class Pip {
     }
 
     /** A session's PR watch, or stopping it. */
-    async prWatch(pipId: ConversationId, sessionId: number, stop: boolean) {
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+    async prWatch(botId: ConversationId, sessionId: number, stop: boolean) {
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         if (stop) {
-            this.#requireLooked(pipId, sessionId, "stop the PR watch of");
+            this.#requireLooked(botId, sessionId, "stop the PR watch of");
         }
 
         return stop ? this.#app.watches.stop(id) : this.#app.watches.get(id);
     }
 
-    /** Watch a repository for PiP's person: what happens there comes to PiP, or to session `to`. */
+    /** Watch a repository for the bot's person: what happens there comes to the bot, or to session `to`. */
     async addRepoWatch(
-        pipId: ConversationId,
+        botId: ConversationId,
         request: Omit<RepoWatchRequest, "target" | "byPi" | "key"> & { to?: number },
         key: string,
     ): Promise<RepoWatchView> {
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
         const { to, ...rest } = request;
 
-        // Strangers' issues and pull requests are let in by a person, in the hooks sheet, never by PiP.
+        // Strangers' issues and pull requests are let in by a person, in the hooks sheet, never by the bot.
         if (rest.anyone === true) {
             throw new Error(
                 "Only your person can let a watch take issues and pull requests from anyone: ask them to turn it on in Menu → Webhooks and watches once the watch is made.",
             );
         }
 
-        const target = to === undefined ? pipId : this.#session(pipId, user, to);
+        const target = to === undefined ? botId : this.#session(botId, user, to);
 
         // What each event will have done: no model in it that its person did not name.
-        await this.#requireNoModelChoice(pipId, user, rest.instructions ?? "");
+        await this.#requireNoModelChoice(botId, user, rest.instructions ?? "");
 
         // Counted even when refused: it asked GitHub, which the hourly count also keeps in bounds.
         this.#count(user, "act", ACTIONS_PER_HOUR);
@@ -1107,56 +1116,56 @@ export class Pip {
         return this.#app.repoWatches.add(user, { ...rest, target, byPi: true, key });
     }
 
-    /** PiP's person's repository watches, each with where it sends. */
-    async repoWatches(pipId: ConversationId): Promise<(RepoWatchView & { to: string })[]> {
+    /** The bot's person's repository watches, each with where it sends. */
+    async repoWatches(botId: ConversationId): Promise<(RepoWatchView & { to: string })[]> {
         const app = this.#app;
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
 
         return (await app.repoWatches.list(user))
             .filter((watch) => watch.by === user.id)
             .map((watch) => ({
                 ...watch,
                 to:
-                    watch.target === Number(pipId)
+                    watch.target === Number(botId)
                         ? "you"
                         : `session ${watch.target} (${quoted(app.sessionMeta(watch.target as unknown as ConversationId)?.title ?? "untitled", 80)})`,
             }));
     }
 
-    async removeRepoWatch(pipId: ConversationId, id: string): Promise<RepoWatchView> {
-        return this.#app.repoWatches.remove(this.#person(pipId), id);
+    async removeRepoWatch(botId: ConversationId, id: string): Promise<RepoWatchView> {
+        return this.#app.repoWatches.remove(this.#person(botId), id);
     }
 
     /** Stop a session's run. */
-    async stop(pipId: ConversationId, sessionId: number): Promise<boolean> {
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+    async stop(botId: ConversationId, sessionId: number): Promise<boolean> {
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
-        this.#requireLooked(pipId, sessionId, "stop");
+        this.#requireLooked(botId, sessionId, "stop");
         const busy = this.#app.isBusy(id);
 
-        await this.#app.commands.abort(id, this.#through(user, pipId));
+        await this.#app.commands.abort(id, this.#through(user, botId));
 
         return busy;
     }
 
     /** Archive a session, or bring it back. */
-    async archive(pipId: ConversationId, sessionId: number, archived: boolean): Promise<void> {
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+    async archive(botId: ConversationId, sessionId: number, archived: boolean): Promise<void> {
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         // Bringing one back hides nothing; archiving it hides what may still need its person.
         if (archived && this.#app.sessionMeta(id)?.archived !== true) {
-            this.#requireLooked(pipId, sessionId, "archive");
+            this.#requireLooked(botId, sessionId, "archive");
         }
 
-        await this.#app.commands.updateSession(id, this.#through(user, pipId), { archived });
+        await this.#app.commands.updateSession(id, this.#through(user, botId), { archived });
     }
 
-    /** The calls waiting for approval in the sessions PiP's person can see. */
-    approvals(pipId: ConversationId) {
+    /** The calls waiting for approval in the sessions the bot's person can see. */
+    approvals(botId: ConversationId) {
         const app = this.#app;
-        const user = this.#person(pipId);
+        const user = this.#person(botId);
 
         return app.approvals
             .all()
@@ -1177,38 +1186,38 @@ export class Pip {
             });
     }
 
-    /** Deny a waiting call. PiP never allows one: that stays a person's decision. */
-    async deny(pipId: ConversationId, approvalId: string): Promise<boolean> {
-        const user = this.#person(pipId);
+    /** Deny a waiting call. The bot never allows one: that stays a person's decision. */
+    async deny(botId: ConversationId, approvalId: string): Promise<boolean> {
+        const user = this.#person(botId);
 
-        return this.#app.answerApproval(approvalId, false, this.#through(user, pipId));
+        return this.#app.answerApproval(approvalId, false, this.#through(user, botId));
     }
 
-    /** A session's scheduled messages; or one set up there, for PiP's person, marked as sent through PiP. */
-    async schedules(pipId: ConversationId, sessionId: number) {
-        const user = this.#person(pipId);
+    /** A session's scheduled messages; or one set up there, for the bot's person, marked as sent through the bot. */
+    async schedules(botId: ConversationId, sessionId: number) {
+        const user = this.#person(botId);
 
-        return this.#app.schedules.list(this.#session(pipId, user, sessionId));
+        return this.#app.schedules.list(this.#session(botId, user, sessionId));
     }
 
     async schedule(
-        pipId: ConversationId,
+        botId: ConversationId,
         sessionId: number,
         when: string,
         message: string,
         key: string,
     ) {
         const app = this.#app;
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         await app.requireDriver(id, user);
 
-        // A replayed call finds the schedule it made; a new one is for a session PiP looked at, naming no model nobody
-        // chose.
+        // A replayed call finds the schedule it made; a new one is for a session the bot looked at, naming no model
+        // nobody chose.
         if (!(await app.schedules.list(id)).some((item) => item.key === key)) {
-            this.#requireLooked(pipId, sessionId, "schedule messages in");
-            await this.#requireNoModelChoice(pipId, user, message);
+            this.#requireLooked(botId, sessionId, "schedule messages in");
+            await this.#requireNoModelChoice(botId, user, message);
         }
 
         // A schedule is work to come, counted like a message.
@@ -1218,7 +1227,7 @@ export class Pip {
             () =>
                 app.schedules.add(id, {
                     when,
-                    text: `[via ${this.#via(pipId)}] ${message}`,
+                    text: `[via ${this.#via(botId)}] ${message}`,
                     requestedBy: user.id,
                     key,
                 }),
@@ -1226,53 +1235,53 @@ export class Pip {
         );
     }
 
-    async cancelSchedule(pipId: ConversationId, sessionId: number, scheduleId: string) {
+    async cancelSchedule(botId: ConversationId, sessionId: number, scheduleId: string) {
         const app = this.#app;
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
 
         await app.requireDriver(id, user);
-        this.#requireLooked(pipId, sessionId, "cancel schedules in");
+        this.#requireLooked(botId, sessionId, "cancel schedules in");
 
         return app.schedules.cancel(id, scheduleId);
     }
 
     /**
-     * Report to PiP when a session's run ends: the answer to the message PiP sent under `requestId`, or, without one,
-     * what the session says once its run ends. A session that is idle now, with no message to wait for, is answered at
-     * once in `now`, rather than by a report: a report starts a run of PiP's. `key` makes the follow once, however
-     * often its call runs, also after it reported.
+     * Report to the bot when a session's run ends: the answer to the message the bot sent under `requestId`, or,
+     * without one, what the session says once its run ends. A session that is idle now, with no message to wait for, is
+     * answered at once in `now`, rather than by a report: a report starts a run of the bot's. `key` makes the follow
+     * once, however often its call runs, also after it reported.
      */
     async follow(
-        pipId: ConversationId,
+        botId: ConversationId,
         sessionId: number,
         requestId: string | undefined,
         key: string,
     ): Promise<{ now?: string }> {
         const app = this.#app;
-        const user = this.#person(pipId);
-        const id = this.#session(pipId, user, sessionId);
+        const user = this.#person(botId);
+        const id = this.#session(botId, user, sessionId);
         const title = app.sessionMeta(id)?.title ?? "New session";
 
         if (requestId === undefined && !app.isBusy(id)) {
             const now = await this.#lastWords(id, title, "is idle");
 
-            this.#looked(pipId, id);
+            this.#looked(botId, id);
 
             return { now };
         }
 
-        // Following a run of its own (no message of PiP's to wait for) is for a session PiP looked at: a report starts a
-        // run of PiP's. A replayed call finds the follow it made.
+        // Following a run of its own (no message of the bot's to wait for) is for a session the bot looked at: a report
+        // starts a run of the bot's. A replayed call finds the follow it made.
         if (
             requestId === undefined &&
-            (await app.harness.snapshot(FollowsDoc, pipId, context))?.items[key] === undefined
+            (await app.harness.snapshot(FollowsDoc, botId, context))?.items[key] === undefined
         ) {
-            this.#requireLooked(pipId, sessionId, "follow");
+            this.#requireLooked(botId, sessionId, "follow");
         }
 
         await app.harness.commit(async (tx) => {
-            const follows = (await tx.doc(FollowsDoc, pipId)).items;
+            const follows = (await tx.doc(FollowsDoc, botId)).items;
 
             if (follows[key] !== undefined) {
                 return;
@@ -1321,7 +1330,7 @@ export class Pip {
                     title,
                     ...(requestId === undefined ? {} : { requestId }),
                 },
-                { ownership: { kind: "conversation" }, background: true, conversationId: pipId },
+                { ownership: { kind: "conversation" }, background: true, conversationId: botId },
             );
 
             follows[key] = { taskId: Number(taskId), session: sessionId, at: now };
@@ -1331,27 +1340,27 @@ export class Pip {
     }
 
     /**
-     * Whether a session's person hears of its run's end from their PiP: a live follow waits on it, or one reported just
-     * now. Its own "Pi finished" would say the same twice. Not while PiP is off or a spend limit holds it back: its
-     * report would then start no run, and push nothing.
+     * Whether a session's person hears of its run's end from Noid: a live follow waits on it, or one reported just now.
+     * Its own "Pi finished" would say the same twice. Not while the session tools are off or a spend limit holds it
+     * back: its report would then start no run, and push nothing.
      */
     async reportsOn(sessionId: ConversationId, userId: string): Promise<boolean> {
         const app = this.#app;
         const user = app.config.userById(userId);
-        const pip = user?.role === "owner" ? this.noid() : undefined;
+        const noid = user?.role === "owner" ? this.noid() : undefined;
 
         if (
             user === undefined ||
-            pip === undefined ||
+            noid === undefined ||
             !this.available(user) ||
-            app.spend.heldBack(pip, userId) !== undefined
+            app.spend.heldBack(noid, userId) !== undefined
         ) {
             return false;
         }
 
         const now = Date.now();
         const follows = Object.values(
-            (await app.harness.snapshot(FollowsDoc, pip, context))?.items ?? {},
+            (await app.harness.snapshot(FollowsDoc, noid, context))?.items ?? {},
         ).filter((follow) => follow.session === Number(sessionId));
 
         if (
@@ -1380,14 +1389,14 @@ export class Pip {
         return live;
     }
 
-    /** What PiP's person does through PiP, so activity lines and decisions say so. */
-    #through(user: User, pipId: ConversationId): User {
-        return { ...user, name: `${user.name} via ${this.#via(pipId)}` };
+    /** What the bot's person does through the bot, so activity lines and decisions say so. */
+    #through(user: User, botId: ConversationId): User {
+        return { ...user, name: `${user.name} via ${this.#via(botId)}` };
     }
 
     // ─── Follows ────────────────────────────────────────────────────────────
 
-    /** A session's last words, for PiP: how its run ended, and Pi's last answer, fenced. */
+    /** A session's last words, for the bot: how its run ended, and Pi's last answer, fenced. */
     async #lastWords(id: ConversationId, title: string, state: string): Promise<string> {
         const name = `${quoted(title, 80)} (/s/${String(id)})`;
         const page = await (await this.#app.conversation(id)).entries({}, 16, undefined, context);
@@ -1416,7 +1425,7 @@ export class Pip {
 
     /**
      * Wait for the session's run to end, then go on to report what came of it. A follow that cannot wait (the session
-     * is gone, a read fails) reports that instead, so PiP is never left waiting for nothing.
+     * is gone, a read fails) reports that instead, so the bot is never left waiting for nothing.
      */
     async #wait(input: FollowInput, runtime: FollowRuntime, context: Context): Promise<void> {
         let text: string;
@@ -1442,7 +1451,7 @@ export class Pip {
         );
     }
 
-    /** What came of the run PiP follows, once it ended. */
+    /** What came of the run the bot follows, once it ended. */
     async #outcome(input: FollowInput, runtime: FollowRuntime, context: Context): Promise<string> {
         const session = await runtime.conversation(input.sessionId, context);
         const name = `${quoted(input.title, 80)} (/s/${String(input.sessionId)})`;
@@ -1470,7 +1479,7 @@ export class Pip {
             return `Your message to ${name} never arrived.`;
         }
 
-        // The submission PiP made: a request id already known finds it without sending anything.
+        // The submission the bot made: a request id already known finds it without sending anything.
         const submission = await session.submit({ type: "input", content: "", requestId }, context);
         // Pi Durable leaves a failed run's queue alone, so a queued message waits for a boundary that never comes: once
         // the session is idle with it still queued, withdraw it, which ends the wait below.
@@ -1530,9 +1539,9 @@ export class Pip {
         return `${name} answered your message:\n${fenced(clip(text, ANSWER_CHARS) || "(no text)")}`;
     }
 
-    /** Mark this follow as reported in PiP's list, where it stays a while so a replayed call does not follow again. */
-    async #settleFollow(tx: Tx, pipId: ConversationId, taskId: number): Promise<void> {
-        const follows = (await tx.doc(FollowsDoc, pipId)).items;
+    /** Mark this follow as reported in the bot's list, where it stays a while so a replayed call follows once. */
+    async #settleFollow(tx: Tx, botId: ConversationId, taskId: number): Promise<void> {
+        const follows = (await tx.doc(FollowsDoc, botId)).items;
 
         for (const follow of Object.values(follows)) {
             if (follow.taskId === taskId && follow.doneAt === undefined) {
@@ -1542,8 +1551,8 @@ export class Pip {
     }
 
     /**
-     * Give PiP the report: as a message that it answers, or, while a spend limit holds work back, as a note it sees with
-     * its next message. Either way under a request id of its own, so a restart does not send it twice.
+     * Give the bot the report: as a message that it answers, or, while a spend limit holds work back, as a note it sees
+     * with its next message. Either way under a request id of its own, so a restart does not send it twice.
      */
     async #report(
         input: FollowInput,
@@ -1551,10 +1560,10 @@ export class Pip {
         runtime: FollowRuntime,
         context: Context,
     ): Promise<void> {
-        const pipId = runtime.conversationId;
+        const botId = runtime.conversationId;
 
-        // PiP turned off keeps its follows: a report waits until it is on again, as its schedules, watches, and hooks
-        // do, so no run starts in its conversation without its rules and tools.
+        // The session tools turned off keep the bot's follows: a report waits until they are on again, as its
+        // schedules, do, so no run starts in its conversation without its rules and tools.
         for (;;) {
             const person = this.#app.config.userById(input.userId);
 
@@ -1565,27 +1574,28 @@ export class Pip {
             await runtime.sleep(runtime.now() + this.holdMs, context);
         }
 
-        const pip = await this.#app.harness.conversation(pipId, context);
+        const bot = await this.#app.harness.conversation(botId, context);
+        // "pip-report": as pi-pocket made these request ids, so a report sent before an upgrade is found.
         const requestId = requestFor(input.userId, `pip-report-${String(runtime.taskId)}`);
 
-        // The report says what the session did: PiP has looked at it.
-        this.#looked(pipId, input.sessionId);
+        // The report says what the session did: the bot has looked at it.
+        this.#looked(botId, input.sessionId);
 
-        if (pip !== undefined) {
+        if (bot !== undefined) {
             try {
-                if (this.#app.spend.heldBack(pipId, input.userId) === undefined) {
-                    await pip.submit(
+                if (this.#app.spend.heldBack(botId, input.userId) === undefined) {
+                    await bot.submit(
                         { type: "input", content: text, whenBusy: "followUp", requestId },
                         context,
                     );
                 } else {
-                    await pip.submit(
+                    await bot.submit(
                         {
                             type: "write",
                             entry: {
                                 kind: NOTE_ENTRY,
                                 // "pip": stored in the note, as pi-pocket marked it.
-                                data: { text, by: "pip", name: this.#via(pipId) },
+                                data: { text, by: "pip", name: this.#via(botId) },
                                 model: [
                                     {
                                         role: "user",
@@ -1605,7 +1615,7 @@ export class Pip {
         }
 
         await runtime.commit(async (tx) => {
-            await this.#settleFollow(tx, pipId, Number(runtime.taskId));
+            await this.#settleFollow(tx, botId, Number(runtime.taskId));
 
             return finished;
         }, context);

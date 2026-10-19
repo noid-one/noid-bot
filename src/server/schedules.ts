@@ -3,8 +3,8 @@
  * its message, and for a repeat goes back to sleep until the next time. A restart while it sleeps continues the
  * sleep, and one that comes after the time sends at once. Each sending has its own request id, so a restart in the
  * middle of one never sends twice. A schedule goes out only while its person may still steer the session and no
- * spend limit is reached; otherwise it is cancelled, with a line in the chat saying why. One in PiP's conversation
- * waits while PiP is turned off, and goes out once it is back. The schedules extension
+ * spend limit is reached; otherwise it is cancelled, with a line in the chat saying why. One in Noid's conversation
+ * waits while Noid's session tools are off, and goes out once they are back. The schedules extension
  * (`extensions/schedules.ts`) installs the task and gives Pi a tool to schedule its own follow-ups; while it is off,
  * nothing goes out.
  */
@@ -101,7 +101,7 @@ export class Schedules {
     readonly #app: PocketApp;
     /** By conversation: the task of the schedule whose sending's run failed last, until the failure is pushed. */
     readonly #failedSendings = new Map<ConversationId, { task: string; error: string }>();
-    /** How long a schedule of PiP's waits before it looks again whether PiP is back. */
+    /** How long a schedule of Noid's waits before it looks again whether the session tools are back. */
     holdMs = 60_000;
     /** The durable task behind each schedule; the schedules extension installs it. */
     readonly task: Task<ScheduleInput, ScheduleState, null, object>;
@@ -150,9 +150,9 @@ export class Schedules {
             return runtime.commit(() => finished, context);
         }
 
-        // PiP's conversation while PiP is off would run without PiP's rules: its schedule waits, and goes out once PiP
-        // is back. Its `runs` stays, so a sending this replaces keeps its request id.
-        if (this.#waitsForPip(conversationId)) {
+        // Noid's conversation while the session tools are off would run without their rules: its schedule waits, and
+        // goes out once they are back. Its `runs` stays, so a sending this replaces keeps its request id.
+        if (this.#waitsForNoid(conversationId)) {
             return runtime.commit(async (tx) => {
                 const item = (await tx.doc(ScheduleDoc, conversationId)).items[id];
 
@@ -221,9 +221,9 @@ export class Schedules {
     }
 
     /** Whether a conversation is Noid's while its person cannot have it (the session tools are off). */
-    #waitsForPip(conversationId: ConversationId): boolean {
+    #waitsForNoid(conversationId: ConversationId): boolean {
         const app = this.#app;
-        const userId = app.pip.ownerOf(conversationId);
+        const userId = app.sessionTools.ownerOf(conversationId);
 
         if (userId === undefined) {
             return false;
@@ -231,7 +231,7 @@ export class Schedules {
 
         const person = app.config.userById(userId);
 
-        return person === undefined || !app.pip.available(person);
+        return person === undefined || !app.sessionTools.available(person);
     }
 
     /**
@@ -419,7 +419,7 @@ export class Schedules {
             throw new HttpError(409, "Schedules are turned off in Extensions.");
         }
 
-        if (this.#waitsForPip(conversationId)) {
+        if (this.#waitsForNoid(conversationId)) {
             throw new HttpError(
                 409,
                 "Noid's session tools are off: its schedules wait until they are back.",

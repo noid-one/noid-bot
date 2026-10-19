@@ -33,8 +33,8 @@ import type {
  * types (with `@since`) or here.
  */
 type Internal =
-    | "pip"
-    | "pipCompaction"
+    | "sessionTools"
+    | "noidCompaction"
     | "gallery"
     | "watches"
     | "repoWatches"

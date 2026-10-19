@@ -66,7 +66,7 @@ export type LessonView = {
 export type MemoryView = {
     /** Present only for the all-project pending queue, so an older server's scoped view is not mistaken for it. */
     pendingAll?: true;
-    /** This session's project; null for PiP or the all-project pending queue. */
+    /** This session's project; null without one, or for the all-project pending queue. */
     project: { name: string } | null;
     lessons: LessonView[];
     owner: boolean;
@@ -210,7 +210,7 @@ export class Memory {
             throw new HttpError(403, "Only the owner can review all pending lessons.");
         }
 
-        if (this.#app.pip.ownerOf(this.#app.rootOf(conversationId)) !== writer.userId) {
+        if (this.#app.sessionTools.ownerOf(this.#app.rootOf(conversationId)) !== writer.userId) {
             throw new HttpError(403, "Review all pending lessons from Noid's conversation.");
         }
     }
@@ -357,7 +357,8 @@ export class Memory {
      *
      * An approval says what the owner saw (`expected`): what waits can change between their look and their tap, so
      * approving holds only when it would make true what they saw. `pendingOnly` is a cross-project review mode for the
-     * human owner in their private PiP, limited to approving or discarding lessons that still wait; the Pi tool never sets it.
+     * human owner in Noid's conversation, limited to approving or discarding lessons that still wait; the Pi tool never
+     * sets it.
      */
     async change(
         conversationId: ConversationId,
@@ -566,7 +567,7 @@ export class Memory {
         return { userId: user.id, byPi: false, name: user.name };
     }
 
-    /** The session's lessons, or the human owner's pending lessons across all projects and everywhere in their private PiP. */
+    /** The session's lessons, or the human owner's pending lessons across all projects and everywhere, in Noid's. */
     async view(id: ConversationId, user: User, pendingOnly = false): Promise<MemoryView> {
         const app = this.#app;
 

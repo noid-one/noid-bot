@@ -257,7 +257,7 @@ export function stepView(call) {
         case "bot_archive":
             return view("archive", "Archive bot", args.name ?? "");
 
-        // Noid's session tools (PiP's).
+        // Noid's session tools.
         case "sessions":
             return view("tiles", "List sessions");
         case "session_read":

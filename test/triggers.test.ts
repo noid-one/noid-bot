@@ -878,22 +878,22 @@ test("a GitHub hook is signed: its address alone lets nothing in, and a new secr
 
 test("webhooks to Noid, and who may make, see, and remove them", async () => {
     const hook = await app.commands.addHook(owner(app), { target: "pip", name: "Alerts" });
-    const pip = app.pip.noid()!;
+    const noid = app.sessionTools.noid()!;
 
     // Noid was made as the app opened, before any model was picked.
-    await app.commands.configure(pip, owner(app), {
+    await app.commands.configure(noid, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
         thinkingLevel: "off",
     });
 
-    assert.equal(hook.target, Number(pip));
+    assert.equal(hook.target, Number(noid));
     assert.equal(
         (await fetch(`${base}${hook.path}`, { method: "POST", body: "disk full on web-1" })).status,
         202,
     );
-    await until(async () => (await messages(pip)).length >= 1, "Noid to get it");
+    await until(async () => (await messages(noid)).length >= 1, "Noid to get it");
     assert.match(
-        (await messages(pip)).at(-1)!,
+        (await messages(noid)).at(-1)!,
         /^\[via webhook Alerts\] Something happened[^\n]*\n\n<webhook-payload>\ndisk full on web-1\n<\/webhook-payload>/,
     );
 
@@ -905,7 +905,7 @@ test("webhooks to Noid, and who may make, see, and remove them", async () => {
     await assert.rejects(app.commands.removeHook(guest, hook.id), /No such webhook/);
     await assert.rejects(app.commands.addHook(viewer, { target: Number(session), name: "x" }));
     await assert.rejects(
-        app.commands.addHook(guest, { target: Number(pip), name: "mine now" }),
+        app.commands.addHook(guest, { target: Number(noid), name: "mine now" }),
         "nobody else reaches Noid",
     );
     await assert.rejects(

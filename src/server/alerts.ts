@@ -129,7 +129,7 @@ export class Alerts {
 
         for (const userId of await this.participants(id)) {
             // Noid follows this run and tells them what came of it: one notification, not two.
-            if (await app.pip.reportsOn(id, userId).catch(() => false)) {
+            if (await app.sessionTools.reportsOn(id, userId).catch(() => false)) {
                 continue;
             }
 

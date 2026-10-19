@@ -120,7 +120,8 @@ async function describeTask(
             return { label: command === undefined ? "running a command" : `running ${command}` };
         }
 
-        // PiP waiting for a session's run to end, from its list of follows.
+        // A bot waiting for a session's run to end, from its list of follows.
+        // "pip": the follow task's stored name.
         case "pocket.pip-follow": {
             const follow = Object.values(
                 (await app.harness.snapshot(FollowsDoc, id, context))?.items ?? {},
@@ -145,7 +146,7 @@ async function describeTask(
             };
         }
 
-        // PiP's (or a session's) standing order on a repository.
+        // A bot's (or a session's) standing order on a repository.
         case "pocket.repo-watch": {
             const watch = Object.values(
                 (await app.harness.snapshot(RepoWatchesDoc, context))?.items ?? {},

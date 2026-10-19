@@ -186,14 +186,14 @@ test("lessons for everywhere reach every folder, and Noid", async () => {
     assert.ok(await given(repo, "British-spelling-yak"));
     assert.ok(await given(elsewhere, "British-spelling-yak"));
 
-    const pip = app.pip.noid()!;
+    const noid = app.sessionTools.noid()!;
 
-    await app.commands.configure(pip, owner(app), {
+    await app.commands.configure(noid, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
         thinkingLevel: "off",
     });
-    await say(app, pip, "check British-spelling-yak");
-    assert.equal(await answer(pip), "has British-spelling-yak: true");
+    await say(app, noid, "check British-spelling-yak");
+    assert.equal(await answer(noid), "has British-spelling-yak: true");
 
     await clear();
 });
@@ -454,8 +454,8 @@ test("the owner's pending queue includes all projects and everywhere, and review
     await app.memory.change(otherId, elsewhere, pi, revised.id, { text: "New text." });
     await app.memory.change(otherId, elsewhere, pi, forgotten.id, "remove");
     // Reviewed from Noid's conversation, the owner's own.
-    const pip = app.pip.noid()!;
-    const view = await app.memory.view(pip, person, true);
+    const noid = app.sessionTools.noid()!;
+    const view = await app.memory.view(noid, person, true);
 
     assert.deepEqual(
         new Set(view.lessons.map((lesson) => lesson.id)),
@@ -475,11 +475,11 @@ test("the owner's pending queue includes all projects and everywhere, and review
         );
     }
 
-    await app.memory.edit(pip, person, remote.id, "approve", { text: remote.text }, true);
-    await app.memory.edit(pip, person, revised.id, "approve", { text: "New text." }, true);
-    await app.memory.edit(pip, person, forgotten.id, "approve", { forget: true }, true);
-    await app.memory.edit(pip, person, global.id, "discard", undefined, true);
-    assert.equal((await app.memory.view(pip, person, true)).lessons.length, 0);
+    await app.memory.edit(noid, person, remote.id, "approve", { text: remote.text }, true);
+    await app.memory.edit(noid, person, revised.id, "approve", { text: "New text." }, true);
+    await app.memory.edit(noid, person, forgotten.id, "approve", { forget: true }, true);
+    await app.memory.edit(noid, person, global.id, "discard", undefined, true);
+    assert.equal((await app.memory.view(noid, person, true)).lessons.length, 0);
     const remaining = await lessons();
 
     assert.equal(remaining.find((lesson) => lesson.id === remote.id)?.pending, undefined);

@@ -7,7 +7,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
 import type { Schedule } from "../docs.ts";
 import type { PocketHost } from "../host.ts";
-import type { Pip } from "../pip.ts";
+import type { SessionTools } from "../session-tools.ts";
 import { SCHEDULED_PREFIX, SCHEDULES_EXTENSION } from "../schedules.ts";
 import { describeMoment, describeRepeat, WHEN_HELP } from "../when.ts";
 
@@ -78,12 +78,13 @@ export default function createSchedules(host: PocketHost) {
                 ...(requestedBy === undefined ? {} : { requestedBy }),
             };
             const make = () => host.schedules.add(api.conversationId, request);
-            // PiP's own schedules count toward its hourly actions. A server started before PiP counted them has no
-            // countSchedule: it schedules as before until its restart.
-            const pip = host.pip as Partial<Pick<Pip, "countSchedule">>;
+            // A bot's own schedules count toward its hourly actions. A server started before the session tools had
+            // their name has none: it schedules as before until its restart.
+            const tools = (host as Partial<PocketHost>).sessionTools as
+                Partial<Pick<SessionTools, "countSchedule">> | undefined;
             const added =
-                typeof pip.countSchedule === "function"
-                    ? await pip.countSchedule(api.conversationId, key, make)
+                typeof tools?.countSchedule === "function"
+                    ? await tools.countSchedule(api.conversationId, key, make)
                     : await make();
 
             return reply(`Scheduled ${line(added)}`);

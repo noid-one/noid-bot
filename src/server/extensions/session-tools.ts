@@ -16,7 +16,13 @@ import {
 import type { PrWatch, RepoEvent, Schedule } from "../docs.ts";
 import { quoted } from "../fence.ts";
 import type { PocketHost } from "../host.ts";
-import { ago, PIP_EXTENSION, REPORT_HEAD, SESSION_CLOSE, SESSION_OPEN } from "../pip.ts";
+import {
+    ago,
+    SESSION_TOOLS_EXTENSION,
+    REPORT_HEAD,
+    SESSION_CLOSE,
+    SESSION_OPEN,
+} from "../session-tools.ts";
 import { snippet } from "../projection.ts";
 import type { RepoWatchView } from "../repo-watches.ts";
 import { endedText } from "../watches.ts";
@@ -66,7 +72,7 @@ const GITHUB = `Your person's GitHub repositories (gh is signed in on this machi
 - When asked for something like "watch X and do Y", set it up and say in a line what will happen and when; do not wait for an event to try it.`;
 
 function sessionLine(
-    session: ReturnType<PocketHost["pip"]["sessions"]>["sessions"][number],
+    session: ReturnType<PocketHost["sessionTools"]["sessions"]>["sessions"][number],
 ): string {
     return [
         `#${String(session.id)} ${quoted(session.title)}`,
@@ -101,7 +107,7 @@ export function repoWatchLine(watch: RepoWatchView & { to: string }): string {
     ].filter((part) => part !== undefined);
     const note = noteText(watch);
 
-    // The instructions are the person's (or PiP's from them): plain, never in the quotes that mark others' words.
+    // The instructions are the person's (or the bot's from them): plain, never in the quotes that mark others' words.
     return `${watch.id}: ${watch.repo} · ${watch.events.join(", ")}${filters.length > 0 ? ` (${filters.join(", ")})` : ""} → ${watch.to} · ${String(watch.count)} sent${note === undefined ? "" : ` · ${note}`} · instructions: ${snippet(watch.instructions || "none", 400)}`;
 }
 
@@ -127,23 +133,24 @@ function scheduleLine(item: Schedule): string {
     return `${item.id}: ${when} · ${quoted(item.text, 200)}`;
 }
 
-export default function createPip(host: PocketHost) {
+export default function createSessionTools(host: PocketHost) {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    // A session's state after a tool acted on it, so PiP sees what it did; nothing on a server older than that.
+    // A session's state after a tool acted on it, so the bot sees what it did; nothing on a server older than that.
     const now = async (api: { conversationId: ConversationId }, session: number) => {
-        if (typeof host.pip.status !== "function") {
+        if (typeof host.sessionTools.status !== "function") {
             return "";
         }
 
         try {
-            return `\n${await host.pip.status(api.conversationId, session)}`;
+            return `\n${await host.sessionTools.status(api.conversationId, session)}`;
         } catch {
             return "";
         }
     };
 
     const key = (api: { taskId: unknown; callId: string }) =>
+        // "pip-": as pi-pocket keyed its calls, so a call replayed across an upgrade finds what it made.
         `pip-${String(api.taskId)}-${api.callId}`;
     const session = Type.Number({ description: "The session's id, from the sessions tool" });
     const report = Type.Optional(
@@ -175,7 +182,7 @@ export default function createPip(host: PocketHost) {
         }),
         replay: "safe",
         execute: async (args, api) => {
-            const found = host.pip.sessions(api.conversationId, args);
+            const found = host.sessionTools.sessions(api.conversationId, args);
             const lines = found.sessions.map(sessionLine);
 
             if (found.more > 0) {
@@ -208,12 +215,13 @@ export default function createPip(host: PocketHost) {
         }),
         replay: "safe",
         execute: async (args, api) =>
-            reply(await host.pip.read(api.conversationId, args.session, args.entries)),
+            reply(await host.sessionTools.read(api.conversationId, args.session, args.entries)),
     });
 
     // The GitHub tools need a server that has them: one started before they were added gets them at its restart.
     const github =
-        typeof host.pip.watchPr === "function" && typeof host.pip.addRepoWatch === "function";
+        typeof host.sessionTools.watchPr === "function" &&
+        typeof host.sessionTools.addRepoWatch === "function";
 
     const start = defineTool({
         name: "session_start",
@@ -254,17 +262,18 @@ export default function createPip(host: PocketHost) {
         // Safe to run again: the session it made is kept with the call, and its message and follow are the call's.
         replay: "safe",
         execute: async (args, api, context) => {
-            // A server started before PiP could find checkouts would start in the default folder instead.
+            // A server started before bots could find checkouts would start in the default folder instead.
             if (args.repo !== undefined && !github) {
                 throw new Error(
                     "Starting a session from a repository needs a restart of the server (menu → Restart server); give a folder meanwhile.",
                 );
             }
 
+            // "pip.session": the memo's stored name, from pi-pocket.
             let id = await api.memo<number>("pip.session", context);
 
             if (id === undefined) {
-                const made = await host.pip.start(api.conversationId, args);
+                const made = await host.sessionTools.start(api.conversationId, args);
 
                 id = await api.memo("pip.session", Number(made), context);
             }
@@ -275,7 +284,7 @@ export default function createPip(host: PocketHost) {
                 return reply(`Started session ${link}.`);
             }
 
-            const sent = await host.pip.send(
+            const sent = await host.sessionTools.send(
                 api.conversationId,
                 id,
                 args.message,
@@ -288,7 +297,7 @@ export default function createPip(host: PocketHost) {
                 return reply(`Started session ${link} and sent the message.`);
             }
 
-            await host.pip.follow(api.conversationId, id, sent.requestId, key(api));
+            await host.sessionTools.follow(api.conversationId, id, sent.requestId, key(api));
 
             return reply(
                 `Started session ${link} and sent the message; a report comes back when Pi answers.`,
@@ -313,7 +322,7 @@ export default function createPip(host: PocketHost) {
         // Safe to run again: the request id is the call's, so a second send finds the first, and so does its follow.
         replay: "safe",
         execute: async (args, api) => {
-            const sent = await host.pip.send(
+            const sent = await host.sessionTools.send(
                 api.conversationId,
                 args.session,
                 args.message,
@@ -322,7 +331,12 @@ export default function createPip(host: PocketHost) {
             );
 
             if (args.report !== false) {
-                await host.pip.follow(api.conversationId, args.session, sent.requestId, key(api));
+                await host.sessionTools.follow(
+                    api.conversationId,
+                    args.session,
+                    sent.requestId,
+                    key(api),
+                );
 
                 return reply(
                     `Sent to /s/${String(args.session)}; a report comes back when Pi answers.${await now(api, args.session)}`,
@@ -340,7 +354,7 @@ export default function createPip(host: PocketHost) {
         parameters: Type.Object({ session }),
         replay: "safe",
         execute: async (args, api) => {
-            const followed = await host.pip.follow(
+            const followed = await host.sessionTools.follow(
                 api.conversationId,
                 args.session,
                 undefined,
@@ -361,7 +375,7 @@ export default function createPip(host: PocketHost) {
         replay: "safe",
         execute: async (args, api) =>
             reply(
-                ((await host.pip.stop(api.conversationId, args.session))
+                ((await host.sessionTools.stop(api.conversationId, args.session))
                     ? `Stopped /s/${String(args.session)}.`
                     : `/s/${String(args.session)} was not working; its queue is cleared.`) +
                     (await now(api, args.session)),
@@ -382,7 +396,7 @@ export default function createPip(host: PocketHost) {
         execute: async (args, api) => {
             const archived = args.archived !== false;
 
-            await host.pip.archive(api.conversationId, args.session, archived);
+            await host.sessionTools.archive(api.conversationId, args.session, archived);
 
             return reply(
                 `${archived ? "Archived" : "Brought back"} /s/${String(args.session)}.${await now(api, args.session)}`,
@@ -412,7 +426,7 @@ export default function createPip(host: PocketHost) {
         replay: "safe",
         execute: async (args, api) => {
             if (args.action === "list") {
-                const items = await host.pip.schedules(api.conversationId, args.session);
+                const items = await host.sessionTools.schedules(api.conversationId, args.session);
 
                 return reply(
                     items.length === 0
@@ -427,8 +441,11 @@ export default function createPip(host: PocketHost) {
                 }
 
                 return reply(
-                    ((await host.pip.cancelSchedule(api.conversationId, args.session, args.id)) ===
-                    undefined
+                    ((await host.sessionTools.cancelSchedule(
+                        api.conversationId,
+                        args.session,
+                        args.id,
+                    )) === undefined
                         ? `There is no schedule ${args.id} there.`
                         : `Cancelled ${args.id}.`) + (await now(api, args.session)),
                 );
@@ -438,7 +455,7 @@ export default function createPip(host: PocketHost) {
                 throw new Error("add needs when and message.");
             }
 
-            const added = await host.pip.schedule(
+            const added = await host.sessionTools.schedule(
                 api.conversationId,
                 args.session,
                 args.when,
@@ -468,13 +485,13 @@ export default function createPip(host: PocketHost) {
                 }
 
                 return reply(
-                    (await host.pip.deny(api.conversationId, args.id))
+                    (await host.sessionTools.deny(api.conversationId, args.id))
                         ? `Denied ${args.id}.`
                         : `${args.id} is not waiting anymore.`,
                 );
             }
 
-            const waiting = host.pip.approvals(api.conversationId);
+            const waiting = host.sessionTools.approvals(api.conversationId);
 
             return reply(
                 waiting.length === 0
@@ -546,7 +563,7 @@ export default function createPip(host: PocketHost) {
         replay: "safe",
         execute: async (args, api) => {
             if (args.action === "list") {
-                const watches = await host.pip.repoWatches(api.conversationId);
+                const watches = await host.sessionTools.repoWatches(api.conversationId);
 
                 return reply(
                     watches.length === 0
@@ -561,7 +578,10 @@ export default function createPip(host: PocketHost) {
                 }
 
                 try {
-                    const gone = await host.pip.removeRepoWatch(api.conversationId, args.id);
+                    const gone = await host.sessionTools.removeRepoWatch(
+                        api.conversationId,
+                        args.id,
+                    );
 
                     return reply(`Stopped watching ${gone.repo} (${gone.id}).`);
                 } catch (error) {
@@ -584,7 +604,7 @@ export default function createPip(host: PocketHost) {
                 );
             }
 
-            const added = await host.pip.addRepoWatch(
+            const added = await host.sessionTools.addRepoWatch(
                 api.conversationId,
                 {
                     repo: args.repo,
@@ -629,7 +649,7 @@ export default function createPip(host: PocketHost) {
             const link = `/s/${String(args.session)}`;
 
             if (args.action === "start") {
-                const watch = await host.pip.watchPr(
+                const watch = await host.sessionTools.watchPr(
                     api.conversationId,
                     args.session,
                     args.pr,
@@ -641,7 +661,7 @@ export default function createPip(host: PocketHost) {
                 );
             }
 
-            const watch = await host.pip.prWatch(
+            const watch = await host.sessionTools.prWatch(
                 api.conversationId,
                 args.session,
                 args.action === "stop",
@@ -660,8 +680,8 @@ export default function createPip(host: PocketHost) {
     });
 
     return defineExtension({
-        name: PIP_EXTENSION,
-        tasks: [host.pip.task],
+        name: SESSION_TOOLS_EXTENSION,
+        tasks: [host.sessionTools.task],
         tools: [
             sessions,
             read,
@@ -674,28 +694,28 @@ export default function createPip(host: PocketHost) {
             approvals,
             ...(github ? [repoWatch, watchPr] : []),
         ],
-        // PiP's summaries are its own: written with what came from outside left out (`pip-compact.ts`).
+        // Noid's summaries are its own: written with what came from outside left out (`noid-compact.ts`).
         hooks: [
             hook(CompactionTask, {
-                // A server that has not restarted since this module came has no PiP summaries yet: none at all, then,
-                // rather than Pi Durable's, which reads what came from outside as it is.
+                // A server that has not restarted since this module came has no summaries of Noid's yet: none at all,
+                // then, rather than Pi Durable's, which reads what came from outside as it is.
                 beforeCompact: (compaction, api, context) =>
-                    (host as Partial<PocketHost>).pipCompaction === undefined
+                    (host as Partial<PocketHost>).noidCompaction === undefined
                         ? { decline: true }
-                        : host.pipCompaction.summarize(compaction, api, context),
+                        : host.noidCompaction.summarize(compaction, api, context),
             }),
         ],
         sections: [
             section(
                 "session_tools",
                 (input) => {
-                    const name = host.pip.ownerName(input.conversationId);
+                    const name = host.sessionTools.ownerName(input.conversationId);
 
                     if (name === undefined) {
                         return undefined;
                     }
 
-                    return host.pip.isNoid(input.conversationId)
+                    return host.sessionTools.isNoid(input.conversationId)
                         ? noidPreamble(name)
                         : botPreamble(name);
                 },

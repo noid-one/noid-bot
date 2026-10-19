@@ -107,7 +107,7 @@ const IMAGE_MIME: Record<string, string> = {
     ".webp": "image/webp",
 };
 const MAX_TITLE = 120;
-/** A title as stored: one line, so it cannot pass for more lines where it is quoted (PiP's lists, reports). */
+/** A title as stored: one line, so it cannot pass for more lines where it is quoted (Noid's lists, reports). */
 const oneLine = (title: string): string => title.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE);
 /**
  * What a subagent's name drops where it is quoted, to keep its letters, marks, and digits, in every script ("हिन्दी",
@@ -618,7 +618,7 @@ export class Commands {
      * signed in here, or else the owner's default, even when it is not signed in now: the session then shows that, and
      * its first message fails in sight, where another model would spend on what nobody chose for it. Without an owner's
      * default, ordinary sessions consult trusted project defaults in their final cwd, then the last picked model,
-     * then Pi's global default. A no-cwd caller (imports and PiP itself) keeps the legacy default selection. Never
+     * then Pi's global default. A no-cwd caller (imports, bot naming) keeps the legacy default selection. Never
      * the first model there is: with none chosen, the session starts without a model, and someone picks one.
      */
     #defaultModel(
@@ -653,7 +653,7 @@ export class Commands {
                 ? pick(last?.provider, last?.modelId)
                 : undefined;
         // Ordinary sessions must not inherit a different project's settings from the server's starting folder.
-        // Imported sessions and PiP's own conversation keep their existing selection behavior.
+        // Imported sessions keep their existing selection behavior.
         const global = cwd === undefined ? undefined : defaults.getGlobalSettings();
         const pis =
             chosen === undefined && project === undefined && lastPicked === undefined
@@ -743,8 +743,8 @@ export class Commands {
     }
 
     /**
-     * Send a message to Pi as `user`. With `via`, an assistant (PiP) sends it for them: it is marked as sent through it,
-     * and is theirs to pay for and steer, but not their own words (`requestFor`). Only server code passes `via`.
+     * Send a message to Pi as `user`. With `via`, a bot sends it for them: it is marked as sent through
+     * it, and is theirs to pay for and steer, but not their own words (`requestFor`). Only server code passes `via`.
      */
     async submit(
         id: ConversationId,
@@ -762,9 +762,9 @@ export class Commands {
         await app.requireDriver(id, user);
 
         // Noid with its session tools off takes nothing, from its person either: it would run without its rules, and
-        // be compacted without its own summary (`pip-compact.ts`). What else goes to it (reports, schedules, watches)
+        // be compacted without its own summary (`noid-compact.ts`). What else goes to it (reports, schedules, watches)
         // waits meanwhile.
-        if (app.pip.ownerOf(id) !== undefined && !app.pip.available(user)) {
+        if (app.sessionTools.ownerOf(id) !== undefined && !app.sessionTools.available(user)) {
             throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
         }
 
@@ -1752,7 +1752,10 @@ export class Commands {
     ) {
         const app = this.#app;
         // "pip": Noid, which takes webhooks while its session tools are on.
-        const noid = body.target === "pip" && app.pip.available(user) ? app.pip.noid() : undefined;
+        const noid =
+            body.target === "pip" && app.sessionTools.available(user)
+                ? app.sessionTools.noid()
+                : undefined;
         const target = noid === undefined ? Number(body.target) : Number(noid);
 
         if (!Number.isSafeInteger(target) || target < 0) {
@@ -2152,9 +2155,9 @@ export class Commands {
         await app.requireDriver(id, user);
         // Noid's summaries are its own, written by the session tools' hook with outside text left out: while they are
         // off, there is no hook, and Pi Durable's summary would read what came from outside as it is.
-        const pip = app.pip.ownerOf(id) !== undefined;
+        const noid = app.sessionTools.ownerOf(id) !== undefined;
 
-        if (pip && !app.pip.available(user)) {
+        if (noid && !app.sessionTools.available(user)) {
             throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
         }
 
@@ -2162,9 +2165,9 @@ export class Commands {
         app.spend.check(user, id);
         const conversation = await app.conversation(id);
         const taskId = await conversation.compact(instructions, context);
-        const done = pip ? "Noid's context compacted." : "Compacted.";
+        const done = noid ? "Noid's context compacted." : "Compacted.";
 
-        app.notice("info", pip ? "Compacting Noid's context…" : "Compacting…", id);
+        app.notice("info", noid ? "Compacting Noid's context…" : "Compacting…", id);
         await app.collab.activity(id, user, "started compacting the context", false);
         void app.harness.waitForTask(taskId, context).then(
             (receipt) => {
@@ -2173,7 +2176,7 @@ export class Commands {
                 if (outcome.status === "completed") {
                     const { entryId, submissionId } = outcome.result;
                     // Noid's own summary could not be written: it declined, rather than let Pi Durable write one.
-                    const failed = pip ? app.pipCompaction.failure(Number(taskId)) : undefined;
+                    const failed = noid ? app.noidCompaction.failure(Number(taskId)) : undefined;
 
                     if (failed !== undefined) {
                         app.notice("error", `Noid's context was not compacted: ${failed}`, id);

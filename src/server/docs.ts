@@ -505,8 +505,9 @@ export const ShellRequestsDoc = defineDoc<{ items: Record<string, number> }>({
 });
 
 /**
- * PiP's follows (`pip.ts`), by the key of the tool call that made each, so a call run again finds the follow it made.
- * `doneAt` marks one that reported (or was stopped); it stays a day, then goes.
+ * A bot's follows (`session-tools.ts`), by the key of the tool call that made each, so a call run again finds the
+ * follow it made. `doneAt` marks one that reported (or was stopped); it stays a day, then goes. Its kind keeps
+ * pi-pocket's stored name, as do the two below.
  */
 export const FollowsDoc = defineDoc<{
     items: Record<string, { taskId: number; session: number; at: number; doneAt?: number }>;
@@ -520,11 +521,11 @@ export const FollowsDoc = defineDoc<{
 });
 
 /**
- * Which provider pays, as PiP was last told to ask its person (`pip.ts`): the models their words named, at more than one
- * provider, and the newest entry of PiP's conversation then (`at`). Their next message answers it when it is just one of
- * those providers' whole name or id, in the same context.
+ * Which provider pays, as a bot was last told to ask its person (`session-tools.ts`): the models their words named, at
+ * more than one provider, and the newest entry of the bot's conversation then (`at`). Their next message answers it
+ * when it is just one of those providers' whole name or id, in the same context.
  */
-export const PipAskedDoc = defineDoc<{
+export const ProviderAskedDoc = defineDoc<{
     asked?: { models: { provider: string; id: string }[]; at: number };
 }>({
     kind: "pocket.pip-asked",
@@ -536,10 +537,10 @@ export const PipAskedDoc = defineDoc<{
 });
 
 /**
- * PiP's compactions whose summary PiP wrote itself (`pip-compact.ts`), by task id: their cost is in `pi.usage`, added
- * once. The newest few are kept.
+ * Noid's compactions whose summary Noid wrote itself (`noid-compact.ts`), by task id: their cost is in `pi.usage`,
+ * added once. The newest few are kept.
  */
-export const PipCompactionDoc = defineDoc<{ counted: number[] }>({
+export const NoidCompactionDoc = defineDoc<{ counted: number[] }>({
     kind: "pocket.pip-compaction",
     version: 1,
     scope: "conversation",
@@ -608,7 +609,7 @@ export const WatchDoc = defineDoc<{ watch?: PrWatch }>({
     initial: () => ({}),
 });
 
-/** A webhook (`hooks.ts`): an address that turns each post to it into a message to a session's Pi, or to PiP. */
+/** A webhook (`hooks.ts`): an address that turns each post to it into a message to a session's Pi, or to Noid. */
 export type Hook = {
     /** In its address, with the secret. */
     id: string;
@@ -616,7 +617,7 @@ export type Hook = {
     name: string;
     /** What Pi should do with each post: the message's first part. */
     instructions: string;
-    /** The session (or PiP) it messages. */
+    /** The session (or Noid) it messages. */
     target: number;
     /**
      * For GitHub: a post gets in only with GitHub's signature made with the secret, which is not in the address, so
@@ -649,10 +650,10 @@ export type RepoEvent = "issues" | "pulls" | "ci" | "releases" | "mentions";
 
 /**
  * A watch of a GitHub repository `gh`'s account can push to: what happens there (new issues and PRs, CI failing on a
- * branch, releases, @pi mentions) goes, with its person's standing instructions, to PiP or a session.
+ * branch, releases, @pi mentions) goes, with its person's standing instructions, to Noid or a session.
  */
 export type RepoWatch = {
-    /** Short and stable: what PiP and people use to remove it. */
+    /** Short and stable: what bots and people use to remove it. */
     id: string;
     /** `owner/name`, or `host/owner/name` off github.com, as GitHub spells it. */
     repo: string;
@@ -668,14 +669,14 @@ export type RepoWatch = {
     /**
      * Issues and PRs from anyone, not only from the repository's owner, and members and collaborators who can write to
      * it (and bots' PRs).
-     * Only a person turns it on, in the hooks sheet; PiP cannot.
+     * Only a person turns it on, in the hooks sheet; bots cannot.
      */
     anyone?: boolean;
-    /** The conversation it messages: its person's PiP, or a session. */
+    /** The conversation it messages: Noid, or a session. */
     target: number;
     /** Whose work it is: messages go for them, with their checks and spend limit. */
     by: string;
-    /** PiP set it up, for `by`. */
+    /** A bot set it up, for `by`. */
     byPi: boolean;
     createdAt: number;
     /** What happened before this (ISO, as GitHub writes times) was there before the watch. */

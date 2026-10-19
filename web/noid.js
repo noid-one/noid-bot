@@ -1,5 +1,5 @@
-// noid: Noid, the main bot. It does what Pi Pocket's PiP did, in its own conversation (`Pip.idOf` on the server): there
-// is no PiP panel. Alt+A goes to it; webhooks and repository watches that the server sends "to PiP" reach it.
+// noid: Noid, the main bot, which looks after the other sessions with its session tools. Alt+A goes to it; webhooks and
+// repository watches to Noid reach it.
 import { api, attempt, navigate, notify, store, uid } from "./store.js";
 
 /** Noid's session, when there is one. */
@@ -15,7 +15,8 @@ export function toNoid() {
     }
 }
 
-/** Whether Noid takes PiP's work here: the server has PiP's extension on, which gives Noid its tools. */
+/** Whether webhooks and watches can go to Noid: the server has the session tools on. */
+// `pip`: the server's name for it, which older tabs know.
 export const noidWatches = () => store.state.server?.pip === true;
 
 /** Send Noid a message from anywhere (`/noid …`), then go there to see what it says. */

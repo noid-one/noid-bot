@@ -15,7 +15,7 @@ const path = (id, rest = "", pendingOnly = false) =>
 let last = null;
 /**
  * The fetch under way for each conversation, `{ rev, promise }`: the sheet, the menu, and each memory call ask once
- * together, PiP's calls and the open session's too.
+ * together, Noid's calls and the open session's too.
  */
 const asking = new Map();
 

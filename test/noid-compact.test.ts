@@ -24,15 +24,15 @@ import { after, before, test } from "node:test";
 import type { FauxResponseStep, Message } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { type ConversationId, type HookApi, LiveDoc, UsageDoc } from "@earendil-works/pi-durable";
-import { FollowsDoc, PipCompactionDoc } from "../src/server/docs.ts";
+import { FollowsDoc, NoidCompactionDoc } from "../src/server/docs.ts";
 import { PAYLOAD_CLOSE, PAYLOAD_OPEN } from "../src/server/hooks.ts";
-import { fenced } from "../src/server/pip.ts";
+import { fenced } from "../src/server/session-tools.ts";
 import {
     leaveOutside,
-    PIP_COMPACT_DEFAULT,
+    NOID_COMPACT_DEFAULT,
     SUMMARY_SYSTEM,
     summarySource,
-} from "../src/server/pip-compact.ts";
+} from "../src/server/noid-compact.ts";
 import { EVENT_CLOSE, EVENT_OPEN } from "../src/server/repo-watches.ts";
 
 /** What sessions, posts, GitHub, and files say here: orders that must never reach a summary. */
@@ -113,7 +113,7 @@ const route: FauxResponseStep = (request) => {
 let app: App;
 
 before(async () => {
-    app = await openApp(scriptedModel(route), join(root, "pip-compact-data"), undefined, {
+    app = await openApp(scriptedModel(route), join(root, "noid-compact-data"), undefined, {
         mainBot: true,
     });
     // Compaction keeps only the newest few messages as they are, so a short conversation has something to summarize.
@@ -130,8 +130,8 @@ after(async () => {
 });
 
 /** Noid's conversation, with the scripted model. */
-async function pip(): Promise<ConversationId> {
-    const id = app.pip.noid()!;
+async function noid(): Promise<ConversationId> {
+    const id = app.sessionTools.noid()!;
 
     await app.commands.configure(id, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -220,7 +220,7 @@ test("outside text is left out, whichever fence it came in, closed or not", () =
 });
 
 test("compacting by hand: Noid's summary is written without what came from outside, and follows work on", async () => {
-    const id = await pip();
+    const id = await noid();
     const session = await newSession(app);
     const file = join(work, "notes.md");
 
@@ -242,7 +242,7 @@ test("compacting by hand: Noid's summary is written without what came from outsi
     // Newer messages, which compaction keeps as they are: everything above them is summarized.
     await say(app, id, `Some context for later: ${"the release goes out on Friday, ".repeat(12)}`);
     // A follow, on its way while Noid compacts: its report comes after. Noid looks at the session first.
-    await app.pip.read(id, Number(session));
+    await app.sessionTools.read(id, Number(session));
     await say(app, id, `send ${String(session)} a sleepy job`);
     await until(() => app.isBusy(session), "the session at work");
     const follows = Object.keys((await app.harness.snapshot(FollowsDoc, id, context))?.items ?? {});
@@ -276,7 +276,7 @@ test("compacting by hand: Noid's summary is written without what came from outsi
     // Noid's notes are what its next request reads; its cost is counted, once.
     assert.ok((await placed(id))[0]!.endsWith(`<summary>\n${NOTES}\n</summary>`));
     assert.ok((await tokensUsed(id)) > before, "the summary's tokens are in pi.usage");
-    assert.equal((await app.harness.snapshot(PipCompactionDoc, id, context))?.counted.length, 1);
+    assert.equal((await app.harness.snapshot(NoidCompactionDoc, id, context))?.counted.length, 1);
 
     // The follow went on: its report reaches Noid after the summary.
     await until(
@@ -295,7 +295,7 @@ test("compacting by hand: Noid's summary is written without what came from outsi
 });
 
 test("a summary written twice for one compaction, as after a restart, is asked for and counted once", async () => {
-    const id = await pip();
+    const id = await noid();
     const memos = new Map<string, unknown>();
     const api = {
         conversationId: id,
@@ -319,9 +319,9 @@ test("a summary written twice for one compaction, as after a restart, is asked f
     };
     const asked = summaries.length;
     const before = await tokensUsed(id);
-    const first = await app.pipCompaction.summarize(compaction, api, context);
+    const first = await app.noidCompaction.summarize(compaction, api, context);
     const once = await tokensUsed(id);
-    const again = await app.pipCompaction.summarize(compaction, api, context);
+    const again = await app.noidCompaction.summarize(compaction, api, context);
 
     assert.deepEqual(first, { summary: NOTES });
     assert.deepEqual(again, first);
@@ -333,13 +333,17 @@ test("a summary written twice for one compaction, as after a restart, is asked f
     const session = await newSession(app);
 
     assert.equal(
-        await app.pipCompaction.summarize(compaction, { ...api, conversationId: session }, context),
+        await app.noidCompaction.summarize(
+            compaction,
+            { ...api, conversationId: session },
+            context,
+        ),
         undefined,
     );
 });
 
 test("a summary that cannot be written fails the compaction; nothing outside is summarized instead", async () => {
-    const id = await pip();
+    const id = await noid();
     const had = (await placed(id)).length;
     const asked = summaries.length;
     const tab = fakeTab(id, owner(app));
@@ -377,26 +381,26 @@ test("a summary that cannot be written fails the compaction; nothing outside is 
 });
 
 test("Noid compacts itself once idle above its threshold; not below it, nor when left to sessions' thresholds", async () => {
-    const id = await pip();
+    const id = await noid();
     const count = async () => (await placed(id)).length;
 
-    assert.equal(app.pipCompaction.compactAt, PIP_COMPACT_DEFAULT);
+    assert.equal(app.noidCompaction.compactAt, NOID_COMPACT_DEFAULT);
     // Well above: everything a summary keeps as it is, and then some.
     const long = `Here is the plan in full: ${"step by step, ".repeat(2000)}`;
 
-    app.config.pipCompactAt = 0;
+    app.config.noidCompactAt = 0;
     let had = await count();
 
     await say(app, id, long);
     await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(await count(), had, "0: only as sessions do");
 
-    app.config.pipCompactAt = 100_000;
+    app.config.noidCompactAt = 100_000;
     await say(app, id, long);
     await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(await count(), had, "below the threshold");
 
-    app.config.pipCompactAt = 1000;
+    app.config.noidCompactAt = 1000;
     had = await count();
     await say(app, id, long);
     await until(async () => (await count()) === had + 1, "Noid to compact itself");
@@ -407,25 +411,25 @@ test("Noid compacts itself once idle above its threshold; not below it, nor when
     await say(app, id, "Thanks.");
     await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(await count(), had + 1);
-    app.config.pipCompactAt = undefined;
+    app.config.noidCompactAt = undefined;
 });
 
 test("only the owner sets when Noid compacts, to one of its choices; with its session tools off it is not compacted", async () => {
     const me = owner(app);
     const guest = app.config.addUser("Guest", "guest").user;
-    const id = await pip();
+    const id = await noid();
 
-    await assert.rejects(app.setPipCompactAt(guest, 40_000), /Only the owner/);
-    await assert.rejects(app.setPipCompactAt(me, 12_345), /pipCompactAt must be one of/);
-    await app.setPipCompactAt(me, 40_000);
-    assert.equal(app.pipCompaction.compactAt, 40_000);
+    await assert.rejects(app.setNoidCompactAt(guest, 40_000), /Only the owner/);
+    await assert.rejects(app.setNoidCompactAt(me, 12_345), /pipCompactAt must be one of/);
+    await app.setNoidCompactAt(me, 40_000);
+    assert.equal(app.noidCompaction.compactAt, 40_000);
     assert.equal((await app.hello(me)).server.pipCompactAt, 40_000);
-    await app.setPipCompactAt(me, PIP_COMPACT_DEFAULT);
+    await app.setNoidCompactAt(me, NOID_COMPACT_DEFAULT);
 
     // Turned off mid-answer: Noid stops, takes nothing, and is not compacted.
     await app.commands.submit(id, me, { text: "slow", requestId: crypto.randomUUID() });
     await until(() => app.isBusy(id), "Noid at work");
-    await app.setExtensionEnabled(me, "pip.ts", false);
+    await app.setExtensionEnabled(me, "session-tools.ts", false);
 
     try {
         await until(() => !app.isBusy(id), "Noid stopped", 3000);
@@ -450,6 +454,6 @@ test("only the owner sets when Noid compacts, to one of its choices; with its se
             /session tools are turned off/,
         );
     } finally {
-        await app.setExtensionEnabled(me, "pip.ts", true);
+        await app.setExtensionEnabled(me, "session-tools.ts", true);
     }
 });

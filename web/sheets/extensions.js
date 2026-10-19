@@ -1,5 +1,5 @@
-// Extensions: the modules the owner can turn on and off, Lancet Guard, who may allow risky calls, and when PiP compacts
-// its context.
+// Extensions: the modules the owner can turn on and off, Lancet Guard, who may allow risky calls, and when Noid
+// compacts its context.
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { browserModuleState, leaveSafeMode, safeMode } from "../extension-ui.js";
 import { api, attempt, closeSheet, openSheet, store } from "../store.js";
@@ -144,15 +144,16 @@ function GalleryPart({ module, installed, busy, turnOff }) {
     </div>`;
 }
 
-/** When Noid compacts its own context: once idle above so many tokens (`pip-compact.ts`), or only as sessions do. */
-const PIP_COMPACT = [
+/** When Noid compacts its own context: once idle above so many tokens (`noid-compact.ts`), or only as sessions do. */
+const NOID_COMPACT = [
     [40000, "Above 40k tokens"],
     [60000, "Above 60k tokens"],
     [100000, "Above 100k tokens"],
     [0, "As sessions do"],
 ];
 
-function PipCompactAt({ owner }) {
+function NoidCompactAt({ owner }) {
+    // `pipCompactAt`: the setting's stored name.
     const at = store.state.server?.pipCompactAt ?? 60000;
     const change = (value) => attempt(() => api("settings", { pipCompactAt: value }));
 
@@ -164,7 +165,7 @@ function PipCompactAt({ owner }) {
             </div>
         </div>
         <div class="segmented" role="group" aria-label="Compact Noid's context">
-            ${PIP_COMPACT.map(
+            ${NOID_COMPACT.map(
                 ([value, label]) => html`<button
                     class=${at === value ? "on" : ""}
                     aria-pressed=${at === value}
@@ -320,9 +321,9 @@ export function ExtensionsSheet() {
                                             html`<${ApprovalRule} owner=${owner} />`
                                         }
                                         ${
-                                            module.file === "pip.ts" &&
+                                            module.file === "session-tools.ts" &&
                                             module.enabled &&
-                                            html`<${PipCompactAt} owner=${owner} />`
+                                            html`<${NoidCompactAt} owner=${owner} />`
                                         }
                                         ${
                                             module.file === "guard.ts" &&

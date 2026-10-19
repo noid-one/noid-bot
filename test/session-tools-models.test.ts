@@ -82,7 +82,7 @@ let app: App;
 
 before(async () => {
     app = await PocketApp.open({
-        dataDir: join(root, "pip-models-data"),
+        dataDir: join(root, "session-tools-models-data"),
         defaultCwd: work,
         supervised: false,
         log: () => {},
@@ -101,8 +101,8 @@ after(async () => {
 });
 
 /** A fresh context in Noid's conversation, on the scripted model. */
-async function pip(): Promise<ConversationId> {
-    const id = app.pip.noid()!;
+async function noid(): Promise<ConversationId> {
+    const id = app.sessionTools.noid()!;
 
     await app.commands.configure(id, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -202,17 +202,17 @@ test("a model's name that touches Chinese, Japanese or Korean text names it", ()
 });
 
 test("Noid acts on a session only after it looked at it, and sees how it stands after", async () => {
-    const id = await pip();
+    const id = await noid();
     const session = Number(await newSession(app));
 
     await assert.rejects(
-        app.pip.send(id, session, "run the tests", false, "unread-1"),
+        app.sessionTools.send(id, session, "run the tests", false, "unread-1"),
         /Check \/s\/\d+ first with session_read/,
     );
-    await assert.rejects(app.pip.stop(id, session), /Check \/s\/\d+ first/);
-    await assert.rejects(app.pip.archive(id, session, true), /Check \/s\/\d+ first/);
+    await assert.rejects(app.sessionTools.stop(id, session), /Check \/s\/\d+ first/);
+    await assert.rejects(app.sessionTools.archive(id, session, true), /Check \/s\/\d+ first/);
     await assert.rejects(
-        app.pip.schedule(id, session, "tomorrow 9:00", "check CI", "unread-2"),
+        app.sessionTools.schedule(id, session, "tomorrow 9:00", "check CI", "unread-2"),
         /Check \/s\/\d+ first/,
     );
 
@@ -230,9 +230,9 @@ test("Noid acts on a session only after it looked at it, and sees how it stands 
     await until(() => !app.isBusy(session as unknown as ConversationId), "the session at rest");
 
     // A session it started is one it knows.
-    const started = await app.pip.start(id, {});
+    const started = await app.sessionTools.start(id, {});
 
-    await app.pip.send(id, Number(started), "first task", false, "started-1");
+    await app.sessionTools.send(id, Number(started), "first task", false, "started-1");
 
     // Following a session's own run is acting too: a report starts a run of Noid's.
     const busy = Number(await newSession(app));
@@ -242,16 +242,19 @@ test("Noid acts on a session only after it looked at it, and sees how it stands 
         requestId: "busy-1",
     });
     await until(() => app.isBusy(busy as unknown as ConversationId), "the session at work");
-    await assert.rejects(app.pip.follow(id, busy, undefined, "follow-1"), /Check \/s\/\d+ first/);
+    await assert.rejects(
+        app.sessionTools.follow(id, busy, undefined, "follow-1"),
+        /Check \/s\/\d+ first/,
+    );
     await until(() => !app.isBusy(busy as unknown as ConversationId), "the session at rest");
 });
 
 test("Noid starts a session on a model only when its person named it, in their own words", async () => {
-    const id = await pip();
+    const id = await noid();
     const before = app.sessions().length;
 
     await assert.rejects(
-        app.pip.start(id, { model: "faux/faux-2" }),
+        app.sessionTools.start(id, { model: "faux/faux-2" }),
         /Your person did not name faux\/faux-2\. Models are theirs to choose/,
     );
     assert.equal(app.sessions().length, before, "no session made");
@@ -264,66 +267,69 @@ test("Noid starts a session on a model only when its person named it, in their o
         "webhook test",
     );
     await until(() => !app.isBusy(id), "Noid at rest");
-    await assert.rejects(app.pip.start(id, { model: "faux/faux-2" }), /did not name/);
+    await assert.rejects(app.sessionTools.start(id, { model: "faux/faux-2" }), /did not name/);
 
     await say(app, id, "start a session on faux 2 for the review");
-    const made = await app.pip.start(id, { model: "faux/faux-2" });
+    const made = await app.sessionTools.start(id, { model: "faux/faux-2" });
 
     assert.equal((await app.agentState(made))?.model?.modelId, "faux-2");
     await assert.rejects(
-        app.pip.start(id, { model: "faux/nothing" }),
+        app.sessionTools.start(id, { model: "faux/nothing" }),
         /not a model signed in here/,
     );
 });
 
 test("a two-character model id needs a qualifier, but Noid cannot pass it on unasked", async () => {
-    const id = await pip();
+    const id = await noid();
 
     await say(app, id, "修复O3优化导致的错误");
-    await assert.rejects(app.pip.start(id, { model: "faux/o3" }), /did not name/);
-    await assert.rejects(app.pip.start(id, { message: "Use o3 to review it." }), /names faux\/o3/);
+    await assert.rejects(app.sessionTools.start(id, { model: "faux/o3" }), /did not name/);
+    await assert.rejects(
+        app.sessionTools.start(id, { message: "Use o3 to review it." }),
+        /names faux\/o3/,
+    );
 
     await say(app, id, "用o3 on faux吧");
-    const made = await app.pip.start(id, { model: "faux/o3" });
+    const made = await app.sessionTools.start(id, { model: "faux/o3" });
 
     assert.equal((await app.agentState(made))?.model?.modelId, "o3");
 });
 
 test("Noid takes its person's bare answer to which provider pays, right after it asked, and nothing else", async () => {
-    const id = await pip();
+    const id = await noid();
     const z8 = (provider: string) => ({ model: `${provider}/faux-z8` });
     const twice = /more than one signed-in provider has/;
 
     // Faux Z8 is at two providers: Noid is told to ask which one pays.
     const ask = async (on = id) => {
         await say(app, on, "start a session on faux z8 for the review");
-        await assert.rejects(app.pip.start(on, z8("hub-copilot")), twice);
+        await assert.rejects(app.sessionTools.start(on, z8("hub-copilot")), twice);
     };
 
     // One word of the name answers nothing.
     for (const reply of ["Copilot"]) {
         await ask();
         await say(app, id, reply);
-        await assert.rejects(app.pip.start(id, z8("hub-copilot")), twice, reply);
+        await assert.rejects(app.sessionTools.start(id, z8("hub-copilot")), twice, reply);
     }
 
     // The provider's whole name, as the person's next message, picks it, and only it.
     await ask();
     await say(app, id, "Hub Copilot");
-    const made = await app.pip.start(id, z8("hub-copilot"));
+    const made = await app.sessionTools.start(id, z8("hub-copilot"));
 
     assert.equal((await app.agentState(made))?.model?.provider, "hub-copilot");
-    await assert.rejects(app.pip.start(id, z8("faux")), twice);
+    await assert.rejects(app.sessionTools.start(id, z8("faux")), twice);
 
     // Not right after the question: they said something else first.
     await ask();
     await say(app, id, "thanks");
     await say(app, id, "Hub Copilot");
-    await assert.rejects(app.pip.start(id, z8("hub-copilot")), twice);
+    await assert.rejects(app.sessionTools.start(id, z8("hub-copilot")), twice);
 });
 
 test("Noid's question of which provider pays, from before Start fresh, is never answered after it", async () => {
-    const id = await pip();
+    const id = await noid();
     const z8 = { model: "hub-copilot/faux-z8" };
     const twice = /more than one signed-in provider has/;
     // Faux Z8 is named only in a webhook's instructions they set up: nothing of theirs is in Noid's context.
@@ -349,7 +355,7 @@ test("Noid's question of which provider pays, from before Start fresh, is never 
         );
         await until(() => app.isBusy(id), "Noid at work");
         await app.commands.reset(id, owner(app), undefined);
-        await assert.rejects(app.pip.start(id, z8), twice);
+        await assert.rejects(app.sessionTools.start(id, z8), twice);
         const asked = (await app.transcripts.allEntries(id, true)).at(-1)!.id;
 
         release();
@@ -362,9 +368,9 @@ test("Noid's question of which provider pays, from before Start fresh, is never 
 
         // Their first words in the new context are not its answer: Noid asks again, and then they are.
         await say(app, id, "Hub Copilot");
-        await assert.rejects(app.pip.start(id, z8), twice);
+        await assert.rejects(app.sessionTools.start(id, z8), twice);
         await say(app, id, "Hub Copilot");
-        const made = await app.pip.start(id, z8);
+        const made = await app.sessionTools.start(id, z8);
 
         assert.equal((await app.agentState(made))?.model?.provider, "hub-copilot");
     } finally {
@@ -375,24 +381,30 @@ test("Noid's question of which provider pays, from before Start fresh, is never 
 });
 
 test("Noid's messages name no model its person did not name", async () => {
-    const id = await pip();
+    const id = await noid();
     const session = Number(await newSession(app));
 
-    await app.pip.read(id, session);
+    await app.sessionTools.read(id, session);
     // What its person said before this context (the test before) is out of it.
-    await assert.rejects(app.pip.start(id, { model: "faux/faux-2" }), /did not name/);
+    await assert.rejects(app.sessionTools.start(id, { model: "faux/faux-2" }), /did not name/);
     await say(app, id, "have it reviewed on faux 2");
     await assert.rejects(
-        app.pip.send(id, session, "Spawn a reviewer subagent on faux-vision.", false, "named-1"),
+        app.sessionTools.send(
+            id,
+            session,
+            "Spawn a reviewer subagent on faux-vision.",
+            false,
+            "named-1",
+        ),
         /names faux\/faux-vision, which your person did not name/,
     );
     await assert.rejects(
-        app.pip.start(id, { message: "Review it with faux-vision." }),
+        app.sessionTools.start(id, { message: "Review it with faux-vision." }),
         /names faux\/faux-vision/,
     );
     // Nor in a schedule, or a watch's instructions.
     await assert.rejects(
-        app.pip.schedule(
+        app.sessionTools.schedule(
             id,
             session,
             "tomorrow 9:00",
@@ -402,7 +414,7 @@ test("Noid's messages name no model its person did not name", async () => {
         /names faux\/faux-vision/,
     );
     await assert.rejects(
-        app.pip.addRepoWatch(
+        app.sessionTools.addRepoWatch(
             id,
             {
                 repo: "acme/api",
@@ -414,7 +426,13 @@ test("Noid's messages name no model its person did not name", async () => {
         /names faux\/faux-vision/,
     );
     // The one they named may be passed on.
-    await app.pip.send(id, session, "Spawn a reviewer subagent on faux-2.", false, "named-2");
+    await app.sessionTools.send(
+        id,
+        session,
+        "Spawn a reviewer subagent on faux-2.",
+        false,
+        "named-2",
+    );
     await until(() => !app.isBusy(session as unknown as ConversationId), "the session at rest");
 });
 
@@ -435,7 +453,7 @@ async function github(args: string[]): Promise<string> {
 }
 
 test("a watch's instructions are its person's words only when they set it up, not Noid", async () => {
-    const id = await pip();
+    const id = await noid();
     const watch = (byPi: boolean) =>
         app.repoWatches.add(owner(app), {
             repo: "acme/api",
@@ -447,33 +465,36 @@ test("a watch's instructions are its person's words only when they set it up, no
 
     app.watches.gh = github;
     // As if Noid set it up while faux-vision was not signed in, when nothing in it named a model.
-    const piPs = await watch(true);
+    const bots = await watch(true);
 
     try {
-        await assert.rejects(app.pip.start(id, { model: "faux/faux-vision" }), /did not name/);
+        await assert.rejects(
+            app.sessionTools.start(id, { model: "faux/faux-vision" }),
+            /did not name/,
+        );
         // The same words in a watch its person set up are theirs.
         const theirs = await watch(false);
 
         try {
-            const made = await app.pip.start(id, { model: "faux/faux-vision" });
+            const made = await app.sessionTools.start(id, { model: "faux/faux-vision" });
 
             assert.equal((await app.agentState(made))?.model?.modelId, "faux-vision");
         } finally {
             await app.repoWatches.remove(owner(app), theirs.id);
         }
     } finally {
-        await app.repoWatches.remove(owner(app), piPs.id);
+        await app.repoWatches.remove(owner(app), bots.id);
     }
 });
 
 test("a webhook's standing instructions to Noid are its person's words; what was posted is not", async () => {
-    const id = await pip();
+    const id = await noid();
 
     await app.hooks.add(owner(app), id, {
         name: "deploys",
         instructions: "When a deploy fails, start a session on faux-vision to find out why.",
     });
-    const made = await app.pip.start(id, { model: "faux/faux-vision" });
+    const made = await app.sessionTools.start(id, { model: "faux/faux-vision" });
 
     assert.equal((await app.agentState(made))?.model?.modelId, "faux-vision");
     // A post's words name nothing for them.
@@ -484,5 +505,5 @@ test("a webhook's standing instructions to Noid are its person's words; what was
         "webhook deploys",
     );
     await until(() => !app.isBusy(id), "Noid at rest");
-    await assert.rejects(app.pip.start(id, { model: "faux/faux-2" }), /did not name/);
+    await assert.rejects(app.sessionTools.start(id, { model: "faux/faux-2" }), /did not name/);
 });

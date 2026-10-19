@@ -31,9 +31,10 @@ export function attribute(value: string): string {
 }
 
 /**
- * Text from elsewhere (a title, a check's name, a waiting call, a scheduled message) where Pi or PiP reads it outside a
- * fence: one line (control characters too), without invisible ones (zero-width, bidi, tags), cut to `max`, with no tag
- * of any kind (every `<` becomes `‹`), in quotes it cannot close. PiP's rules and the watches' notes tell Pi it is data.
+ * Text from elsewhere (a title, a check's name, a waiting call, a scheduled message) where Pi or a bot reads it outside
+ * a fence: one line (control characters too), without invisible ones (zero-width, bidi, tags), cut to `max`, with no
+ * tag of any kind (every `<` becomes `‹`), in quotes it cannot close. The session tools' rules and the watches' notes
+ * tell Pi it is data.
  */
 export function quoted(text: string, max = 120): string {
     const line = snippet(text.replace(/\p{Cf}/gu, "").replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " "), max);

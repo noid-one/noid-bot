@@ -17,8 +17,8 @@ import type { Role, User } from "./config.ts";
 import type { Goals } from "./goals.ts";
 import type { LancetGuard } from "./lancet.ts";
 import type { Memory } from "./memory.ts";
-import type { Pip } from "./pip.ts";
-import type { PipCompaction } from "./pip-compact.ts";
+import type { SessionTools } from "./session-tools.ts";
+import type { NoidCompaction } from "./noid-compact.ts";
 import type { Schedules } from "./schedules.ts";
 import type { RepoWatches } from "./repo-watches.ts";
 import type { Watches } from "./watches.ts";
@@ -263,9 +263,9 @@ export interface PocketHost {
     readonly goals: Pick<Goals, "get" | "run" | "record" | "mayContinue">;
     /** The built-in browser: a page per conversation, which the people in it watch and use too. */
     readonly browsers: Pick<Browsers, "open">;
-    /** PiP, the owner's assistant: what its tools do, each as PiP's person (`pip.ts`). */
-    readonly pip: Pick<
-        Pip,
+    /** Noid's session tools, which every bot has: what they do, each as the owner (`session-tools.ts`). */
+    readonly sessionTools: Pick<
+        SessionTools,
         | "ownerOf"
         | "ownerName"
         | "isNoid"
@@ -290,11 +290,11 @@ export interface PocketHost {
         | "repoWatches"
         | "removeRepoWatch"
     >;
-    /** PiP's compactions: its extension's hook has PiP write its own summaries. */
-    readonly pipCompaction: Pick<PipCompaction, "summarize">;
+    /** Noid's compactions: its extension's hook has Noid write its own summaries. */
+    readonly noidCompaction: Pick<NoidCompaction, "summarize">;
     /** Sessions' watches of their pull requests: Pi's watch_pr tool starts and stops them. */
     readonly watches: Pick<Watches, "task" | "start" | "stop" | "get">;
-    /** Repository watches: the triggers extension runs their task; PiP's repo_watch tool sets them up. */
+    /** Repository watches: the triggers extension runs their task; the session tools' repo_watch sets them up. */
     readonly repoWatches: Pick<RepoWatches, "task">;
     /** Lessons Pi keeps across sessions (`memory.ts`): the memory tool saves them, and its section lists them. */
     readonly memory: Pick<Memory, "project" | "applying" | "inForce" | "add" | "change">;

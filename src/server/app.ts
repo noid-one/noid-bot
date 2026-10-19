@@ -97,8 +97,8 @@ import { pocketVersion } from "./versions.ts";
 import { configureHttp } from "./net.ts";
 import { PiSessions } from "./pi-sessions.ts";
 import { Hooks } from "./hooks.ts";
-import { Pip, PIP_EXTENSION } from "./pip.ts";
-import { PIP_COMPACT_CHOICES, PipCompaction } from "./pip-compact.ts";
+import { SessionTools, SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
+import { NOID_COMPACT_CHOICES, NoidCompaction } from "./noid-compact.ts";
 import { RepoWatches } from "./repo-watches.ts";
 import { snippet } from "./projection.ts";
 import { loadPromptTemplates, type PromptTemplate, type SkillCommand } from "./prompts.ts";
@@ -144,8 +144,8 @@ const CLEANUP_LIMIT_MS = 3000;
 /** The extension module with the browser tool. While it is off, the Browser panel is off too. */
 const BROWSER_FILE = "browser.ts";
 const BROWSER_EXTENSION = "pocket-browser";
-/** The extension module that is PiP. */
-const PIP_FILE = "pip.ts";
+/** The extension module with Noid's session tools. */
+const SESSION_TOOLS_FILE = "session-tools.ts";
 /** The extension module with the subagent tool, rebuilt when the models subagents may use change. */
 const SUBAGENTS_FILE = "subagents.ts";
 /** The most models the owner may allow subagents besides their session's own. */
@@ -306,15 +306,15 @@ export class PocketApp {
     readonly transcripts = new Transcripts(this);
     /** Pi's sessions from the terminal, which the owner can continue here. */
     readonly piSessions = new PiSessions(this);
-    /** PiP, the owner's assistant: its conversation, what its tools do, and the follows that report to it. */
-    readonly pip = new Pip(this);
-    /** PiP's context kept small: compacted sooner than a session's, with summaries of its own (`pip-compact.ts`). */
-    readonly pipCompaction = new PipCompaction(this);
+    /** The session tools: what they do for Noid and the other bots, and the follows that report to them. */
+    readonly sessionTools = new SessionTools(this);
+    /** Noid's context kept small: compacted sooner than a session's, with summaries of its own (`noid-compact.ts`). */
+    readonly noidCompaction = new NoidCompaction(this);
     /** Sessions' watches of their pull requests (`watches.ts`). */
     readonly watches = new Watches(this);
-    /** PiP's standing orders on GitHub repositories: what happens there goes to PiP or a session (`repo-watches.ts`). */
+    /** Standing orders on GitHub repositories: what happens there goes to Noid or a session (`repo-watches.ts`). */
     readonly repoWatches = new RepoWatches(this);
-    /** Webhooks: addresses other services post to, each a message to a session or PiP (`hooks.ts`). */
+    /** Webhooks: addresses other services post to, each a message to a session or Noid (`hooks.ts`). */
     readonly hooks = new Hooks(this);
     /** Lessons Pi keeps across sessions, for a project or everywhere. */
     readonly memory = new Memory(this);
@@ -377,7 +377,7 @@ export class PocketApp {
     readonly #subagents = new Map<ConversationId, SubagentsOf>();
     #sessions: Record<string, SessionMeta> = {};
     #sessionsTimer: NodeJS.Timeout | undefined;
-    /** The extensions installed now: every conversation runs with them, except PiP's own, which PiP alone selects. */
+    /** The extensions installed now: every conversation runs with them, except the session tools, which bots select. */
     #registry: Registry | undefined;
     #unsubscribeCommits: (() => void) | undefined;
     #unsubscribeApprovals: (() => void) | undefined;
@@ -625,8 +625,8 @@ export class PocketApp {
             schedules: this.schedules,
             goals: this.goals,
             browsers: this.browsers,
-            pip: this.pip,
-            pipCompaction: this.pipCompaction,
+            sessionTools: this.sessionTools,
+            noidCompaction: this.noidCompaction,
             watches: this.watches,
             repoWatches: this.repoWatches,
             memory: this.memory,
@@ -918,7 +918,7 @@ export class PocketApp {
 
                 if (!busy) {
                     this.spend.runEnded(id);
-                    this.pipCompaction.runEnded(id);
+                    this.noidCompaction.runEnded(id);
 
                     if (this.#sessions[String(id)] !== undefined) {
                         this.#endedAt.set(id, Date.now());
@@ -1006,7 +1006,7 @@ export class PocketApp {
         return sessionsChanged;
     }
 
-    /** How model requests stream here: Pi's timeout and retries. Pi Durable's requests and PiP's summaries use them. */
+    /** How model requests stream here: Pi's timeout and retries. Pi Durable's requests and Noid's summaries use it. */
     streamSettings(): { timeoutMs: number; maxRetryDelayMs?: number; maxRetries?: number } {
         const read = <T>(get: () => T): T | undefined => {
             try {
@@ -1043,15 +1043,15 @@ export class PocketApp {
         const stream = () => this.streamSettings();
 
         return {
-            // Every installed extension, in install order, but PiP's: its tools and prompt are for its conversation only,
-            // which selects it by name (`pip.ts`).
+            // Every installed extension, in install order, but the session tools: their tools and prompt are for bots'
+            // conversations only, which select them by name (`session-tools.ts`).
             get extensions() {
                 return registry()
                     ?.snapshot()
                     .installed()
                     .filter(
                         (extension) =>
-                            extension.name !== PIP_EXTENSION &&
+                            extension.name !== SESSION_TOOLS_EXTENSION &&
                             extension.name !== BOT_MAIL_EXTENSION &&
                             extension.name !== OVERSEER_EXTENSION &&
                             extension.name !== DESKTOP_EXTENSION,
@@ -1521,7 +1521,7 @@ export class PocketApp {
     canSee(user: User, id: ConversationId): boolean {
         const root = this.rootOf(id);
         // `pip`: stored by pi-pocket on its assistant's conversation, which stays its person's alone.
-        const theirs = this.#sessions[String(root)]?.pip ?? this.pip.actsFor(root);
+        const theirs = this.#sessions[String(root)]?.pip ?? this.sessionTools.actsFor(root);
 
         if (theirs !== undefined && theirs !== user.id) {
             return false;
@@ -1811,10 +1811,11 @@ export class PocketApp {
                 ...(user.role === "owner"
                     ? { subagentModels: [...this.config.subagentModels] }
                     : {}),
-                // This person may have a PiP, the assistant over every screen (`pip.ts`).
-                pip: this.pip.available(user),
-                // Tokens of context above which PiP compacts itself once idle; 0: only as sessions do.
-                pipCompactAt: this.pipCompaction.compactAt,
+                // This person's bots have the session tools (`session-tools.ts`). "pip": the name tabs know it by.
+                pip: this.sessionTools.available(user),
+                // Tokens of context above which Noid compacts itself once idle; 0: only as sessions do. Named as the
+                // config stores it.
+                pipCompactAt: this.noidCompaction.compactAt,
             },
             // Read after the guard's wait, so a connecting device does not replace a live update with an older list.
             folderFavorites: await this.folderFavorites.list(user),
@@ -2537,8 +2538,8 @@ export class PocketApp {
             await this.browsers.closeAll();
         }
 
-        if (file === PIP_FILE && !enabled) {
-            await this.pip.stopAll();
+        if (file === SESSION_TOOLS_FILE && !enabled) {
+            await this.sessionTools.stopAll();
         }
 
         this.notice(
@@ -2591,24 +2592,24 @@ export class PocketApp {
         );
     }
 
-    /** The owner chooses when PiP compacts itself: above so many tokens of context once idle, or (0) as sessions do. */
-    async setPipCompactAt(user: User, tokens: unknown): Promise<void> {
+    /** The owner chooses when Noid compacts itself: above so many tokens of context once idle, or (0) as sessions. */
+    async setNoidCompactAt(user: User, tokens: unknown): Promise<void> {
         if (user.role !== "owner") {
             throw new HttpError(403, "Only the owner can do that");
         }
 
-        if (typeof tokens !== "number" || !PIP_COMPACT_CHOICES.includes(tokens)) {
+        if (typeof tokens !== "number" || !NOID_COMPACT_CHOICES.includes(tokens)) {
             throw new HttpError(
                 400,
-                `pipCompactAt must be one of ${PIP_COMPACT_CHOICES.join(", ")}`,
+                `pipCompactAt must be one of ${NOID_COMPACT_CHOICES.join(", ")}`,
             );
         }
 
-        if (tokens === this.pipCompaction.compactAt) {
+        if (tokens === this.noidCompaction.compactAt) {
             return;
         }
 
-        this.config.pipCompactAt = tokens;
+        this.config.noidCompactAt = tokens;
         await this.#refreshClients();
     }
 

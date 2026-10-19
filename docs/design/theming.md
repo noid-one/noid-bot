@@ -164,7 +164,7 @@ Each part is a `data-part` attribute. An element can have more than one part (`[
 | Conversation     | `transcript`, `prompt` (a person's message), `reply` (Pi's answer), `reply-actions`, `thinking`, `activity` (a group of tool calls), `tool-call`, `approval`, `live-line`, `code-block`                                   |
 | Composer         | `composer` (all of it), `dock` (the queue and the bars), `subagents-bar`, `message-box`, `composer-tools`, `send-button`, `model-chip`, `status-line`                                                                     |
 | Layers           | `sheet` (with `data-sheet="<type>"`), `sheet-head`, `sheet-body`, `menu`, `launcher`, `notices`, `notice`                                                                                                                 |
-| Panels (phase 2) | `people-panel`, `peeks`, `peek-tile`, `files-panel`, `browser-panel`, `pip`, `subagents-board`, `extension-page` (with `data-module`), `diff`, `sign-in`, `boot`                                                          |
+| Panels (phase 2) | `people-panel`, `peeks`, `peek-tile`, `files-panel`, `browser-panel`, `subagents-board`, `extension-page` (with `data-module`), `diff`, `sign-in`, `boot`                                                                 |
 
 **States.**
 

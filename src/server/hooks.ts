@@ -1,6 +1,6 @@
 /**
  * Webhooks: addresses other services post to (GitHub, a deploy, a monitor), each of which turns every post into a
- * message to one session's Pi, or to PiP, as the work of the person who made it. The message is their instructions,
+ * message to one session's Pi, or to Noid, as the work of the person who made it. The message is their instructions,
  * then what came, trimmed and fenced as data. A GitHub hook is signed: a post gets in only with GitHub's signature made
  * with the hook's secret (`X-Hub-Signature-256`), which is not in its address. Any other hook has the secret in its
  * address. A post goes to Pi once even when sent again (by GitHub's delivery id, or an `Idempotency-Key`); anything
@@ -589,7 +589,7 @@ export class Hooks {
         }
 
         // Noid's session tools turned off keep its hooks: they come back when they are on again.
-        if (app.pip.ownerOf(target) !== undefined && !app.pip.available(person)) {
+        if (app.sessionTools.ownerOf(target) !== undefined && !app.sessionTools.available(person)) {
             throw new HttpError(503, "Noid's session tools are turned off on this server.");
         }
 

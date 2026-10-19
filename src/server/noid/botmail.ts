@@ -270,7 +270,7 @@ export class BotMail {
         }
     }
 
-    /** A bot's last reply with words in it, from a short newest-first read (pi-pocket PiP's way). */
+    /** A bot's last reply with words in it, from a short newest-first read (as pi-pocket's assistant read them). */
     async #lastWords(id: ConversationId): Promise<string> {
         const page = await (await this.#app.conversation(id)).entries({}, 32, undefined, context);
 

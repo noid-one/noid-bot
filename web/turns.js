@@ -152,7 +152,7 @@ const DID = {
     bot_create: { verb: "created", noun: "bot", by: "name" },
     bot_update: { verb: "updated", noun: "bot", by: "name" },
     bot_archive: { verb: "archived", noun: "bot", by: "name" },
-    // PiP's.
+    // The session tools'.
     sessions: { verb: "looked over sessions" },
     session_read: { verb: "read", noun: "session", by: "session" },
     session_start: { verb: "started", noun: "session" },

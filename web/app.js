@@ -704,7 +704,7 @@ addEventListener("keydown", (event) => {
             return;
         }
 
-        // noid: Noid, the main bot, which does what PiP did; not under a sheet, where it would open unseen.
+        // noid: Noid, the main bot; not under a sheet, where it would open unseen.
         if (event.code === "KeyA" && mainBot() !== undefined && !store.state.sheet) {
             event.preventDefault();
             toNoid();

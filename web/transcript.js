@@ -67,14 +67,14 @@ const NEXT_REPORT = /\n\n(?=\[subagent \S+ (?:answered|failed))/;
 /** How a scheduled message starts (see src/server/schedules.ts). */
 const SCHEDULED = "[scheduled] ";
 
-/** A message the app sent for a person, and what sent it: PiP, a PR watch, a webhook (`submit` in src/server/commands.ts). */
+/** A message the app sent for a person, and what sent it: a bot, a PR watch, a webhook (`submit` in commands.ts). */
 const VIA = /^\[via ([^\]\n]{1,300})\] /;
 /** What came from outside in such a message, fenced as data for Pi: a check's log, a webhook's post, GitHub's events. */
 const FENCED =
     /<(ci-log|webhook-payload|github-event)((?: [a-z]+="[^"\n]*")*)>\n([\s\S]*?)\n<\/\1>/g;
 const FENCE_LABELS = { "webhook-payload": "What was posted", "github-event": "On GitHub" };
 
-/** noid: what Noid is good for, to start with: PiP's questions, now Noid's. One ending in "…" is finished by hand. */
+/** noid: what Noid is good for, to start with. One ending in "…" is finished by hand. */
 const NOID_STARTERS = [
     "What needs me?",
     "What happened today?",

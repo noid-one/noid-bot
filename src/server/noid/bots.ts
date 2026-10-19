@@ -5,7 +5,7 @@
  * (Durable's per-conversation `instructions`). A computer bot works in `bots/<slug>` on the shared computer, a host bot
  * in a folder of this machine. Noid, the main bot, is made on first open and cannot be archived.
  */
-import { PIP_EXTENSION } from "../pip.ts";
+import { OLD_SESSION_TOOLS_EXTENSION, SESSION_TOOLS_EXTENSION } from "../session-tools.ts";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { AgentDoc, type AgentState, type ConversationId } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
@@ -252,7 +252,7 @@ export class Bots {
             );
         }
 
-        // Every bot has PiP's session tools, which a new conversation selects by name, as `ensureTools` does.
+        // Every bot has the session tools, which a new conversation selects by name, as `ensureTools` does.
         await this.#ensureTools(id, bot);
         await app.collab.activity(id, user, `made the bot ${name}`);
 
@@ -368,8 +368,8 @@ export class Bots {
     }
 
     /**
-     * Give every bot its tools (bots made before they existed), added to whatever its selection is (pi-pocket's PiP sets
-     * its own the same way): nothing else in it changes, and bots that have them are left alone.
+     * Give every bot its tools (bots made before they existed), added to whatever its selection is: nothing else in it
+     * changes but the session tools' old name, and bots that have them are left alone.
      */
     async ensureTools(): Promise<void> {
         for (const { conversationId, bot } of this.list({ archived: true })) {
@@ -378,8 +378,24 @@ export class Bots {
     }
 
     async #ensureTools(conversationId: ConversationId, bot: BotProfile): Promise<void> {
-        // Every bot does PiP's work too: PiP's session tools, acting for the owner (`Pip.actsFor`).
-        const want = [...this.#toolsOf(bot).map((extension) => extension.name), PIP_EXTENSION];
+        // Every bot has the session tools too, acting for the owner (`SessionTools.actsFor`).
+        const want = [
+            ...this.#toolsOf(bot).map((extension) => extension.name),
+            SESSION_TOOLS_EXTENSION,
+        ];
+        // A selection stored before the session tools were renamed names them as pi-pocket did.
+        const stale = (selection: AgentState["extensions"]) =>
+            (Array.isArray(selection)
+                ? selection
+                : [...(selection?.add ?? []), ...(selection?.remove ?? [])]
+            ).includes(OLD_SESSION_TOOLS_EXTENSION);
+        const renamed = (names: readonly string[]) => [
+            ...new Set(
+                names.map((name) =>
+                    name === OLD_SESSION_TOOLS_EXTENSION ? SESSION_TOOLS_EXTENSION : name,
+                ),
+            ),
+        ];
         const has = (selection: AgentState["extensions"]) =>
             Array.isArray(selection)
                 ? want.every((name) => selection.includes(name))
@@ -389,7 +405,9 @@ export class Bots {
                           !(selection?.remove ?? []).includes(name),
                   );
 
-        if (has((await this.#app.agentState(conversationId))?.extensions)) {
+        const current = (await this.#app.agentState(conversationId))?.extensions;
+
+        if (!stale(current) && has(current)) {
             return;
         }
 
@@ -398,16 +416,15 @@ export class Bots {
             const selection = state.extensions;
 
             if (Array.isArray(selection)) {
-                state.extensions = [
-                    ...selection,
-                    ...want.filter((name) => !selection.includes(name)),
-                ];
+                const names = renamed(selection);
+
+                state.extensions = [...names, ...want.filter((name) => !names.includes(name))];
 
                 return;
             }
 
-            const add = selection?.add ?? [];
-            const remove = (selection?.remove ?? []).filter((name) => !want.includes(name));
+            const add = renamed(selection?.add ?? []);
+            const remove = renamed(selection?.remove ?? []).filter((name) => !want.includes(name));
 
             state.extensions = {
                 add: [...add, ...want.filter((name) => !add.includes(name))],

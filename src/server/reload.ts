@@ -53,7 +53,7 @@ const ORDER = [
     "guard.ts",
     "codemode.ts",
     "memory.ts",
-    "pip.ts",
+    "session-tools.ts",
     "triggers.ts",
     "gallery.ts",
 ];
@@ -78,7 +78,7 @@ const TITLES: Record<string, string> = {
     "guard.ts": "Lancet Guard",
     "codemode.ts": "Codemode",
     "memory.ts": "Memory",
-    "pip.ts": "Noid's session tools",
+    "session-tools.ts": "Noid's session tools",
     "triggers.ts": "Triggers",
     "gallery.ts": "Extension gallery",
 };
@@ -88,7 +88,7 @@ const TITLES: Record<string, string> = {
  * with a name already taken replaces it in place, so a drop-in that used one would quietly replace a built-in (or be
  * replaced by it when the built-in is turned on), and turning the drop-in off would remove the built-in too.
  */
-export const RESERVED_EXTENSIONS = /^(pocket-.*|coding-tools)$/;
+export const RESERVED_EXTENSIONS = /^(pocket-.*|noid-sessions|coding-tools)$/;
 
 /** The tools of Pi Durable's coding tools and of the built-in modules, kept in step with what they install by hand. */
 export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([

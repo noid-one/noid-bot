@@ -261,7 +261,7 @@ export function createApi(options: HttpOptions, auth: Auth) {
         }
 
         // A repository watch let hear from anyone, or only from the repository's people: by its person or the owner,
-        // never by PiP.
+        // never by a bot.
         if (
             first === "repo-watches" &&
             second !== undefined &&
@@ -731,8 +731,9 @@ export function createApi(options: HttpOptions, auth: Auth) {
                 await app.setSubagentModels(user, body.subagentModels);
             }
 
+            // "pipCompactAt": named as the config stores it.
             if (body.pipCompactAt !== undefined) {
-                await app.setPipCompactAt(user, body.pipCompactAt);
+                await app.setNoidCompactAt(user, body.pipCompactAt);
             }
 
             if (body.approvalRule !== undefined) {

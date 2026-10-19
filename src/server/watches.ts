@@ -348,7 +348,7 @@ export class Watches {
 
         let asked = request.pr?.trim() ?? "";
 
-        // Pi (and PiP) may watch a PR in this folder's repository by its number, or one elsewhere by its address only
+        // Pi (and bots) may watch a PR in this folder's repository by its number, or one elsewhere by its address only
         // where gh's account can push: a PR in someone else's repository, named in a post or a page, would let its
         // owner speak to Pi as a reviewer for two weeks.
         if (asked !== "" && request.byPi === true && !PR_NUMBER.test(asked)) {
@@ -506,7 +506,7 @@ export class Watches {
                 repo,
                 number,
                 url: found.url!,
-                // One line: Pi reads it in the watch's status, and PiP in its list.
+                // One line: Pi reads it in the watch's status, and a bot in its list.
                 title: snippet(found.title ?? `PR #${number}`, 200),
                 branch: found.headRefName ?? "",
                 ...(elsewhere ? { elsewhere: true } : {}),

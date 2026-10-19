@@ -4,7 +4,7 @@ The host is the first argument of a module's default export. A module gets the a
 
 ## Public and internal members
 
-[The host reference](reference/host.md) lists the public members, and the types file has them. The host has more members, for Pi Pocket's built-in modules only, such as `pip`, `gallery`, and `memory`. They are internal: they are not in the types file, and they can change in any release. Do not use them in a drop-in ([API stability](policies/api-stability.md)).
+[The host reference](reference/host.md) lists the public members, and the types file has them. The host has more members, for Pi Pocket's built-in modules only, such as `sessionTools`, `gallery`, and `memory`. They are internal: they are not in the types file, and they can change in any release. Do not use them in a drop-in ([API stability](policies/api-stability.md)).
 
 ## Text from other places
 

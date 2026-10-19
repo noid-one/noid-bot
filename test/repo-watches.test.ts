@@ -161,8 +161,8 @@ after(async () => {
 });
 
 /** Noid's conversation, with the scripted model. */
-async function pip(): Promise<ConversationId> {
-    const id = app.pip.noid()!;
+async function noid(): Promise<ConversationId> {
+    const id = app.sessionTools.noid()!;
 
     await app.commands.configure(id, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -265,7 +265,7 @@ test("a GitHub host other than github.com is asked nothing unless gh is signed i
 });
 
 test("told to watch a repository, Noid does; what happens there reaches it once, fenced, with the instructions", async () => {
-    const id = await pip();
+    const id = await noid();
     const instructions =
         "When CI fails on main, start a session in acme/api in a worktree to fix it, and tell me.";
 
@@ -508,7 +508,7 @@ test("told to watch a repository, Noid does; what happens there reaches it once,
 });
 
 test("nothing is watched, nor worked on, in a repository gh cannot push to", async () => {
-    const id = await pip();
+    const id = await noid();
 
     await say(
         app,
@@ -547,15 +547,15 @@ test("nothing is watched, nor worked on, in a repository gh cannot push to", asy
         app.watches.start(session, owner(app).id, { pr: "stranger/x#3", byPi: true }),
         /cannot push to stranger\/x/,
     );
-    await app.pip.read(id, Number(session));
+    await app.sessionTools.read(id, Number(session));
     await assert.rejects(
-        app.pip.watchPr(id, Number(session), "--web", "k-2"),
+        app.sessionTools.watchPr(id, Number(session), "--web", "k-2"),
         /Name the pull request/,
     );
 });
 
 test("Noid starts a session in a repository: its checkout here, or a clone made once", async () => {
-    const id = await pip();
+    const id = await noid();
     // A checkout a session already works in.
     const here = join(root, "checkouts", "here");
 
@@ -573,20 +573,28 @@ test("Noid starts a session in a repository: its checkout here, or a clone made 
 
     // None here: cloned into the data folder, once, however often asked.
     const [first, second] = await Promise.all([
-        app.pip.checkout(id, "https://github.com/acme/clone-me"),
-        app.pip.checkout(id, "acme/clone-me"),
+        app.sessionTools.checkout(id, "https://github.com/acme/clone-me"),
+        app.sessionTools.checkout(id, "acme/clone-me"),
     ]);
 
     assert.equal(first, second);
     assert.equal(first, join(app.dataDir, "repos", "acme", "clone-me"));
     assert.equal(github.calls.filter((call) => call[0] === "repo").length, 1);
-    assert.equal(await app.pip.checkout(id, "acme/clone-me"), first, "found again, not cloned");
+    assert.equal(
+        await app.sessionTools.checkout(id, "acme/clone-me"),
+        first,
+        "found again, not cloned",
+    );
     assert.equal(github.calls.filter((call) => call[0] === "repo").length, 1);
 });
 
 test("a guest cannot set up a repository watch on Noid", async () => {
-    const id = await pip();
-    const added = await app.pip.addRepoWatch(id, { repo: "acme/api", events: ["ci"] }, "k-3");
+    const id = await noid();
+    const added = await app.sessionTools.addRepoWatch(
+        id,
+        { repo: "acme/api", events: ["ci"] },
+        "k-3",
+    );
 
     const guest = app.config.addUser("Gus", "guest").user;
 

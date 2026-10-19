@@ -113,7 +113,7 @@ export function HooksSheet() {
     const [list, setList] = useState(null);
     const [name, setName] = useState("");
     const [instructions, setInstructions] = useState("");
-    const [target, setTarget] = useState(here ? "here" : "pip");
+    const [target, setTarget] = useState(here ? "here" : "noid");
     const [github, setGithub] = useState(true);
     const [anyone, setAnyone] = useState(false);
     const [making, setMaking] = useState(false);
@@ -121,7 +121,7 @@ export function HooksSheet() {
     const [fresh, setFresh] = useState(null);
     const steer = me?.role !== "viewer";
     const load = () => attempt(async () => setList(await api("hooks")));
-    const targets = [here && ["here", "This session"], noidWatches() && ["pip", "Noid"]].filter(
+    const targets = [here && ["here", "This session"], noidWatches() && ["noid", "Noid"]].filter(
         Boolean,
     );
 
@@ -137,7 +137,8 @@ export function HooksSheet() {
         setMaking(true);
         attempt(async () => {
             const hook = await api("hooks", {
-                target: target === "pip" ? "pip" : here.id,
+                // "pip": the server's name for Noid as a target, which older servers know too.
+                target: target === "noid" ? "pip" : here.id,
                 name: name.trim(),
                 instructions: instructions.trim(),
                 signed: github,
@@ -295,7 +296,7 @@ export function HooksSheet() {
                             )}
                         </div>
                         <div class="muted small">
-                            ${target === "pip" ? "Noid decides what to do: start a session, message one, or tell you." : `Pi in “${here?.title}” gets each post.`}
+                            ${target === "noid" ? "Noid decides what to do: start a session, message one, or tell you." : `Pi in “${here?.title}” gets each post.`}
                         </div>
                     </div>`
                 }

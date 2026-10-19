@@ -75,7 +75,10 @@ interface PocketConfig {
     enabledExtensions?: string[];
     /** "others": a guest cannot allow a risky call that their own message led to. Absent: anyone who can steer may. */
     approvals?: ApprovalRule;
-    /** The tokens of context above which PiP compacts itself once idle; 0: only as sessions do. Absent: the default. */
+    /**
+     * The tokens of context above which Noid compacts itself once idle; 0: only as sessions do. Absent: the default.
+     * Stored under pi-pocket's name.
+     */
     pipCompactAt?: number;
     /**
      * The models (`provider/modelId`) Pi may start subagents on besides their session's own, as the owner allowed them.
@@ -104,6 +107,9 @@ function sameHash(a: string, b: string): boolean {
 
 /** The most invites one person keeps live at once. */
 export const MAX_INVITES = 50;
+
+/** Extension modules whose file was renamed: the owner's choice to turn one on or off moves to its new name. */
+const RENAMED_MODULES: Readonly<Record<string, string>> = { "pip.ts": "session-tools.ts" };
 
 /** `config.json` in the data directory, written atomically with mode 0600. */
 /** noid: the owner's name until they choose one, as two words picked at random: "Brisk Otter", not "Owner". */
@@ -166,6 +172,7 @@ export class ConfigStore {
 
         if (existsSync(this.file)) {
             this.#config = JSON.parse(readFileSync(this.file, "utf8")) as PocketConfig;
+            this.#renameModules();
         } else {
             const ownerToken = newToken();
 
@@ -183,6 +190,23 @@ export class ConfigStore {
                 ],
             };
             this.save();
+        }
+    }
+
+    /** Modules turned on or off under an older file name keep that choice under the new one. */
+    #renameModules(): void {
+        for (const key of ["disabledExtensions", "enabledExtensions"] as const) {
+            const files = this.#config[key];
+
+            if (files?.some((file) => Object.hasOwn(RENAMED_MODULES, file)) === true) {
+                this.#config[key] = [
+                    ...new Set(
+                        files.map((file) =>
+                            Object.hasOwn(RENAMED_MODULES, file) ? RENAMED_MODULES[file]! : file,
+                        ),
+                    ),
+                ].sort();
+            }
         }
     }
 
@@ -231,12 +255,12 @@ export class ConfigStore {
         this.save();
     }
 
-    /** The owner's choice of when PiP compacts itself (`pip-compact.ts`); undefined: its default. */
-    get pipCompactAt(): number | undefined {
+    /** The owner's choice of when Noid compacts itself (`noid-compact.ts`); undefined: its default. */
+    get noidCompactAt(): number | undefined {
         return this.#config.pipCompactAt;
     }
 
-    set pipCompactAt(tokens: number | undefined) {
+    set noidCompactAt(tokens: number | undefined) {
         if (tokens === undefined) {
             delete this.#config.pipCompactAt;
         } else {

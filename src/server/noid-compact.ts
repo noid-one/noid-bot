@@ -1,13 +1,13 @@
 /**
- * PiP's context, kept small. PiP is one conversation that lives for months, and every reply reads all of it again, so
+ * Noid's context, kept small. Noid is one conversation that lives for months, and every reply reads all of it again, so
  * it is compacted much sooner than a session: by itself once it is idle above `compactAt` tokens (the owner's choice
- * in Extensions, `PIP_COMPACT_DEFAULT` unless they chose), and by hand from its panel or with `/compact`. Sessions'
+ * in Extensions, `NOID_COMPACT_DEFAULT` unless they chose), and by hand with `/compact`. Sessions'
  * thresholds (Pi Durable's, from Pi's settings) stay as a backstop while a long run grows it.
  *
- * Every summary of PiP's is PiP's own: its extension's `beforeCompact` hook calls `summarize`, which writes it from
+ * Every summary of Noid's is Noid's own: its extension's `beforeCompact` hook calls `summarize`, which writes it from
  * the conversation with everything that came from outside left out (what sessions said, webhooks' posts, GitHub's
- * events, files and scripts' output), so none of their words can come back as the summary's, which PiP would read as
- * its own notes. It keeps what PiP's person asked for, what is still open, and what PiP follows and watches (which
+ * events, files and scripts' output), so none of their words can come back as the summary's, which Noid would read as
+ * its own notes. It keeps what Noid's person asked for, what is still open, and what Noid follows and watches (which
  * live on the server, and work on as they did). What it costs is added to `pi.usage`, once, as Pi Durable's are.
  */
 import type { Context } from "@earendil-works/chord";
@@ -27,16 +27,16 @@ import {
     UsageDoc,
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
-import { PipCompactionDoc } from "./docs.ts";
+import { NoidCompactionDoc } from "./docs.ts";
 import { describe } from "./errors.ts";
 import { clip, defang } from "./fence.ts";
 
 const context = BACKGROUND_CONTEXT;
 
-/** Tokens of context above which PiP compacts itself once idle, unless its owner chose otherwise. */
-export const PIP_COMPACT_DEFAULT = 60_000;
-/** What the owner may choose from; 0 leaves PiP to the thresholds sessions have. */
-export const PIP_COMPACT_CHOICES: readonly number[] = [0, 40_000, 60_000, 100_000];
+/** Tokens of context above which Noid compacts itself once idle, unless its owner chose otherwise. */
+export const NOID_COMPACT_DEFAULT = 60_000;
+/** What the owner may choose from; 0 leaves Noid to the thresholds sessions have. */
+export const NOID_COMPACT_CHOICES: readonly number[] = [0, 40_000, 60_000, 100_000];
 
 /** The longest summary: in tokens the model may write (less when Pi's settings leave less room), and characters kept. */
 const SUMMARY_TOKENS = 8192;
@@ -48,23 +48,24 @@ const ARGUMENTS_CHARS = 400;
 /** A compaction is worth its request only with this much more than Pi Durable keeps as it is. */
 const MARGIN_TOKENS = 4096;
 /**
- * Once compacted, PiP waits for this much more before it compacts itself again: a prompt and kept messages over its
+ * Once compacted, Noid waits for this much more before it compacts itself again: a prompt and kept messages over its
  * threshold on their own cannot have it compact after every answer.
  */
 const REGROW_TOKENS = 8192;
 /** Summaries whose cost was counted, remembered: one compaction's is counted once. */
 const COUNTED = 50;
+// "pip": the memo's stored name, from pi-pocket.
 const SUMMARY_MEMO = "pocket.pip-summary";
 /** Failed summaries whose reason is kept for the notice that says so. */
 const FAILURES = 20;
-/** After a summary of its own failed, PiP tries again once this long has passed, or `REGROW_TOKENS` more came. */
+/** After a summary of its own failed, Noid tries again once this long has passed, or `REGROW_TOKENS` more came. */
 const RETRY_AFTER_MS = 30 * 60_000;
-/** How Pi Durable starts a summary's message: PiP's earlier notes, its own words. */
+/** How Pi Durable starts a summary's message: Noid's earlier notes, its own words. */
 const NOTES_HEAD =
     "The conversation history before this point was compacted into the following summary:";
 
 /**
- * Tools whose results are PiP's own (lists, what it did, its lessons): kept, with any fence in them left out. What any
+ * Tools whose results are Noid's own (lists, what it did, its lessons): kept, with any fence in them left out. What any
  * other tool returned (a file read, a script's output) is outside text, and only its name stays.
  */
 const OWN_TOOLS = new Set([
@@ -85,9 +86,9 @@ const OWN_TOOLS = new Set([
 ]);
 
 /**
- * What came from outside, as PiP gets it: between `<session-output>` (`pip.ts`), `<webhook-payload …>` (`hooks.ts`),
- * or `<github-event …>` (`repo-watches.ts`) tags. `defang` keeps any closing tag out of what is inside, so the first
- * one after an opening tag ends it; one never closed runs to the end.
+ * What came from outside, as Noid gets it: between `<session-output>` (`session-tools.ts`), `<webhook-payload …>`
+ * (`hooks.ts`), or `<github-event …>` (`repo-watches.ts`) tags. `defang` keeps any closing tag out of what is inside,
+ * so the first one after an opening tag ends it; one never closed runs to the end.
  */
 const OUTSIDE = /<(session-output|webhook-payload|github-event)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/g;
 const LEFT_OUT: Record<string, string> = {
@@ -115,7 +116,7 @@ const textOf = (content: string | readonly { type: string; text?: string }[]): s
               .join("\n");
 
 /**
- * The conversation as the summary is written from: PiP's person's messages and PiP's replies and calls, with outside
+ * The conversation as the summary is written from: Noid's person's messages and Noid's replies and calls, with outside
  * text left out. Prompt messages (system) are not part of it.
  */
 export function summarySource(messages: readonly Message[]): string {
@@ -125,7 +126,7 @@ export function summarySource(messages: readonly Message[]): string {
         if (message.role === "user") {
             const text = textOf(message.content);
 
-            // PiP's notes from an earlier compaction: whole, and not taken for its person's words.
+            // Noid's notes from an earlier compaction: whole, and not taken for its person's words.
             parts.push(
                 text.startsWith(NOTES_HEAD)
                     ? `[Earlier notes]: ${clip(leaveOutside(text), SUMMARY_CHARS + 200)}`
@@ -253,7 +254,7 @@ export function tokensSinceCompaction(view: ContextView): number {
     return tokens;
 }
 
-/** A summary PiP's hook wrote, kept in its compaction task's memo so a restart does not ask for it again. */
+/** A summary Noid's hook wrote, kept in its compaction task's memo so a restart does not ask for it again. */
 type Made = { summary: string; model: string; usage: Counts };
 
 /** Every counter of `usage` added to `total`, as Pi Durable adds them. */
@@ -302,31 +303,31 @@ const summaryOf = (message: AssistantMessage): string | undefined => {
     return text === "" ? undefined : text;
 };
 
-export class PipCompaction {
+export class NoidCompaction {
     readonly #app: PocketApp;
-    /** PiPs being looked at after a run, so two runs ending together ask once. */
+    /** Conversations being looked at after a run, so two runs ending together ask once. */
     readonly #checking = new Set<ConversationId>();
     /** Why the newest summaries that could not be written were not, by compaction task. */
     readonly #failures = new Map<number, string>();
-    /** When PiP's own compaction last failed, and how full it was then, by PiP: it waits before it tries again. */
+    /** When Noid's own compaction last failed, and how full it was then: it waits before it tries again. */
     readonly #failed = new Map<ConversationId, { at: number; tokens: number }>();
 
     constructor(app: PocketApp) {
         this.#app = app;
     }
 
-    /** The tokens of context above which PiP compacts itself once idle; 0: never sooner than a session. */
+    /** The tokens of context above which Noid compacts itself once idle; 0: never sooner than a session. */
     get compactAt(): number {
-        return this.#app.config.pipCompactAt ?? PIP_COMPACT_DEFAULT;
+        return this.#app.config.noidCompactAt ?? NOID_COMPACT_DEFAULT;
     }
 
-    /** Whether `id` is someone's PiP. */
-    #isPip(id: ConversationId): boolean {
-        return this.#app.pip.ownerOf(id) !== undefined;
+    /** Whether `id` is Noid's. */
+    #isNoid(id: ConversationId): boolean {
+        return this.#app.sessionTools.ownerOf(id) !== undefined;
     }
 
     /**
-     * PiP's summary for a compaction of its conversation, from `beforeCompact` (PiP's extension): written from the
+     * Noid's summary for a compaction of its conversation, from `beforeCompact` (Noid's extension): written from the
      * conversation with outside text left out, and counted in `pi.usage`. Undefined for any other conversation. When
      * no summary can be written, the compaction is declined and why is kept for `failure`: never thrown, because Pi
      * Durable goes on to write its own summary when a hook throws, and that one reads what came from outside as it is.
@@ -336,7 +337,7 @@ export class PipCompaction {
         api: HookApi,
         hookContext: Context,
     ): Promise<{ summary: string } | { decline: true } | undefined> {
-        if (!this.#isPip(api.conversationId)) {
+        if (!this.#isNoid(api.conversationId)) {
             return undefined;
         }
 
@@ -362,7 +363,7 @@ export class PipCompaction {
         }
     }
 
-    /** Why PiP's summary for compaction `taskId` could not be written, once; undefined when it was, or is unknown. */
+    /** Why Noid's summary for compaction `taskId` could not be written, once; undefined when it was, or is unknown. */
     failure(taskId: number): string | undefined {
         const why = this.#failures.get(taskId);
 
@@ -371,7 +372,7 @@ export class PipCompaction {
         return why;
     }
 
-    /** PiP's summary, written or (after a restart) as written before; throws when it cannot be. */
+    /** Noid's summary, written or (after a restart) as written before; throws when it cannot be. */
     async #write(
         compaction: { readonly messages: readonly Message[]; readonly instructions?: string },
         api: HookApi,
@@ -390,7 +391,7 @@ export class PipCompaction {
                 throw new Error("Noid has no model to write its summary with.");
             }
 
-            const name = this.#app.pip.ownerName(id) ?? "its person";
+            const name = this.#app.sessionTools.ownerName(id) ?? "its person";
             // The conversation's own identity with the provider, as Pi Durable sends with its summaries: some providers
             // (OpenCode Go) refuse a request without one.
             const sessionId =
@@ -471,10 +472,10 @@ export class PipCompaction {
         return made.summary;
     }
 
-    /** Add a summary's cost to PiP's `pi.usage`, once for its compaction. */
+    /** Add a summary's cost to Noid's `pi.usage`, once for its compaction. */
     async #count(id: ConversationId, taskId: number, made: Made): Promise<void> {
         await this.#app.harness.commit(async (tx) => {
-            const doc = await tx.doc(PipCompactionDoc, id);
+            const doc = await tx.doc(NoidCompactionDoc, id);
 
             if (doc.counted.includes(taskId)) {
                 return;
@@ -497,9 +498,9 @@ export class PipCompaction {
         }, context);
     }
 
-    /** A run ended somewhere: when it was a PiP's, and it is idle above its threshold, it compacts itself. */
+    /** A run ended somewhere: when it was Noid's, and it is idle above its threshold, it compacts itself. */
     runEnded(id: ConversationId): void {
-        if (!this.#isPip(id) || this.#checking.has(id)) {
+        if (!this.#isNoid(id) || this.#checking.has(id)) {
             return;
         }
 
@@ -511,13 +512,18 @@ export class PipCompaction {
             .finally(() => this.#checking.delete(id));
     }
 
-    /** Compact an idle PiP above its threshold; nothing when it is busy, off, past a spend limit, or small enough. */
+    /** Compact Noid, idle above its threshold; nothing when it is busy, off, past a spend limit, or small enough. */
     async #idle(id: ConversationId): Promise<boolean> {
         const app = this.#app;
         const at = this.compactAt;
-        const person = app.config.userById(app.pip.ownerOf(id) ?? "");
+        const person = app.config.userById(app.sessionTools.ownerOf(id) ?? "");
 
-        if (at <= 0 || person === undefined || !app.pip.available(person) || app.isBusy(id)) {
+        if (
+            at <= 0 ||
+            person === undefined ||
+            !app.sessionTools.available(person) ||
+            app.isBusy(id)
+        ) {
             return false;
         }
 

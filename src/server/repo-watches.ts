@@ -1,17 +1,16 @@
 /**
- * Repository watches: PiP's standing orders on a GitHub repository `gh`'s account can push to. A durable task looks
- * at the repository every few minutes with `gh`, and what is new there (issues and pull requests opened, CI failing on
- * a branch: runs pushed to it, scheduled, or started by hand or through the API, in the repository itself; releases
- * published, comments and issues that mention @pi) goes as one message to PiP, or to a session, after its person's
+ * Repository watches: bots' standing orders on a GitHub repository `gh`'s account can push to. A durable task looks at
+ * the repository every few minutes with `gh`, and what is new there (issues and pull requests opened, CI failing on a
+ * branch: runs pushed to it, scheduled, or started by hand or through the API, in the repository itself; releases
+ * published, comments and issues that mention @pi) goes as one message to Noid, or to a session, after its person's
  * instructions ("when CI fails on main, start a session to fix it"). What came from GitHub is fenced as data. Issues
- * and PRs count only from the repository's owner, and its organization's members and collaborators whom GitHub says
- * can write to it (and bots' PRs), unless the watch says anyone, which only a person turns on; mentions always only
- * from them. While triggers are off,
- * watches wait; while PiP is off, those to PiP hold what they found. Each thing is told once, at most `MAX_ITEMS` in a
- * message and `MAX_PER_HOUR` messages an hour; the rest come in the next. It needs no public address, unlike a
- * webhook. A watch lasts until it is removed; looks that fail are retried less and less often, and say why. The
- * triggers extension (`extensions/triggers.ts`) installs the task; PiP sets watches up with its repo_watch tool
- * (`extensions/pip.ts`).
+ * and PRs count only from the repository's owner, and its organization's members and collaborators whom GitHub says can
+ * write to it (and bots' PRs), unless the watch says anyone, which only a person turns on; mentions always only from
+ * them. While triggers are off, watches wait; while Noid's session tools are off, those to Noid hold what they found.
+ * Each thing is told once, at most `MAX_ITEMS` in a message and `MAX_PER_HOUR` messages an hour; the rest come in the
+ * next. It needs no public address, unlike a webhook. A watch lasts until it is removed; looks that fail are retried
+ * less and less often, and say why. The triggers extension (`extensions/triggers.ts`) installs the task; bots set
+ * watches up with their repo_watch tool (`extensions/session-tools.ts`).
  */
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord";
@@ -134,7 +133,7 @@ type Runtime = TaskRuntime<WatchInput, WatchState, null, object>;
 
 const finished = { status: "terminal", outcome: { status: "completed", result: null } } as const;
 
-/** What a watch shows people and PiP: everything but its bookkeeping. */
+/** What a watch shows people and bots: everything but its bookkeeping. */
 export type RepoWatchView = Omit<RepoWatch, "taskId" | "seen" | "next" | "key" | "since">;
 
 export type RepoWatchRequest = {
@@ -145,7 +144,7 @@ export type RepoWatchRequest = {
     assigned?: boolean;
     branch?: string;
     anyone?: boolean;
-    /** The conversation it messages: PiP, or a session. */
+    /** The conversation it messages: Noid, or a session. */
     target: ConversationId;
     byPi: boolean;
     /** The same key sets up the same watch once: a tool call replayed after a restart finds it. */
@@ -274,7 +273,7 @@ export class RepoWatches {
             .map((watch) => this.view(watch));
     }
 
-    /** Set up a watch for a person. Throws an HttpError a person (or PiP) can act on when it will not do. */
+    /** Set up a watch for a person. Throws an HttpError a person (or a bot) can act on when it will not do. */
     async add(person: User, request: RepoWatchRequest): Promise<RepoWatchView> {
         const app = this.#app;
 
@@ -752,7 +751,10 @@ export class RepoWatches {
 
             // Noid's session tools are off: a run there would have none of their rules. Held, waiting at the usual
             // pace: nothing failed.
-            if (app.pip.ownerOf(target) !== undefined && !app.pip.available(person)) {
+            if (
+                app.sessionTools.ownerOf(target) !== undefined &&
+                !app.sessionTools.available(person)
+            ) {
                 return this.#again(
                     id,
                     runtime,

@@ -1,5 +1,5 @@
 /**
- * Which models a text names, so PiP passes a model, or names one in a task, only when its person named that model.
+ * Which models a text names, so a bot passes a model, or names one in a task, only when its person named that model.
  * Words are compared, not characters: "GPT 5.1 Codex", "gpt-5.1-codex", and "gpt5.1 codex" name the same model, and
  * "auto" alone names none. Words that name a longer model name only that one: "gpt-5-nano" is not "gpt-5".
  */
@@ -9,8 +9,8 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 const WRITTEN = /(?:[\p{L}\p{N}]|(?<=\p{N})\.(?=\p{N}))+/gu;
 
 /**
- * The scripts written without spaces between words that PiP reads: Han, Kana and Hangul. Thai, Lao, Khmer, Myanmar and
- * Tibetan write that way too, but their words need a dictionary to tell apart, so they stay one word. Latin letters
+ * The scripts written without spaces between words that a bot reads: Han, Kana and Hangul. Thai, Lao, Khmer, Myanmar
+ * and Tibetan write that way too, but their words need a dictionary to tell apart, so they stay one word. Latin letters
  * touch the first three with no space at all ("用gpt-6.1-sol吧"), so where one of them meets another script, two words
  * meet, not one.
  */
@@ -61,7 +61,7 @@ export function words(text: string): string[] {
 /**
  * A text read for matching: its words and how they join (`split`), which message each is in, and where each word is. A
  * phrase is looked up by its first word there, not sought at every word, so reading a text costs its length once, and
- * matching it costs the phrases and the places they could start, however long the text is. PiP reads its person's
+ * matching it costs the phrases and the places they could start, however long the text is. A bot reads its person's
  * words once per action.
  */
 export type Indexed = {
@@ -199,7 +199,7 @@ function shortened(full: string): Phrase | undefined {
 /**
  * The phrases that name a model: its id, its name, and its provider with its id. `loosely` adds them as people
  * shorten them (`shortened`). For a person's choice, a whole two-character id or name needs its provider in the
- * same message: "O3 optimization" is no more a choice than "my K3 laptop". PiP's own text is checked without that
+ * same message: "O3 optimization" is no more a choice than "my K3 laptop". A bot's own text is checked without that
  * requirement, so it cannot pass on "use o3" when its person chose nothing.
  */
 function phrases(model: Model<Api>, loosely: boolean, forPerson: boolean): Phrase[] {
@@ -234,7 +234,7 @@ const VIA = new Set(["on", "via", "through", "with", "using", "from"]);
  * phrase of another, from the same word, the text names only the longer one: "gpt-5-nano" names gpt-5-nano, not gpt-5.
  * The models of `among` (every model Pi knows) take part in that too, so words that name a model not signed in do not
  * name a shorter one that is. `forPerson` requires a two-character id's provider in its message; false also detects
- * bare ids in PiP's own text, which must not name models its person did not choose.
+ * bare ids in a bot's own text, which must not name models its person did not choose.
  */
 export function modelsNamed(
     text: string | Indexed,
