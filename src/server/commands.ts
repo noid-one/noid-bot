@@ -2093,6 +2093,11 @@ export class Commands {
         // Noid's summaries are its own, written by the session tools' hook with outside text left out: while they are
         // off, there is no hook, and Pi Durable's summary would read what came from outside as it is.
         const noid = app.sessionTools.ownerOf(id) !== undefined;
+        // Every bot's summary is its own (`noid-compact.ts`), and one that cannot be written says why.
+        const bot =
+            app.sessionTools.actsFor(id) === undefined
+                ? undefined
+                : (app.bots.of(id)?.name ?? "Noid");
 
         if (noid && !app.sessionTools.available(user)) {
             throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
@@ -2102,9 +2107,9 @@ export class Commands {
         app.spend.check(user, id);
         const conversation = await app.conversation(id);
         const taskId = await conversation.compact(instructions, context);
-        const done = noid ? "Noid's context compacted." : "Compacted.";
+        const done = bot === undefined ? "Compacted." : `${bot}'s context compacted.`;
 
-        app.notice("info", noid ? "Compacting Noid's context…" : "Compacting…", id);
+        app.notice("info", bot === undefined ? "Compacting…" : `Compacting ${bot}'s context…`, id);
         await app.collab.activity(id, user, "started compacting the context", false);
         void app.harness.waitForTask(taskId, context).then(
             (receipt) => {
@@ -2113,10 +2118,11 @@ export class Commands {
                 if (outcome.status === "completed") {
                     const { entryId, submissionId } = outcome.result;
                     // Noid's own summary could not be written: it declined, rather than let Pi Durable write one.
-                    const failed = noid ? app.noidCompaction.failure(Number(taskId)) : undefined;
+                    const failed =
+                        bot === undefined ? undefined : app.noidCompaction.failure(Number(taskId));
 
                     if (failed !== undefined) {
-                        app.notice("error", `Noid's context was not compacted: ${failed}`, id);
+                        app.notice("error", `${bot}'s context was not compacted: ${failed}`, id);
                     } else {
                         app.notice(
                             "info",

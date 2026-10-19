@@ -23,6 +23,7 @@ import {
     agentFilesSignature,
     agentFolders,
     loadAgentFiles,
+    MAX_AGENT_NAME,
 } from "./agent-files.ts";
 
 /** Faces: the skins and eyes `web/faces/params.js` draws. */
@@ -61,7 +62,7 @@ export type BotRequest = {
     id?: unknown;
 };
 
-const MAX_NAME = 40;
+const MAX_NAME = MAX_AGENT_NAME;
 const MAX_ROLE = 160;
 
 export const NOID: Omit<BotProfile, "id"> = {
@@ -438,7 +439,7 @@ export class Bots {
         const bots = this.list({ archived: true });
 
         for (const file of files) {
-            const name = file.name.replace(/\s+/g, " ").trim().slice(0, MAX_NAME).trim();
+            const name = file.name;
             const role =
                 file.description.length > MAX_ROLE
                     ? `${file.description.slice(0, MAX_ROLE - 1).trimEnd()}…`

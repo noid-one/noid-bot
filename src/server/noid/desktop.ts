@@ -657,6 +657,9 @@ export class Desktop {
         const start = `${COMPUTER_HOME}/.cache/noid-lessons/${randomUUID()}.png`;
         const env = this.#env();
 
+        // The owner may hold it already, using it before the lesson: a failed start leaves that as it was.
+        const held = this.lease.holder?.id === who.id;
+
         this.#starting = true;
 
         try {
@@ -689,7 +692,10 @@ export class Desktop {
             });
         } catch (error) {
             // No lesson: the desktop is free again for the hour the lesson would have held it.
-            this.lease.release(who);
+            if (!held) {
+                this.lease.release(who);
+            }
+
             await env.remove(start, { force: true }, BACKGROUND_CONTEXT).catch(() => undefined);
 
             throw error;

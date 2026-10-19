@@ -477,7 +477,9 @@ export class Memory {
                 );
             }
 
-            const held = this.#held(writer);
+            // Pi works for the owner at once on the owner's lessons only: someone else's (a guest's, waiting or in force)
+            // it may not approve by rewriting it as it is, nor forget, on what outside text asks.
+            const held = this.#held(writer) || (writer.byPi && lesson.by !== writer.userId);
             const inForce = lesson.pending !== true;
 
             if (change === "remove") {
@@ -487,7 +489,7 @@ export class Memory {
                         lesson.proposal = {
                             forget: true,
                             by: writer.userId ?? lesson.by,
-                            byPi: true,
+                            byPi: writer.byPi,
                             at: app.now(),
                         };
                         await said(

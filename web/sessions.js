@@ -1259,7 +1259,11 @@ export function SessionList({ compact = false }) {
             <span class="wordmark">noid</span>
             ${tabsHead}
         </div>
-        ${pane === "bots" && html`<${BotList} compact=${compact} canStart=${canStart} />`}
+        ${
+            pane === "bots" &&
+            // Bots act as the owner: only the owner makes them.
+            html`<${BotList} compact=${compact} canStart=${canStart && store.state.me?.role === "owner"} />`
+        }
         ${
             pane === "sessions" &&
             html`<${SectionHead}

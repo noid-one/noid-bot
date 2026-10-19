@@ -1997,7 +1997,10 @@ function rowDeps(entry) {
         const bot = /^\[via bot ([^\]]+)\]/.exec(entry.text)?.[1];
 
         if (bot !== undefined) {
-            deps.push(store.state.sessions.find((session) => session.bot?.name === bot)?.bot);
+            // By value: the session list, and each bot in it, is new with every update.
+            const face = store.state.sessions.find((session) => session.bot?.name === bot)?.bot;
+
+            deps.push(face && `${face.id}|${face.color}|${face.skin ?? ""}|${face.eyes ?? ""}`);
         }
     }
 

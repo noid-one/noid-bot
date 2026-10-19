@@ -39,9 +39,12 @@ const MAX_REPLY = 8000;
 const HISTORY = 20;
 /** How much of each one it reads. */
 const HISTORY_CHARS = 1500;
-/** The most messages a group keeps, and shows. */
-const KEEP = 500;
+/**
+ * The most messages a group keeps, and shows. Every group is in one document, which each round's commits load: twice
+ * what is shown is kept, no more.
+ */
 const SHOWN = 100;
+const KEEP = SHOWN * 2;
 
 export type GroupMessage = {
     id: string;

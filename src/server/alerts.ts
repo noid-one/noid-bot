@@ -156,6 +156,11 @@ export class Alerts {
         };
 
         for (const userId of await this.participants(id)) {
+            // Noid follows this run and reports what came of it, the failure too: one notification, not two.
+            if (await app.sessionTools.reportsOn(id, userId).catch(() => false)) {
+                continue;
+            }
+
             void this.push(userId, id, "done", message, "high");
         }
     }

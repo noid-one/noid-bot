@@ -13,6 +13,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
+/** A bot's longest name (`bots.ts`): a file's name is cut to it, so its bot and `subagent` answer to the same one. */
+export const MAX_AGENT_NAME = 40;
+
 export type AgentFile = {
     name: string;
     /** The frontmatter's `description`: the bot's role. */
@@ -76,8 +79,10 @@ export function loadAgentFiles(folders: readonly string[]): AgentFile[] {
             continue;
         }
 
-        const named = typeof frontmatter.name === "string" ? frontmatter.name.trim() : "";
-        const name = named || basename(path, ".md");
+        const named = typeof frontmatter.name === "string" ? frontmatter.name : "";
+        const name = (named.replace(/\s+/g, " ").trim() || basename(path, ".md"))
+            .slice(0, MAX_AGENT_NAME)
+            .trim();
         const key = name.toLowerCase();
 
         if (!found.has(key)) {

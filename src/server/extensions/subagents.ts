@@ -954,15 +954,16 @@ export default function createSubagents(host: PocketHost) {
             // TypeBox infers no type from a union built from a list; the schema itself checks the value.
             const asked = args.thinking as ModelThinkingLevel | undefined;
             // noid: an agent file's instructions, after a subagent's own.
-            const profile =
+            const files =
                 action === "spawn" && args.agent !== undefined
-                    ? host
-                          .agentFiles()
-                          .find((each) => each.name.toLowerCase() === args.agent!.toLowerCase())
-                    : undefined;
+                    ? host.agentFiles(api.conversationId)
+                    : [];
+            const profile = files.find(
+                (each) => each.name.toLowerCase() === args.agent?.trim().toLowerCase(),
+            );
 
             if (action === "spawn" && args.agent !== undefined && profile === undefined) {
-                const names = host.agentFiles().map((each) => each.name);
+                const names = files.map((each) => each.name);
 
                 throw new Error(
                     `No agent file named ${args.agent}. ${names.length === 0 ? "There are none." : `There are: ${names.join(", ")}.`}`,

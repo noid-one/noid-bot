@@ -123,11 +123,16 @@ export function Splash() {
                 </button>`
             }
             ${
+                // Bots act as the owner: only the owner makes them.
                 canStart &&
+                store.state.me?.role === "owner" &&
                 html`<button class="button" onClick=${() => openSheet({ type: "bot" })}>
-                        <${Icon} name="plus" size=${16} /> New bot
-                    </button>
-                    <button
+                    <${Icon} name="plus" size=${16} /> New bot
+                </button>`
+            }
+            ${
+                canStart &&
+                html`<button
                         class="button"
                         onClick=${() => openSheet({ type: "cwd", mode: "new" })}
                     >

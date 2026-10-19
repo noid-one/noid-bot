@@ -379,7 +379,7 @@ export function MemorySheet({ draft: initial = "", conversationId, pendingOnly =
 
     return html`<${Sheet} title=${title} onClose=${closeSheet}>
         <p class="muted small">
-            Short lessons Pi keeps across sessions: how to build and test, gotchas, conventions, preferences. ${project ? html`Those for <b>${project.name}</b> go to every session in it, worktrees too; the rest go everywhere.` : "Lessons for everywhere reach every session."} Pi proposes them as it learns, and the owner approves; yours count at once.
+            Short lessons Pi keeps across sessions: how to build and test, gotchas, conventions, preferences. ${project ? html`Those for <b>${project.name}</b> go to every session in it, worktrees too; the rest go everywhere.` : "Lessons for everywhere reach every session."} Pi saves the owner's as it learns, and they count at once: check them now and then, as what Pi read could talk it into a bad one. A guest's wait for the owner.
         </p>
         ${
             data.canWrite &&

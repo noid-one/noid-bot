@@ -86,6 +86,7 @@ import {
 } from "./noid/approvals.ts";
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { Bots } from "./noid/bots.ts";
+import { ownerOf } from "./noid/owner.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
 import { claudeBinary, claudeCliProvider, stopClaudeCli } from "./noid/claude-cli.ts";
@@ -622,7 +623,10 @@ export class PocketApp {
                 }
             },
             skills: (cwd) => this.skills(cwd),
-            agentFiles: () => this.bots.agentFiles(),
+            agentFiles: (conversationId) =>
+                this.attribution.requesterOf(conversationId) === ownerOf(this)?.id
+                    ? this.bots.agentFiles()
+                    : [],
             resolveModel: (spec) => resolveModel(this.models, spec, this.signInNeeded),
             subagentModels: () => this.config.subagentModels,
             modelProblem: (ref, fresh) => this.providers.problem(ref, fresh),

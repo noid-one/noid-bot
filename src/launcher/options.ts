@@ -22,7 +22,7 @@ Usage: pi-pocket [options]
       --rotate-token  Replace the owner sign-in link, signing out the devices that used it
   -h, --help          Show this help
 
-Environment: PI_POCKET_ACCESS, PI_POCKET_PORT, PI_POCKET_DIR, PI_POCKET_HOST, PI_POCKET_GUARD=off`;
+Environment: PI_POCKET_ACCESS, PI_POCKET_PORT, NOID_DIR (or PI_POCKET_DIR), PI_POCKET_HOST, PI_POCKET_GUARD=off`;
 
 export interface Options {
     access: AccessMode | undefined;

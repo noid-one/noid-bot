@@ -4,6 +4,7 @@ noid started as a copy of [Pi Pocket](https://github.com/TannerMidd/pi-pocket) (
 
 - Upstream commit at copy time: `2c6faa45c10671c556d8886dd0b9d0c165257a56` (v0.16.0).
 - History was not kept (fresh `git init`). To see what upstream changed since this copy, run `git diff 2c6faa45c10671c556d8886dd0b9d0c165257a56 main` in a separate clone of pi-pocket, then port changes by hand.
+- noid keeps its data in `~/.noid` (`NOID_DIR`; `PI_POCKET_DIR` still works), not Pi Pocket's `~/.pi-pocket`: the two would share a lock, and noid would read Pi Pocket's sessions (and its private PiP conversations) as its own. To move an install's data, move the folder, or start with `--data ~/.pi-pocket`.
 - The Pi Pocket license is kept in `LICENSE`. Files later adapted from [rakazo](https://github.com/elie222/rakazo) (Apache-2.0), such as the computer image, must keep its license and NOTICE next to them.
 
 ## Core files changed from upstream
