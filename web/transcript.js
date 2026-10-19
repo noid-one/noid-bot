@@ -6,6 +6,7 @@ import { initials, personColor } from "./avatar.js";
 import { browserAvailable, setBrowserOpen } from "./browser.js";
 import { describeCall, describersRevision } from "./calls.js";
 import { DiffBlock } from "./diff.js";
+import { Face } from "./faces/face.js";
 import { LinkedSessions } from "./linked-sessions.js";
 import { fromServer } from "./seen.js";
 import { Highlighted } from "./rich.js";
@@ -310,13 +311,23 @@ function UserEntry({ entry, view, users }) {
         via && /^linked session \S+$/.test(via[1])
             ? /\n<linked-session-message>\n([\s\S]*)\n<\/linked-session-message>$/.exec(sent)?.[1]
             : undefined;
-    const body = peerText ?? (scheduled ? sent.slice(SCHEDULED.length) : sent);
+    // noid: another bot's message (`botmail.ts`): shown by the bot and its fence alone, as a linked session's is.
+    const botName = via ? /^bot (.+)$/.exec(via[1])?.[1] : undefined;
+    const botText =
+        botName === undefined
+            ? undefined
+            : /\n<bot-message>\n([\s\S]*)\n<\/bot-message>$/.exec(sent)?.[1];
+    const sender =
+        botText === undefined
+            ? undefined
+            : store.state.sessions.find((session) => session.bot?.name === botName)?.bot;
+    const body = peerText ?? botText ?? (scheduled ? sent.slice(SCHEDULED.length) : sent);
     const files = attachments ? parseAttachments(attachments) : [];
     // `/skill:name request`: the skill by name, and the request.
     const skill = SKILL.exec(body);
     const pictures = files.filter((file) => file.path && file.mime.startsWith("image/"));
     const others = files.filter((file) => !pictures.includes(file));
-    const name = author ?? (scheduled ? "Pi" : undefined);
+    const name = botText === undefined ? (author ?? (scheduled ? "Pi" : undefined)) : botName;
     // Your own messages take the accent; someone else's, their color; one from someone the app does not know (a name
     // the message carries, the main agent, Pi's own schedule), a quiet one.
     const mark =
@@ -331,11 +342,13 @@ function UserEntry({ entry, view, users }) {
     const from =
         peerText !== undefined
             ? "linked"
-            : authorId === undefined
-              ? "other"
-              : authorId === store.state.me?.id
-                ? "me"
-                : "person";
+            : botText !== undefined
+              ? "bot"
+              : authorId === undefined
+                ? "other"
+                : authorId === store.state.me?.id
+                  ? "me"
+                  : "person";
 
     return html`<div
         class=${`user-row ${fresh ? "enter" : ""}`}
@@ -360,18 +373,30 @@ function UserEntry({ entry, view, users }) {
             }}
         >
             <span class="prompt-head" data-part="prompt-head">
-                <span
-                    class="prompt-avatar"
-                    data-part="author-mark"
-                    style=${`--who:${mark}`}
-                    aria-hidden="true"
-                >
-                    ${name ? initials(name) : "›"}
-                </span>
+                ${
+                    sender
+                        ? html`<${Face}
+                              id=${sender.id}
+                              color=${sender.color}
+                              skin=${sender.skin}
+                              eyes=${sender.eyes}
+                              state="idle"
+                              size=${20}
+                              label=${sender.name}
+                          />`
+                        : html`<span
+                              class="prompt-avatar"
+                              data-part="author-mark"
+                              style=${`--who:${mark}`}
+                              aria-hidden="true"
+                          >
+                              ${name ? initials(name) : "›"}
+                          </span>`
+                }
                 ${name && html`<b class="prompt-author" data-part="prompt-author">${name}</b>`}
                 ${entry.at && html`<span class="prompt-time">${clock(entry.at)}</span>`}
                 ${scheduled && html`<span class="prompt-time">· scheduled</span>`}
-                ${via && html`<span class="prompt-time">· via ${peerText === undefined ? via[1] : "a linked session"}</span>`}
+                ${via && html`<span class="prompt-time">· ${peerText !== undefined ? "via a linked session" : botText !== undefined ? "bot mail" : `via ${via[1]}`}</span>`}
             </span>
             <div class="prompt-body" data-part="prompt-text">
                 ${

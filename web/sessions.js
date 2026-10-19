@@ -602,7 +602,7 @@ function BotList({ compact, canStart, folded, onFold }) {
                     key=${session.id}
                     session=${session}
                     active=${session.id === conversationId}
-                    size=${compact ? 26 : 30}
+                    size=${compact ? 20 : 22}
                 />`,
             )}
         </div>
@@ -612,8 +612,17 @@ function BotList({ compact, canStart, folded, onFold }) {
 function BotRow({ session, active, size }) {
     const { bot } = session;
     const mark = sessionMark(session);
+    const row = useRef(null);
+
+    // The open bot stays in sight in its scrolling section.
+    useEffect(() => {
+        if (active) {
+            row.current?.scrollIntoView({ block: "nearest" });
+        }
+    }, [active]);
 
     return html`<button
+        ref=${row}
         class=${`bot-row ${active ? "active" : ""}`}
         data-part="bot-row"
         data-state=${botFaceState(session)}

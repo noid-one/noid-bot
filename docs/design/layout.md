@@ -21,6 +21,15 @@ at hairlines, a header line that runs across the whole width, quiet section head
 - **One side panel, with tabs.** Files, Changes, and the Browser were separate panels with separate heads. They are now
   tabs on one panel head (`web/panel-tabs.js`), on the header line, with the folder and close at its end. Each tab's
   own tools sit under it, such as the browser's address bar. On a phone the head starts with a back button.
+- **Many bots fit.** Bot rows are one line each (a smaller face, the name, the role quieter), and the bot list scrolls in
+  its own section, with the open bot kept in sight. With 24 bots the sessions still show below them.
+- **Conversations read as people and bots.** Your messages are quiet filled bubbles on the right, as wide as their
+  words; the bots' replies run on the left. A message from another bot shows that bot's face and name and only its
+  words: the safety preamble and `<bot-message>` tags the receiving bot reads stay out of sight. A failed request is a
+  red line with a rule beside it, not a red box, so a run that retried a few times stays readable.
+
+    ![Bot mail in Noid's conversation](after-botmail.jpg)
+
 - **Edges to drag.** The sidebar, browser, and files edges use one splitter (`web/splitter.js`) instead of three copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
   (or press Enter) to reset. The edge lights up while you drag or focus it.

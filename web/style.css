@@ -1435,14 +1435,18 @@ kbd {
 
 /* A person's message: a card, with who and when over what they wrote. Scoped to its row: the launcher's input has a
  * `.prompt` of its own. */
+/* A person's message: a quiet filled bubble on the right, as wide as its words; the bots' replies run on the left. */
 .user-row > .prompt {
     display: flex;
     flex-direction: column;
     gap: calc(4px * var(--space-y));
-    padding: calc(12px * var(--space-y)) calc(16px * var(--space-x)) calc(14px * var(--space-y));
-    border: 1px solid var(--hair);
-    border-radius: var(--r-window);
-    background: var(--card);
+    width: fit-content;
+    min-width: min(240px, 100%);
+    max-width: min(85%, 760px);
+    margin-left: auto;
+    padding: calc(10px * var(--space-y)) calc(14px * var(--space-x)) calc(12px * var(--space-y));
+    border-radius: var(--r-card);
+    background: var(--card-2);
     color: var(--text);
     transition: background-color var(--t-hover) var(--ease-out);
 }
@@ -1460,7 +1464,7 @@ kbd {
 
 @media (hover: hover) {
     .user-row > .prompt.tappable:hover {
-        background: var(--card-2);
+        background: var(--raised);
     }
 }
 
@@ -2673,13 +2677,13 @@ pre.diff .del {
     animation: blink 1s steps(2) infinite;
 }
 
+/* A failed request: a line in the error's color with a rule beside it, not a red box. A run that retries a few times
+ * leaves a few quiet lines rather than a wall of red. */
 .error-box {
-    padding: 10px 14px;
-    border: 1px solid var(--err-line);
-    border-radius: var(--r-card);
-    background: var(--err-soft);
+    padding: 2px 0 2px 12px;
+    border-left: 2px solid var(--err-line);
     color: var(--err);
-    font-size: 13.5px;
+    font-size: 13px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
@@ -15047,19 +15051,24 @@ pre.gallery-code {
     margin-bottom: 10px;
 }
 
+/* Many bots scroll in their own section, so the sessions under them stay in sight. */
 .bot-items {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
+    max-height: 40dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
 }
 
 .bot-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 0 10px;
+    gap: 0 9px;
     width: 100%;
-    padding: 5px 10px 5px 6px;
+    padding: 4px 10px 4px 6px;
     border-radius: var(--r-row);
     border: 1px solid transparent;
     text-align: left;
@@ -15080,13 +15089,17 @@ pre.gallery-code {
     background: var(--accent-soft);
 }
 
+/* One line each: the name, then its role (or what it is doing) quieter, cut short first. */
 .bot-text {
     display: flex;
-    flex-direction: column;
+    align-items: baseline;
+    gap: 8px;
     min-width: 0;
 }
 
 .bot-name {
+    flex: 0 1 auto;
+    max-width: 70%;
     overflow: hidden;
     color: var(--text);
     text-overflow: ellipsis;
@@ -15098,6 +15111,8 @@ pre.gallery-code {
 }
 
 .bot-role {
+    flex: 1 1 0;
+    min-width: 0;
     overflow: hidden;
     color: var(--muted);
     font-size: 12px;
