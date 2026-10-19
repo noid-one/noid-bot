@@ -30,6 +30,9 @@ at hairlines, a header line that runs across the whole width, quiet section head
 
     ![Bot mail in Noid's conversation](after-botmail.jpg)
 
+- **PiP docks.** On wide screens PiP is a pane at the right, flush with the header line and resized with the same
+  splitter, instead of a card floating over the conversation. Its starter questions are a plain list rather than a
+  pile of pills.
 - **Edges to drag.** The sidebar, browser, and files edges use one splitter (`web/splitter.js`) instead of three copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
   (or press Enter) to reset. The edge lights up while you drag or focus it.
@@ -92,4 +95,4 @@ not exact, so the shipped mark, icons, and logo stay vector or computed; these a
 - The rail stays: it is the activity bar, holding Noid, running now, subagents, people, providers, and Appearance.
 - Pi Pocket's names remain inside, such as the `pocket.*` storage keys and the `pocket` theme id. Changing them would
   reset saved settings for no visible gain. Help text that means the engine ("needs a newer Pi Pocket") also stays.
-- PiP's floating panel is unchanged. It opens only when asked, and Alt+A goes to Noid first.
+- PiP still opens only when asked (Alt+A from Noid's conversation), and phones still show it as a sheet.

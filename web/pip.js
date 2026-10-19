@@ -7,6 +7,7 @@ import { useBack } from "./back.js";
 import { useDragToClose } from "./gestures.js";
 import { createPipDraft } from "./pip-attachments.js";
 import { usePipResize } from "./pip-window.js";
+import { Splitter } from "./splitter.js";
 import { api, attempt, isRow, navigate, notify, openSheet, store, uid } from "./store.js";
 import { memoryAvailable, useMemory } from "./sheets/memory.js";
 import { itemsOf, says, summarize } from "./turns.js";
@@ -851,6 +852,14 @@ function PendingMemories({ id }) {
     </div>`;
 }
 
+/** noid: docked beside the conversation on wide screens, PiP's width, kept per browser (the splitter on its edge). */
+const DOCK_WIDTH_KEY = "pocket.pipDockWidth";
+const dockWidth = Number(localStorage.getItem(DOCK_WIDTH_KEY));
+
+if (dockWidth > 0) {
+    document.documentElement.style.setProperty("--pip-w", `${dockWidth}px`);
+}
+
 function PipPanel({ leaving, scrim }) {
     const { pip, pipView: view, me } = store.state;
     const ref = useRef(null);
@@ -934,6 +943,19 @@ function PipPanel({ leaving, scrim }) {
         aria-modal=${NARROW.matches ? "true" : undefined}
         aria-label="PiP, your assistant"
     >
+        <${Splitter}
+            edge="left"
+            label="Resize PiP"
+            variable="--pip-w"
+            className="pip-splitter"
+            min=${320}
+            max=${() => Math.max(320, innerWidth - 760)}
+            commit=${(width) => localStorage.setItem(DOCK_WIDTH_KEY, String(width))}
+            reset=${() => {
+                localStorage.removeItem(DOCK_WIDTH_KEY);
+                document.documentElement.style.removeProperty("--pip-w");
+            }}
+        />
         <div class="pip-resize pip-resize-left" data-pip-resize="left" aria-hidden="true"></div>
         <div class="pip-resize pip-resize-top" data-pip-resize="top" aria-hidden="true"></div>
         <div class="pip-resize pip-resize-corner" data-pip-resize="corner" aria-hidden="true"></div>

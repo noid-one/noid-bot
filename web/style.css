@@ -13922,6 +13922,48 @@ textarea.notes {
     animation: pop-out var(--t-out) linear forwards;
 }
 
+.pip-splitter {
+    display: none;
+}
+
+/* noid: on wide screens PiP is a pane, not a card floating over the others: docked at the right, flush with the header
+ * line, its edge dragged like the other panes'. Its floating corners and edges go. */
+@media (min-width: 1100px) {
+    .layout > .pip-panel {
+        position: relative;
+        inset: auto;
+        order: 10;
+        flex: 0 0 var(--pip-w, 380px);
+        width: auto;
+        max-width: none;
+        height: 100dvh;
+        max-height: none;
+        z-index: auto;
+        border: 0;
+        border-left: 1px solid var(--hair);
+        border-radius: 0;
+        box-shadow: none;
+        background: var(--bg);
+        animation: none;
+    }
+    :root[data-tiling="on"] .layout > .pip-panel {
+        height: auto;
+        border: var(--border) solid var(--window-border);
+        border-radius: var(--r-window);
+    }
+    .layout > .pip-panel > .pip-resize {
+        display: none;
+    }
+    .layout > .pip-panel > .pip-splitter {
+        display: block;
+    }
+    .layout > .pip-panel > .pip-head {
+        min-height: calc(var(--head-h) + env(safe-area-inset-top));
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: 0;
+    }
+}
+
 .pip-resize {
     display: none;
 }
@@ -14300,19 +14342,19 @@ textarea.notes {
     white-space: normal;
 }
 
+/* Things to ask, as a plain list: each a row with a hairline between, not a pile of pills. */
 .pip-chips {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
+    flex-direction: column;
+    margin-top: 10px;
+    border-top: 1px solid var(--hair);
 }
 
 .pip-chip {
-    min-height: 40px;
-    padding: 8px 12px;
-    border: 1px solid var(--hair-2);
-    border-radius: var(--r-card);
-    color: var(--text);
+    min-height: 38px;
+    padding: 8px 4px;
+    border-bottom: 1px solid var(--hair);
+    color: var(--body);
     font-size: 13px;
     text-align: left;
 }
@@ -14324,7 +14366,7 @@ textarea.notes {
 
 @media (hover: hover) {
     .pip-chip:not(:disabled):hover {
-        border-color: var(--accent-line);
+        background: var(--hover);
         color: var(--text);
     }
 }
