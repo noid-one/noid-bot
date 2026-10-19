@@ -725,6 +725,7 @@ export class PocketApp {
 
         // Bots made before their tools existed get them (a no-op for the rest).
         await this.bots.ensureTools();
+        await this.desktop.restore();
 
         // Work a previous process left unfinished continues now.
         this.harness.resume();

@@ -46,37 +46,46 @@ test("each action reads as a step the desktop tool can repeat", () => {
     assert.equal(skillSlug("¡¡!!"), "taught-skill");
 });
 
-test("a lesson keeps the owner's actions while it is under way, and becomes a SKILL.md", () => {
-    const teaching = new Teaching();
+test("a lesson keeps the owner's actions while it is under way, saves each change, and becomes a SKILL.md", async () => {
+    const saved: (number | undefined)[] = [];
+    const teaching = new Teaching(async (lesson) => {
+        saved.push(lesson?.steps.length);
+    });
 
-    teaching.record(owner, { action: "click", x: 1, y: 1 });
-    teaching.begin(owner, {
+    await teaching.record(owner, { action: "click", x: 1, y: 1 });
+    await teaching.begin(owner, {
         name: "Weekly report",
         goal: "Export the weekly report to shared/",
         folder: "/home/noid/.agents/skills/weekly-report",
         startedAt: Date.UTC(2026, 9, 19),
-        start: "",
+        start: "/home/noid/.cache/noid-lessons/x.png",
     });
-    assert.throws(
-        () =>
-            teaching.begin(owner, {
-                name: "Another",
-                goal: "x",
-                folder: "/x",
-                startedAt: 0,
-                start: "",
-            }),
+    await assert.rejects(
+        teaching.begin(owner, {
+            name: "Another",
+            goal: "x",
+            folder: "/x",
+            startedAt: 0,
+            start: "",
+        }),
         /already showing/,
     );
-    teaching.record(owner, { action: "open", command: "xterm" });
-    teaching.record(owner, { action: "type", text: "./export.sh > ~/shared/report.txt" });
-    teaching.record(owner, { action: "key", keys: "Return" });
-    teaching.record({ ...owner, id: "someone-else" }, { action: "click", x: 9, y: 9 });
+    await teaching.record(owner, { action: "open", command: "xterm" });
+    await teaching.record(owner, { action: "type", text: "./export.sh > ~/shared/report.txt" });
+    await teaching.record(owner, { action: "key", keys: "Return" });
+    await teaching.record({ ...owner, id: "someone-else" }, { action: "click", x: 9, y: 9 });
 
-    const lesson = teaching.end();
+    const lesson = await teaching.end();
 
     assert.equal(lesson.steps.length, 3, "only the lesson's owner, only while it lasts");
-    assert.throws(() => teaching.end(), /Nothing is being shown/);
+    assert.deepEqual(saved, [0, 1, 2, 3, undefined], "saved at each change, and gone at the end");
+    await assert.rejects(teaching.end(), /Nothing is being shown/);
+
+    // A server that restarts picks it up.
+    const again = new Teaching();
+
+    again.restore({ ...lesson, steps: lesson.steps.slice(0, 1) });
+    assert.equal(again.lesson?.name, "Weekly report");
 
     const skill = playbook({ ...lesson, at: lesson.startedAt });
 

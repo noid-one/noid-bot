@@ -463,7 +463,7 @@ test(
     "the owner shows a task on the desktop, and every bot gets it as a skill",
     { skip },
     async () => {
-        const desktop = app!.desktop;
+        let desktop = app!.desktop;
         const name = `Stamp ${run}`;
         const slug = `stamp-${run}`;
         const skillDir = `/home/noid/.agents/skills/${slug}`;
@@ -474,7 +474,13 @@ test(
         await new Promise((resolve) => setTimeout(resolve, 1500));
         await desktop.act(owner(app!), { action: "click", x: 100, y: 100 });
         await desktop.act(owner(app!), { action: "type", text: `touch /tmp/${slug}` });
-        await desktop.act(owner(app!), { action: "key", keys: "Return" });
+
+        // The server restarts in the middle of the lesson: it goes on where it was.
+        await app!.close();
+        app = await openApp(scriptedModel(route), join(root, "docker-data"));
+        assert.equal((await app.desktop.view(owner(app))).teaching?.steps, 3);
+        desktop = app.desktop;
+        await desktop.act(owner(app), { action: "key", keys: "Return" });
         assert.equal((await desktop.view(owner(app!))).teaching?.steps, 4);
 
         // While the owner shows it, no bot acts on the desktop.
@@ -499,5 +505,51 @@ test(
         assert.equal(await answer(id), `has ${skillDir}/SKILL.md: true`);
         await desktop.act(owner(app!), { action: "release" });
         await onComputer(`rm -rf ${skillDir} /tmp/${slug}; pkill -x xterm; true`);
+    },
+);
+
+test(
+    "a link that opens a new tab, with or without noopener, opens in the bot's own window",
+    { skip },
+    async () => {
+        const { id } = await app!.bots.create(owner(app!), { name: `Popper ${run}` });
+        const site = `/tmp/popups-${run}`;
+        // A port of this run's own: a server another run left behind would answer for it.
+        const port = 20_000 + Math.floor(Math.random() * 20_000);
+
+        await onComputer(
+            `mkdir -p ${site} && printf '%s' '<a id="plain" target="_blank" href="/plain.html">plain</a> <a id="noopener" target="_blank" rel="noopener noreferrer" href="/noopener.html">noopener</a>' > ${site}/index.html && echo plain > ${site}/plain.html && echo noopener > ${site}/noopener.html`,
+        );
+        await docker([
+            "exec",
+            "-d",
+            "noid-computer",
+            "sh",
+            "-c",
+            `echo $$ > ${site}/pid && exec python3 -m http.server ${port} --bind 127.0.0.1 --directory ${site}`,
+        ]);
+        await until(
+            async () =>
+                (await onComputer(
+                    `python3 -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:${port}/').status)" 2>/dev/null || true`,
+                )) === "200",
+            "the site to answer",
+            20_000,
+        );
+
+        const page = await app!.browsers.open(Number(id));
+
+        for (const link of ["plain", "noopener"]) {
+            await page.navigate(`http://127.0.0.1:${port}/`);
+            await page.click({ selector: `#${link}` });
+            await until(
+                () => page.url === `http://127.0.0.1:${port}/${link}.html`,
+                `the ${link} link to open in the bot's window`,
+                15_000,
+            );
+        }
+
+        await app!.browsers.close(Number(id));
+        await onComputer(`kill $(cat ${site}/pid) 2>/dev/null; rm -rf ${site}; true`);
     },
 );

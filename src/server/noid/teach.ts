@@ -5,11 +5,13 @@
  * how the screen looked before and after, where the computer's skills are found: one bot's folder, or the folder every
  * bot shares. A bot finds it with its other skills and repeats it with the desktop tool; a routine can ask for it.
  */
+import type { JsonValue } from "@earendil-works/chord";
+import { defineDoc } from "@earendil-works/pi-durable";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
 
 /** One of the owner's actions on the desktop, as it was asked for. */
-export type TaughtStep = Record<string, unknown>;
+export type TaughtStep = { [key: string]: JsonValue };
 
 /**
  * Text that looks like a secret is never written into a skill: words that name one, long card-like numbers, a password
@@ -129,7 +131,7 @@ export function playbook(input: {
     ].join("\n");
 }
 
-/** A demonstration under way: its goal, where it goes, the screen before, and the steps so far. */
+/** A demonstration under way: its goal, where it goes, the screen before (a file on the computer), and the steps so far. */
 export type Lesson = {
     name: string;
     goal: string;
@@ -137,21 +139,40 @@ export type Lesson = {
     folder: string;
     by: string;
     startedAt: number;
+    /** Where the screenshot from before is kept on the computer until the skill is saved. */
     start: string;
     steps: TaughtStep[];
 };
 
+/** The lesson under way, kept so a restart of the server does not lose it. */
+export const LessonDoc = defineDoc<{ lesson?: Lesson }>({
+    kind: "x.noid.lesson",
+    version: 1,
+    scope: "session",
+    initial: () => ({}),
+});
+
 const MAX_STEPS = 200;
 
-/** The one lesson under way (one desktop, one owner). */
+/** The one lesson under way (one desktop, one owner), saved with each change by `save`. */
 export class Teaching {
     #lesson: Lesson | undefined;
+    readonly #save: (lesson: Lesson | undefined) => Promise<void>;
+
+    constructor(save: (lesson: Lesson | undefined) => Promise<void> = async () => {}) {
+        this.#save = save;
+    }
 
     get lesson(): Lesson | undefined {
         return this.#lesson;
     }
 
-    begin(user: User, lesson: Omit<Lesson, "by" | "steps">): void {
+    /** The lesson a server stopped in the middle of: it goes on. */
+    restore(lesson: Lesson | undefined): void {
+        this.#lesson = lesson;
+    }
+
+    async begin(user: User, lesson: Omit<Lesson, "by" | "steps">): Promise<void> {
         if (this.#lesson !== undefined) {
             throw new HttpError(
                 409,
@@ -160,20 +181,22 @@ export class Teaching {
         }
 
         this.#lesson = { ...lesson, by: user.id, steps: [] };
+        await this.#save(this.#lesson);
     }
 
     /** Keep one of the owner's actions, while a lesson is under way. */
-    record(user: User, step: TaughtStep): void {
+    async record(user: User, step: TaughtStep): Promise<void> {
         if (
             this.#lesson?.by === user.id &&
             step.action !== "release" &&
             this.#lesson.steps.length < MAX_STEPS
         ) {
             this.#lesson.steps.push(step);
+            await this.#save(this.#lesson);
         }
     }
 
-    end(): Lesson {
+    async end(): Promise<Lesson> {
         const lesson = this.#lesson;
 
         if (lesson === undefined) {
@@ -181,6 +204,7 @@ export class Teaching {
         }
 
         this.#lesson = undefined;
+        await this.#save(undefined);
 
         return lesson;
     }

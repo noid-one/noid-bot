@@ -10,6 +10,7 @@
  * that does not say it is safe to replay): a click may or may not have happened.
  */
 import type { Context } from "@earendil-works/chord";
+import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -23,7 +24,7 @@ import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
 import { COMPUTER_HOME, onComputer } from "./computer.ts";
-import { playbook, skillSlug, Teaching } from "./teach.ts";
+import { type Lesson, LessonDoc, playbook, skillSlug, type TaughtStep, Teaching } from "./teach.ts";
 
 export const DESKTOP_EXTENSION = "noid-desktop";
 export const DESKTOP_DISPLAY = ":100";
@@ -306,7 +307,7 @@ export class Desktop {
     readonly lease: DesktopLease;
     readonly extension;
     /** The owner's demonstration under way, if any: its steps become a skill. */
-    readonly teaching = new Teaching();
+    readonly teaching: Teaching;
     /** The owner's actions, one after another. */
     #ownerTurn: Promise<unknown> = Promise.resolve();
     /** The programs each holder opened, by process id: closed when the desktop leaves it. */
@@ -315,6 +316,17 @@ export class Desktop {
     constructor(app: PocketApp) {
         this.#app = app;
         this.lease = new DesktopLease();
+        this.teaching = new Teaching((lesson) =>
+            app.harness.commit(async (tx) => {
+                const doc = await tx.doc(LessonDoc);
+
+                if (lesson === undefined) {
+                    delete doc.lesson;
+                } else {
+                    doc.lesson = JSON.parse(JSON.stringify(lesson)) as Lesson;
+                }
+            }, BACKGROUND_CONTEXT),
+        );
         this.extension = defineExtension({
             name: DESKTOP_EXTENSION,
             tools: [this.#tool()],
@@ -539,13 +551,27 @@ export class Desktop {
 
         this.#take(who, true, LESSON_MS);
         await new Promise((resolve) => setTimeout(resolve, 300));
-        this.teaching.begin(user, {
-            name,
-            goal,
-            folder,
-            startedAt: this.#app.now(),
-            start: await screenshot(this.#env(), BACKGROUND_CONTEXT),
-        });
+        // The screen before, kept on the computer until the skill is saved (a lesson outlives a restart of the server).
+        const start = `${COMPUTER_HOME}/.cache/noid-lessons/${randomUUID()}.png`;
+        const env = this.#env();
+        const made = await env.createDir(
+            `${COMPUTER_HOME}/.cache/noid-lessons`,
+            { recursive: true },
+            BACKGROUND_CONTEXT,
+        );
+        const written = made.ok
+            ? await env.writeFile(
+                  start,
+                  Buffer.from(await screenshot(env, BACKGROUND_CONTEXT), "base64"),
+                  BACKGROUND_CONTEXT,
+              )
+            : made;
+
+        if (!written.ok) {
+            throw new HttpError(500, `Could not keep the screen: ${written.error.message}`);
+        }
+
+        await this.teaching.begin(user, { name, goal, folder, startedAt: this.#app.now(), start });
     }
 
     /**
@@ -583,8 +609,9 @@ export class Desktop {
         }
 
         if (!save) {
-            this.teaching.end();
+            await this.teaching.end();
             this.lease.release(who);
+            await this.#env().remove(lesson.start, { force: true }, BACKGROUND_CONTEXT);
 
             return { dropped: true };
         }
@@ -617,13 +644,16 @@ export class Desktop {
                 at: lesson.startedAt,
             }),
         );
-        await write(`${lesson.folder}/start.png`, Buffer.from(lesson.start, "base64"));
+        const before = await env.readBinaryFile(lesson.start, BACKGROUND_CONTEXT);
+
+        await write(`${lesson.folder}/start.png`, before.ok ? before.value : new Uint8Array());
         await write(
             `${lesson.folder}/end.png`,
             Buffer.from(await screenshot(env, BACKGROUND_CONTEXT), "base64"),
         );
-        this.teaching.end();
+        await this.teaching.end();
         this.lease.release(who);
+        await env.remove(lesson.start, { force: true }, BACKGROUND_CONTEXT);
 
         return { folder: lesson.folder };
     }
@@ -663,8 +693,16 @@ export class Desktop {
 
         if (argv !== undefined) {
             await this.#run(who, argv, this.#env(), BACKGROUND_CONTEXT);
-            this.teaching.record(user, input);
+            // Parsed from JSON: a JSON value already.
+            await this.teaching.record(user, input as TaughtStep);
         }
+    }
+
+    /** Pick up a lesson the server stopped in the middle of. */
+    async restore(): Promise<void> {
+        this.teaching.restore(
+            (await this.#app.harness.snapshot(LessonDoc, BACKGROUND_CONTEXT))?.lesson,
+        );
     }
 
     /** A bot's own run ended (not a subagent's): the desktop is free again; what it opened stays until another takes it. */
