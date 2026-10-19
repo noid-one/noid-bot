@@ -1,8 +1,9 @@
 // noid: the model picker shows each provider's current models, the catalogs having no dates: those within half a
-// version of its newest, and no dated snapshots, "chat-latest" aliases, or realtime models.
+// version of its newest, and no dated snapshots, "chat-latest" aliases, or realtime models. OpenAI signed in with
+// ChatGPT lists the subscription's models only.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isRecent, modelVersion } from "../src/server/models.ts";
+import { isRecent, modelList, modelVersion } from "../src/server/models.ts";
 
 test("a model's version is read from its id", () => {
     assert.equal(modelVersion("gpt-5.6-sol"), 5.6);
@@ -34,4 +35,30 @@ test("only each provider's current models are recent", () => {
         ["claude-sonnet-5", "claude-opus-5-5"],
     );
     assert.deepEqual(recent(["sonnet", "opus"]), ["sonnet", "opus"], "no version: current");
+});
+
+test("OpenAI signed in with ChatGPT lists the subscription's models only, all of them current", () => {
+    const model = (provider: string, id: string) => ({
+        provider,
+        id,
+        name: id,
+        contextWindow: 1000,
+        reasoning: false,
+        input: ["text"],
+    });
+    const runtime = (subscription: boolean) =>
+        ({
+            getAvailableSnapshot: () => [
+                model("openai", "gpt-4o"),
+                model("openai", "gpt-5.5"),
+                model("openai", "gpt-6.1-sol"),
+                model("claude-code", "sonnet"),
+            ],
+            isUsingSubscription: (provider: string) => subscription && provider === "openai",
+        }) as never;
+    const listed = (subscription: boolean) =>
+        modelList(runtime(subscription)).map((each) => `${each.id}${each.recent ? "" : " (old)"}`);
+
+    assert.deepEqual(listed(true), ["gpt-5.5", "gpt-6.1-sol", "sonnet"]);
+    assert.deepEqual(listed(false), ["gpt-4o (old)", "gpt-5.5 (old)", "gpt-6.1-sol", "sonnet"]);
 });

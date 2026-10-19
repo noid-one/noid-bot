@@ -9,6 +9,7 @@ import {
     type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime, ScopedModel } from "@earendil-works/pi-coding-agent";
+import { OPENAI_CODEX_MODELS } from "@earendil-works/pi-ai/providers/openai-codex.models";
 import type { AgentState, ModelRef } from "@earendil-works/pi-durable";
 
 // A record, so a level Pi adds fails the type check until it is here too.
@@ -98,13 +99,25 @@ export function isRecent(id: string, newest: number | undefined): boolean {
     return version === undefined || newest === undefined || version >= newest - RECENT_SPAN;
 }
 
+/** noid: the models a ChatGPT subscription serves, as Pi's own catalog of them (its "openai-codex" provider) lists. */
+const SUBSCRIPTION_OPENAI: ReadonlySet<string> = new Set(
+    Object.values(OPENAI_CODEX_MODELS).map((model) => model.id),
+);
+
 export function modelList(
     models: ModelRuntime,
     signInNeeded: SignInNeeded = () => false,
     scopedModels: readonly ScopedModel[] = [],
 ): ModelSummary[] {
     const scoped = new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`));
-    const available = models.getAvailableSnapshot();
+    // noid: OpenAI signed in with ChatGPT shows the subscription's models only, every one of them current; Pi lists
+    // the API's whole catalog for it, back to GPT-4.
+    const subscription = models.isUsingSubscription("openai");
+    const ofSubscription = (model: Model<Api>) =>
+        subscription && model.provider === "openai" && SUBSCRIPTION_OPENAI.has(model.id);
+    const available = models
+        .getAvailableSnapshot()
+        .filter((model) => !subscription || model.provider !== "openai" || ofSubscription(model));
     const newest = new Map<string, number>();
 
     for (const model of available) {
@@ -122,7 +135,9 @@ export function modelList(
         contextWindow: model.contextWindow,
         ...capabilities(model),
         ...(scoped.has(`${model.provider}/${model.id}`) ? { scoped: true as const } : {}),
-        ...(isRecent(model.id, newest.get(model.provider)) ? { recent: true as const } : {}),
+        ...(ofSubscription(model) || isRecent(model.id, newest.get(model.provider))
+            ? { recent: true as const }
+            : {}),
         ...(signInNeeded(model.provider) ? { signIn: true as const } : {}),
     }));
 }
