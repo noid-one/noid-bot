@@ -1443,10 +1443,9 @@ function PlacesButton() {
 
 /**
  * The status line's shorter forms, in the order a narrow line takes them until it fits on one row: shorter words and
- * gaps, no "1 here" while you are alone, the guard's and the context's labels, then the cache, then the wait for the
- * first token.
+ * gaps, the guard's and the context's labels, then the cache, then the wait for the first token.
  */
-const SHORTER = ["words", "here", "guard", "context", "cache", "wait"];
+const SHORTER = ["words", "guard", "context", "cache", "wait"];
 /** What each status line was last fitted for: its text. Its width is the observer's to watch. */
 const fitted = new WeakMap();
 
@@ -1566,7 +1565,7 @@ function SpeedPart({ stats }) {
     </span>`;
 }
 
-/** Under the message box: who is here, how fast the last answer came (when turned on), how full the context is, the
+/** Under the message box: how fast the last answer came (when turned on), how full the context is, the
  *  cache, the spend, and Lancet Guard. On one row: a narrow one takes shorter forms (`SHORTER`). */
 function StatusLine() {
     const { view, connection, guard } = store.state;
@@ -1586,18 +1585,6 @@ function StatusLine() {
             </span>`,
         );
     }
-
-    // People, not tabs: one person with a phone and a laptop open is one here (presence has a row per person).
-    const here = store.state.presence.length || view.viewers?.length || 1;
-
-    parts.push(
-        html`<span
-            class=${`here ${here === 1 ? "alone" : ""}`}
-            title=${`${(view.viewers ?? []).join(", ")}${view.clients > here ? ` · ${view.clients} tabs` : ""}`}
-        >
-            ${here} here
-        </span>`,
-    );
 
     if (prefs().speed === true) {
         parts.push(html`<${SpeedPart} stats=${stats} />`);

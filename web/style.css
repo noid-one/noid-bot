@@ -3627,7 +3627,6 @@ pre.diff .del {
 }
 
 .status-line[data-short~="words"] .speed .long,
-.status-line[data-short~="here"] .here.alone,
 .status-line[data-short~="guard"] .guard .word,
 .status-line[data-short~="cache"] .cache,
 .status-line[data-short~="wait"] .speed .wait,
