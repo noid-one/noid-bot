@@ -14,8 +14,10 @@ import {
     root,
     say,
     scriptedModel,
+    until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -271,18 +273,129 @@ test("AGENTS.md files come from the claimed folder and its parents", async () =>
     assert.equal(await answer(id), "has Delta-otter: true");
 });
 
-test("git features and worktrees refuse a session in a claimed folder, plainly", async () => {
+test("skills come from the claimed folder, not from this machine", async () => {
+    const skill = (folder: string, name: string, description: string) => {
+        mkdirSync(join(real, folder, name), { recursive: true });
+        writeFileSync(
+            join(real, folder, name, "SKILL.md"),
+            `---\nname: ${name}\ndescription: ${description}\n---\nDo the thing.\n`,
+        );
+    };
+
+    skill("bots/eta/.agents/skills", "heron-report", "Writes the Heron-kestrel report");
+    skill("bots/eta/.pi/skills", "heron-report", "Shadowed-ibis copy that loses");
+    skill("bots/eta/.agents/skills/team", "nested-one", "Nested-puffin helper");
+    skill("shared-skills", "linked-one", "Linked-badger helper");
+    symlinkSync(
+        join(real, "shared-skills", "linked-one"),
+        join(real, "bots", "eta", ".agents", "skills", "linked-one"),
+    );
+    skill("bots/eta/.agents/skills", "blank", " ");
+    mkdirSync(join(real, "bots", "eta", ".agents", "skills", "no-description"), {
+        recursive: true,
+    });
+    writeFileSync(
+        join(real, "bots", "eta", ".agents", "skills", "no-description", "SKILL.md"),
+        "Lone-gecko\n",
+    );
+
+    const id = await newSession(app, `${VIRTUAL}/bots/eta`);
+
+    await say(app, id, "check Shadowed-ibis");
+    assert.equal(await answer(id), "has Shadowed-ibis: true", ".pi/skills comes first");
+    await say(app, id, `check ${VIRTUAL}/bots/eta/.pi/skills/heron-report/SKILL.md`);
+    assert.match(await answer(id), /: true$/, "the skill's location is its path there");
+    await say(app, id, "check Heron-kestrel");
+    assert.equal(await answer(id), "has Heron-kestrel: false", "the first of each name wins");
+    await say(app, id, "check no-description");
+    assert.equal(await answer(id), "has no-description: false", "no description, no skill");
+    await say(app, id, "check skills/blank");
+    assert.equal(await answer(id), "has skills/blank: false", "a blank description is none");
+    await say(app, id, "check Nested-puffin");
+    assert.equal(await answer(id), "has Nested-puffin: true", "a folder of skills is looked into");
+    await say(app, id, "check Linked-badger");
+    assert.equal(await answer(id), "has Linked-badger: true", "through a symbolic link");
+});
+
+test("Changes, diffs, undo, and branches run git in the claimed folder; worktrees stay on this machine", async () => {
+    const folder = join(real, "bots", "epsilon");
+    const sh = (command: string) => execSync(command, { cwd: folder, stdio: "pipe" }).toString();
+
+    mkdirSync(folder, { recursive: true });
+    sh("git init -q -b main && git config user.email t@t && git config user.name t");
+    writeFileSync(join(folder, "kept.txt"), "one\n");
+    sh("git add kept.txt && git commit -qm first");
+    writeFileSync(join(folder, "kept.txt"), "one\ntwo\n");
+    writeFileSync(join(folder, "new.txt"), "fresh\n");
+    // A name past ASCII survives git's output coming in pieces.
+    writeFileSync(join(folder, "café-ünïcode.txt"), "é\n".repeat(20_000));
+
     const id = await newSession(app, `${VIRTUAL}/bots/epsilon`);
 
+    // The computer is not known to be up: the branch is not asked for just to show it.
     assert.equal(app.workspace.head(id), undefined);
-    assert.equal(app.workspace.inRepository(`${VIRTUAL}/bots/epsilon`), false);
-    await assert.rejects(app.workspace.branches(id, owner(app)), /sessions on this machine/);
-    await assert.rejects(app.workspace.changeDiff(id, owner(app), "x"), /sessions on this machine/);
-    assert.deepEqual(await app.workspace.changes(id, owner(app)), {
-        files: [],
-        more: 0,
-        piOnly: [],
-    });
+
+    const changes = await app.workspace.changes(id, owner(app));
+
+    assert.deepEqual(
+        changes.files.map((file) => [file.path, file.kind, file.added, file.removed]),
+        [
+            ["kept.txt", "modified", 1, 0],
+            ["café-ünïcode.txt", "new", 20_000, 0],
+            ["new.txt", "new", 1, 0],
+        ],
+    );
+    assert.deepEqual(app.workspace.head(id), { branch: "main" }, "what Changes found");
+    assert.match(await app.workspace.changeDiff(id, owner(app), "café-ünïcode.txt"), /^\+é$/m);
+    assert.match(await app.workspace.changeDiff(id, owner(app), "kept.txt"), /^\+two$/m);
+
+    // Output past what is kept stops git there, as it does here.
+    writeFileSync(join(folder, "huge.txt"), "x".repeat(100).concat("\n").repeat(20_000));
+    await assert.rejects(
+        app.workspace.changeDiff(id, owner(app), "huge.txt"),
+        /printed more than it may/,
+    );
+    await app.workspace.revertChange(id, owner(app), "huge.txt");
+
+    await app.workspace.revertChange(id, owner(app), "kept.txt");
+    await app.workspace.revertChange(id, owner(app), "new.txt");
+    assert.equal(readFileSync(join(folder, "kept.txt"), "utf8"), "one\n");
+    assert.equal(existsSync(join(folder, "new.txt")), false, "a new file undone is gone");
+
+    await app.workspace.switchBranch(id, owner(app), { name: "feature", create: true });
+    assert.deepEqual(app.workspace.head(id), { branch: "feature" }, "asked again at once");
+    assert.deepEqual(
+        (await app.workspace.branches(id, owner(app))).local.map((branch) => [
+            branch.name,
+            branch.current,
+        ]),
+        [
+            ["feature", true],
+            ["main", false],
+        ],
+    );
+    await assert.rejects(
+        app.workspace.switchBranch(id, owner(app), { name: "-bad" }),
+        /cannot be a branch name/,
+    );
+
+    // A switch made by Pi there shows once its run ends.
+    execSync("git switch -q main", { cwd: folder });
+    app.workspace.runEnded(id);
+    await until(
+        () => JSON.stringify(app.workspace.head(id)) === JSON.stringify({ branch: "main" }),
+        "the branch after the run",
+    );
+
+    // A folder there outside any repository says so.
+    const plain = await newSession(app, `${VIRTUAL}/plain-${Date.now()}`);
+
+    await assert.rejects(app.workspace.branches(plain, owner(app)), /not in a git repository/);
+    assert.equal(
+        app.workspace.inRepository(`${VIRTUAL}/bots/epsilon`),
+        false,
+        "no worktrees there",
+    );
     await assert.rejects(
         app.commands.createSession(owner(app), { cwd: `${VIRTUAL}/bots/zeta`, worktree: true }),
         /Worktrees are for folders on this machine/,

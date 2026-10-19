@@ -147,6 +147,8 @@ export class Computer {
     #inFlight = 0;
     #lastActive: number;
     #holds = 0;
+    /** When the last request to the daemon ended; never, since this server started, at 0. */
+    #lastRequest = 0;
     #idleTimer: NodeJS.Timeout | undefined;
     /** False once a stop (or a look) found it not running, until something asks for it again: no idle polling meanwhile. */
     #mayBeRunning = true;
@@ -499,8 +501,17 @@ export class Computer {
                 return await request(...args);
             } finally {
                 this.#inFlight -= 1;
+                this.#lastRequest = this.#now();
                 this.#touch();
             }
         };
+    }
+
+    /**
+     * Whether the computer is known to be up: a request is running, or one ended in the last minute. Something that
+     * only shows a detail (a session's branch) asks it only then, rather than start the computer for that.
+     */
+    get awake(): boolean {
+        return this.#inFlight > 0 || this.#now() - this.#lastRequest < 60_000;
     }
 }

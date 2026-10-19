@@ -883,6 +883,10 @@ export class PocketApp {
                 this.alerts.runChanged(id, busy);
 
                 if (!busy) {
+                    this.workspace.runEnded(id);
+                }
+
+                if (!busy) {
                     this.spend.runEnded(id);
                     this.pipCompaction.runEnded(id);
 

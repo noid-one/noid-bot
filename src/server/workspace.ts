@@ -24,14 +24,11 @@ import {
 import { type Changes, changesIn, diffOf, revertFile } from "./changes.ts";
 import type { User } from "./config.ts";
 import { describe, HttpError } from "./errors.ts";
+import { gitIn, type GitPlace, HOST_GIT } from "./git.ts";
 import { FileLists, type FileListing, type FileView, viewFile } from "./files.ts";
 import { imageIn, listFilesIn, type RemoteImage, resolveIn, viewFileIn } from "./noid/env-files.ts";
 import { normalFolder } from "./noid/computer.ts";
 import { displayPath, expandHome } from "./paths.ts";
-
-/** Why git features refuse a session on the shared computer: they run git on this machine. */
-const HOST_GIT_ONLY =
-    "This works for sessions on this machine. On the shared computer, ask Pi to run git there.";
 
 export class Workspace {
     readonly #app: PocketApp;
@@ -57,6 +54,77 @@ export class Workspace {
      */
     readonly #gitDirs = new Map<string, { gitDir: string | undefined; at: number }>();
 
+    /**
+     * noid: what folders on the shared computer have checked out, as git there said last. Views read it on every
+     * update (synchronously), so it is kept, and asked again only when the computer is in use anyway: Changes, the
+     * branch sheet, a switch, a run that ended there, and a first look while the computer is up. Never on a timer: an
+     * open tab must not keep the computer from stopping when idle, or start it to show a branch.
+     */
+    readonly #remoteHeads = new Map<string, { head: Head | undefined; asked: number }>();
+
+    #remoteHead(id: ConversationId): Head | undefined {
+        const cwd = this.#app.cwdOf(id);
+        const known = this.#remoteHeads.get(cwd);
+
+        if (known === undefined && this.#app.computer.awake) {
+            void this.#askHead(id);
+        }
+
+        return known?.head;
+    }
+
+    /**
+     * Ask git on the computer what a session's folder has checked out now. Only the latest question's answer is kept:
+     * one asked before a switch may answer after it. A failure (the computer not reachable) keeps the last answer.
+     */
+    async #askHead(id: ConversationId): Promise<void> {
+        const cwd = this.#app.cwdOf(id);
+        const known = this.#remoteHeads.get(cwd) ?? { head: undefined, asked: 0 };
+        const asked = ++known.asked;
+
+        this.#remoteHeads.set(cwd, known);
+
+        try {
+            const head = await this.#place(id).head(cwd);
+
+            if (known.asked === asked) {
+                known.head = head;
+            }
+        } catch {
+            // Kept as it was.
+        }
+    }
+
+    /** What a look at Changes found checked out in a folder on the computer, as `#askHead` would have. */
+    #heardHead(id: ConversationId, changes: Changes): void {
+        const cwd = this.#app.cwdOf(id);
+        const known = this.#remoteHeads.get(cwd) ?? { head: undefined, asked: 0 };
+        const { branch, head } = changes.repo ?? {};
+
+        known.asked += 1;
+        known.head =
+            changes.repo === undefined
+                ? undefined
+                : branch !== undefined && branch !== "HEAD"
+                  ? { branch }
+                  : head !== undefined
+                    ? { detached: head.slice(0, 7) }
+                    : undefined;
+        this.#remoteHeads.set(cwd, known);
+    }
+
+    /** A run ended: on the computer, it may have switched branches (git there), so ask. */
+    runEnded(id: ConversationId): void {
+        if (this.#app.sessionMeta(id) !== undefined && !this.#app.onHost(id)) {
+            void this.#askHead(id);
+        }
+    }
+
+    /** Where a session's git runs: this machine, or its environment (the shared computer). */
+    #place(id: ConversationId): GitPlace {
+        return this.#app.onHost(id) ? HOST_GIT : gitIn(this.#app.envFor(id), context);
+    }
+
     #gitDir(cwd: string): string | undefined {
         const known = this.#gitDirs.get(cwd);
 
@@ -79,17 +147,10 @@ export class Workspace {
         return !this.#app.claims(cwd) && this.#gitDir(cwd) !== undefined;
     }
 
-    /** noid: refuse a git feature for a session whose folder is on the shared computer. */
-    #requireHostGit(id: ConversationId): void {
-        if (!this.#app.onHost(id)) {
-            throw new HttpError(409, HOST_GIT_ONLY);
-        }
-    }
-
     /** What a conversation's folder has checked out, for its view: its repository's HEAD file, read as it is now. */
     head(id: ConversationId): Head | undefined {
         if (!this.#app.onHost(id)) {
-            return undefined;
+            return this.#remoteHead(id);
         }
 
         const gitDir = this.#gitDir(this.#app.cwdOf(id));
@@ -101,15 +162,23 @@ export class Workspace {
     async branches(id: ConversationId, user: User): Promise<Branches> {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
-        this.#requireHostGit(id);
-
         const cwd = this.#app.cwdOf(id);
+        const place = this.#place(id);
+        let inRepository: boolean;
 
-        if (this.#gitDir(cwd) === undefined) {
+        try {
+            inRepository = this.#app.onHost(id)
+                ? this.#gitDir(cwd) !== undefined
+                : (await place.head(cwd)) !== undefined;
+        } catch (error) {
+            throw new HttpError(409, describe(error));
+        }
+
+        if (!inRepository) {
             throw new HttpError(404, "This session's folder is not in a git repository.");
         }
 
-        return branchesIn(cwd).catch((error: unknown) => {
+        return branchesIn(cwd, place).catch((error: unknown) => {
             throw new HttpError(409, describe(error));
         });
     }
@@ -132,19 +201,19 @@ export class Workspace {
             throw new HttpError(403, "You were invited to one session.");
         }
 
-        this.#requireHostGit(id);
         await this.#app.requireDriver(id, user);
 
+        const place = this.#place(id);
         const track = typeof request.track === "string" ? request.track : undefined;
         const name =
             typeof request.name === "string" ? request.name.trim() : track && localName(track);
         const cwd = this.#app.cwdOf(id);
 
-        if (track !== undefined && !(await isRemoteBranch(cwd, track))) {
+        if (track !== undefined && !(await isRemoteBranch(cwd, track, place))) {
             throw new HttpError(400, `${track} is not a remote branch here.`);
         }
 
-        if (!name || !(await validBranchName(cwd, name))) {
+        if (!name || !(await validBranchName(cwd, name, place))) {
             throw new HttpError(400, `${name ? `“${name}”` : "That"} cannot be a branch name.`);
         }
 
@@ -155,15 +224,28 @@ export class Workspace {
             );
         }
 
-        const before = this.head(id);
+        // On the computer, asked now: what the view has may be from before a switch made in a terminal.
+        const before = this.#app.onHost(id)
+            ? this.head(id)
+            : await place.head(cwd).catch(() => undefined);
 
-        await switchBranch(cwd, {
-            name,
-            create: request.create === true,
-            ...(track ? { track } : {}),
-        }).catch((error: unknown) => {
+        await switchBranch(
+            cwd,
+            {
+                name,
+                create: request.create === true,
+                ...(track ? { track } : {}),
+            },
+            place,
+        ).catch((error: unknown) => {
             throw new HttpError(409, describe(error));
         });
+
+        // On the computer, the view's branch is what git there said last: ask again now.
+        if (!this.#app.onHost(id)) {
+            await this.#askHead(id);
+        }
+
         const from = before !== undefined && "branch" in before ? ` from ${before.branch}` : "";
         const what =
             request.create === true || track !== undefined
@@ -489,7 +571,6 @@ export class Workspace {
      */
     async revertChange(id: ConversationId, user: User, path: string): Promise<void> {
         this.#app.requireSee(user, id);
-        this.#requireHostGit(id);
         await this.#app.requireDriver(id, user);
 
         if (this.#app.isBusy(id)) {
@@ -499,11 +580,14 @@ export class Workspace {
             );
         }
 
-        const kind = await revertFile(this.#app.cwdOf(id), path, user.sessions !== undefined).catch(
-            (error: unknown) => {
-                throw new HttpError(409, describe(error));
-            },
-        );
+        const kind = await revertFile(
+            this.#app.cwdOf(id),
+            path,
+            user.sessions !== undefined,
+            this.#place(id),
+        ).catch((error: unknown) => {
+            throw new HttpError(409, describe(error));
+        });
         const what =
             kind === "new" || kind === "added"
                 ? `deleted ${path}, which was new since the last commit`
@@ -519,11 +603,6 @@ export class Workspace {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
 
-        // noid: on the shared computer there is no git of this machine to ask; Changes stays empty there for now.
-        if (!this.#app.onHost(id)) {
-            return { files: [], more: 0, piOnly: [] };
-        }
-
         // Someone invited to this session only sees the files in its folder, here as in `conversationFile`.
         const onlyHere = user.sessions !== undefined;
         const key = `${id}:${onlyHere}`;
@@ -538,7 +617,15 @@ export class Workspace {
                 this.#app.cwdOf(id),
                 await this.#app.transcripts.allEntries(id, false),
                 onlyHere,
-            ))().finally(() => {
+                this.#place(id),
+            ).then((changes) => {
+                // On the computer, what Changes found checked out is the view's branch too.
+                if (!this.#app.onHost(id)) {
+                    this.#heardHead(id, changes);
+                }
+
+                return changes;
+            }))().finally(() => {
             if (this.#changesUnderWay.get(key) === pending) {
                 this.#changesUnderWay.delete(key);
             }
@@ -559,10 +646,14 @@ export class Workspace {
     async changeDiff(id: ConversationId, user: User, path: string): Promise<string> {
         this.#app.requireSee(user, id);
         this.#app.requireSteer(user);
-        this.#requireHostGit(id);
 
         try {
-            return await diffOf(this.#app.cwdOf(id), path, user.sessions !== undefined);
+            return await diffOf(
+                this.#app.cwdOf(id),
+                path,
+                user.sessions !== undefined,
+                this.#place(id),
+            );
         } catch (error) {
             throw new HttpError(404, describe(error));
         }

@@ -17,7 +17,7 @@ import { APP_ROOT } from "../config.ts";
 import type { PocketHost } from "../host.ts";
 import type { BotProfile } from "../noid/bots.ts";
 import { COMPUTER_HOME } from "../noid/computer.ts";
-import { contextFilesIn } from "../noid/env-files.ts";
+import { contextFilesIn, skillFoldersIn, skillsIn } from "../noid/env-files.ts";
 
 const PREAMBLE = `You are Pi, a coding agent running inside Pi Pocket: a durable, multiplayer web app built on Pi Durable. People talk to you from a browser, often a phone, and several people can share one conversation. When more than one person uses this server, each message starts with [from: Name].
 
@@ -28,7 +28,7 @@ function botPreamble(bot: BotProfile, cwd: string): string {
     const role = bot.role === "" ? "" : ` Your role: ${bot.role}.`;
     const place =
         bot.kind === "computer"
-            ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin).`
+            ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin). A skill is a folder with a SKILL.md (name and description in its front matter): under ${COMPUTER_HOME}/.agents/skills every bot gets it, under .agents/skills in your folder only you do.`
             : `You work on the owner's own machine, in ${cwd}. Commands and edits that change something wait for the owner's approval.`;
 
     return `You are ${bot.name}, one of the owner's bots in noid: a persistent teammate with one continuous conversation, your own memory, and routines.${role} People talk to you from a browser, often a phone. When more than one person uses this server, each message starts with [from: Name].
@@ -158,33 +158,54 @@ export default function createPrompt(host: PocketHost) {
         return [];
     };
 
-    const remoteContext = (
-        input: PromptInput,
+    /** What a folder on the computer gives the prompt, kept for STALE_MS; a failure is said once and tried again. */
+    const perFolder = (
+        cache: typeof remote,
         cwd: string,
-        context: Parameters<typeof contextFilesIn>[2],
+        what: string,
+        load: () => Promise<string | undefined>,
     ) => {
-        const cached = remote.get(cwd);
+        const cached = cache.get(cwd);
 
         if (cached !== undefined && Date.now() - cached.at < STALE_MS) {
             return cached.context;
         }
 
-        const loading = contextFilesIn(input.env!, cwd, context)
-            .then((files) => formatted([...globalContext(), ...files]))
-            .catch((error: unknown) => {
-                host.notice(
-                    "warning",
-                    `Could not load AGENTS.md files for ${cwd}: ${String(error)}`,
-                );
-                remote.delete(cwd);
+        const loading = load().catch((error: unknown) => {
+            host.notice("warning", `Could not load ${what} for ${cwd}: ${String(error)}`);
+            cache.delete(cwd);
 
-                return undefined;
-            });
+            return undefined;
+        });
 
-        remote.set(cwd, { at: Date.now(), context: loading });
+        cache.set(cwd, { at: Date.now(), context: loading });
 
         return loading;
     };
+
+    const remoteContext = (
+        input: PromptInput,
+        cwd: string,
+        context: Parameters<typeof contextFilesIn>[2],
+    ) =>
+        perFolder(remote, cwd, "AGENTS.md files", () =>
+            contextFilesIn(input.env!, cwd, context).then((files) =>
+                formatted([...globalContext(), ...files]),
+            ),
+        );
+
+    // Skills on the computer are files there: the session's folder's own, then those all bots share in its home.
+    const remoteSkillTexts: typeof remote = new Map();
+    const remoteSkills = (
+        input: PromptInput,
+        cwd: string,
+        context: Parameters<typeof contextFilesIn>[2],
+    ) =>
+        perFolder(remoteSkillTexts, cwd, "skills", async () => {
+            const skills = await skillsIn(input.env!, skillFoldersIn(cwd, COMPUTER_HOME), context);
+
+            return formatSkillsForPrompt(skills, "read").trim() || undefined;
+        });
 
     const onComputer = (input: PromptInput) =>
         input.env !== undefined && !host.onHost(input.conversationId);
@@ -203,7 +224,7 @@ export default function createPrompt(host: PocketHost) {
             ),
             section("guidelines", () => GUIDELINES),
             // noid: Pi Pocket's docs and this machine's skills are files of this machine, which tools on the shared
-            // computer cannot read; sessions there get neither (skills on the computer come later).
+            // computer cannot read; sessions there get the skills on the computer instead.
             section("pocket_docs", (input) => (onComputer(input) ? undefined : docs(host.dataDir))),
             section("project_context", (input, context) =>
                 onComputer(input)
@@ -212,7 +233,10 @@ export default function createPrompt(host: PocketHost) {
             ),
             section(
                 "skills",
-                (input) => (onComputer(input) ? undefined : load(cwdOf(input)).skills),
+                (input, context) =>
+                    onComputer(input)
+                        ? remoteSkills(input, cwdOf(input), context)
+                        : load(cwdOf(input)).skills,
                 {
                     tag: false,
                 },

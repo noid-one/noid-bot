@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { promisify } from "node:util";
 import { gzip as gzipCallback } from "node:zlib";
+import { parseFrontmatter, type Skill } from "@earendil-works/pi-coding-agent";
 import type { FileListing, FileView } from "../files.ts";
 import { MAX_FILES } from "../files.ts";
 
@@ -195,4 +196,124 @@ export async function contextFilesIn(
             return found;
         }
     }
+}
+
+/** Where a session on the computer finds skills, in order: its own folder's, then those every bot shares. */
+export const skillFoldersIn = (cwd: string, home: string): string[] => [
+    posix.join(cwd, ".pi", "skills"),
+    posix.join(cwd, ".agents", "skills"),
+    posix.join(home, ".pi", "agent", "skills"),
+    posix.join(home, ".agents", "skills"),
+];
+
+/** How deep below a skill folder a skill may be, as a folder of folders (`team/report/SKILL.md`). */
+const SKILL_DEPTH = 3;
+
+/**
+ * Pi's skills in a session's environment, as Pi finds them on this machine: in each skill folder, a `.md` file at its
+ * top, and below it every folder with a `SKILL.md` (a folder with one is a skill, and is not looked into further),
+ * through symbolic links too; each with a description in its front matter. The first of each name wins. A folder that
+ * is not there is skipped; one that cannot be read fails the whole look, so it is not taken for having none.
+ */
+export async function skillsIn(
+    env: ExecutionEnv,
+    folders: readonly string[],
+    context: Context,
+): Promise<Skill[]> {
+    const skills = new Map<string, Skill>();
+
+    const read = async (file: string): Promise<string | undefined> => {
+        const text = await env.readTextFile(file, context);
+
+        if (text.ok) {
+            return text.value;
+        }
+
+        if (
+            text.error.code === "not_found" ||
+            text.error.code === "not_directory" ||
+            text.error.code === "is_directory"
+        ) {
+            return undefined;
+        }
+
+        throw text.error;
+    };
+
+    const add = (file: string, text: string, fallback: string) => {
+        let frontmatter: Record<string, unknown>;
+
+        try {
+            frontmatter = parseFrontmatter(text).frontmatter as Record<string, unknown>;
+        } catch {
+            return;
+        }
+
+        const name =
+            typeof frontmatter.name === "string" ? frontmatter.name.trim() || fallback : fallback;
+        const description =
+            typeof frontmatter.description === "string" ? frontmatter.description.trim() : "";
+
+        if (description === "" || skills.has(name)) {
+            return;
+        }
+
+        skills.set(name, {
+            name,
+            description,
+            filePath: file,
+            baseDir: posix.dirname(file),
+            sourceInfo: { path: file, source: "computer" } as Skill["sourceInfo"],
+            disableModelInvocation: frontmatter["disable-model-invocation"] === true,
+        });
+    };
+
+    const look = async (folder: string, depth: number): Promise<void> => {
+        const listing = await env.listDir(folder, context);
+
+        if (!listing.ok) {
+            if (listing.error.code === "not_found" || listing.error.code === "not_directory") {
+                return;
+            }
+
+            throw listing.error;
+        }
+
+        for (const entry of [...listing.value].sort((a, b) => a.name.localeCompare(b.name))) {
+            if (entry.name.startsWith(".")) {
+                continue;
+            }
+
+            // At the top, a markdown file is a skill (a link to one too).
+            if (depth === 0 && entry.kind !== "directory" && entry.name.endsWith(".md")) {
+                const text = await read(entry.path);
+
+                if (text !== undefined) {
+                    add(entry.path, text, entry.name.slice(0, -3));
+                }
+
+                continue;
+            }
+
+            // A folder, or a link that may be one: a skill when it has a SKILL.md, else looked into.
+            if (entry.kind === "file") {
+                continue;
+            }
+
+            const file = posix.join(entry.path, "SKILL.md");
+            const text = await read(file);
+
+            if (text !== undefined) {
+                add(file, text, entry.name);
+            } else if (depth + 1 < SKILL_DEPTH) {
+                await look(entry.path, depth + 1);
+            }
+        }
+    };
+
+    for (const folder of folders) {
+        await look(folder, 0);
+    }
+
+    return [...skills.values()];
 }

@@ -368,3 +368,37 @@ test("the owner's terminal is a shell in a folder on the computer", { skip }, as
         return read.ended === "exited with code 3";
     }, "the shell to exit");
 });
+
+test("skills every bot shares, and git, work on the real computer", { skip }, async () => {
+    const skill = `/home/noid/.agents/skills/test-${run}`;
+
+    await onComputer(
+        `mkdir -p ${skill} && printf -- '---\\nname: test-${run}\\ndescription: Marmot-${run} helper\\n---\\nBody\\n' > ${skill}/SKILL.md`,
+    );
+
+    try {
+        const id = await newSession(app!, folder("skills"));
+
+        await say(app!, id, `prompt has Marmot-${run}`);
+        assert.equal(await answer(id), `has Marmot-${run}: true`);
+        await say(app!, id, `prompt has ${skill}/SKILL.md`);
+        assert.equal(await answer(id), `has ${skill}/SKILL.md: true`);
+    } finally {
+        await onComputer(`rm -rf ${skill}`);
+    }
+
+    const repo = folder("git");
+
+    await onComputer(
+        `mkdir -p ${repo} && cd ${repo} && git init -q -b main && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m first && echo hi > note.txt`,
+    );
+    const id = await newSession(app!, repo);
+
+    await until(() => app!.workspace.head(id) !== undefined, "the branch from git there");
+    assert.deepEqual(app!.workspace.head(id), { branch: "main" });
+    assert.deepEqual(
+        (await app!.workspace.changes(id, owner(app!))).files.map((file) => [file.path, file.kind]),
+        [["note.txt", "new"]],
+    );
+    assert.match(await app!.workspace.changeDiff(id, owner(app!), "note.txt"), /^\+hi$/m);
+});
