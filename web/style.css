@@ -58,24 +58,24 @@
 }
 
 :root {
-    /* The palette. These defaults are Tokyo Night; theme.js replaces them. */
-    --o-bg: #1a1b26;
-    --o-bg-dark: #13141c;
-    --o-bg-darker: #0e0e14;
-    --o-bg-light: #24283b;
-    --o-fg: #a9b1d6;
-    --o-fg-dim: #565f89;
-    --o-fg-light: #b4bee6;
-    --o-fg-bright: #c0caf5;
-    --o-accent: #7aa2f7;
-    --o-selection: #292e42;
-    --o-red: #f7768e;
-    --o-yellow: #e0af68;
-    --o-orange: #eb927b;
-    --o-green: #9ece6a;
-    --o-cyan: #449dab;
-    --o-blue: #7aa2f7;
-    --o-magenta: #ad8ee6;
+    /* The palette. These defaults are Noid's (themes.js); theme.js replaces them. */
+    --o-bg: #141414;
+    --o-bg-dark: #0f0f0f;
+    --o-bg-darker: #0a0a0a;
+    --o-bg-light: #1e1e1d;
+    --o-fg: #b9b8b3;
+    --o-fg-dim: #6a6964;
+    --o-fg-light: #d4d3ce;
+    --o-fg-bright: #ecebe6;
+    --o-accent: #ecebe6;
+    --o-selection: #2a2a29;
+    --o-red: #e0685f;
+    --o-yellow: #d9a54a;
+    --o-orange: #d98a52;
+    --o-green: #8fbf7a;
+    --o-cyan: #6fb3b0;
+    --o-blue: #7f9fd4;
+    --o-magenta: #b48ead;
 
     /* Surfaces, after omarchy-shell's control states: the foreground laid over the background. */
     --desk: var(--o-bg-darker);
@@ -110,7 +110,8 @@
     --spark: var(--o-magenta);
     /* A second accent, for what a theme draws in two colors (Hyprland's active border is a gradient): the app uses none. */
     --accent-2: var(--spark);
-    --brand: var(--o-orange);
+    /* noid's mark is the ink, as the icon is: no color of its own. */
+    --brand: var(--text);
     --ok: var(--o-green);
     --ok-soft: color-mix(in srgb, var(--o-green) 14%, transparent);
     --warn: var(--o-yellow);
@@ -138,15 +139,15 @@
      * buttons and list rows; icon buttons, fields, and segmented tracks; cards and primary buttons; windows, approval
      * cards, and peek tiles; the message box, sheets, and the launcher; PiP. Pills and avatars are round (999px).
      */
-    --r-mark: 3px;
-    --r-tag: 5px;
-    --r-seg: 7px;
-    --r-row: 9px;
-    --r-control: 10px;
-    --r-card: 12px;
-    --r-window: 14px;
-    --r-sheet: 18px;
-    --r-float: 20px;
+    --r-mark: 2px;
+    --r-tag: 3px;
+    --r-seg: 4px;
+    --r-row: 5px;
+    --r-control: 6px;
+    --r-card: 8px;
+    --r-window: 8px;
+    --r-sheet: 10px;
+    --r-float: 12px;
     --r-pill: 999px;
     /* Fields and plain controls that name no corner of their own. */
     --radius: var(--r-control);
@@ -154,6 +155,8 @@
     --gap-out: 8px;
     --gap-in: 4px;
     --border: 1px;
+    /* The heads of the panes (the sidebar's, the top bar, the panels'): one height, so their lines meet across the window. */
+    --head-h: calc(46px + 12px * var(--space-y));
     /* The conversation's column, and the message box under it, at their widest; room before the conversation's turns. */
     --transcript-width: clamp(720px, 72%, 1200px);
     --composer-width: calc(var(--transcript-width) + 48px);
@@ -433,6 +436,18 @@ kbd {
     color: var(--brand);
 }
 
+/* noid's mark (`NoidMark`): the icon's upright bar, a seventh as wide as it is tall, square-cornered. */
+.noid-mark {
+    display: inline-block;
+    flex: none;
+    /* Whole pixels where the browser can round, so the bar's edges stay sharp. */
+    width: max(2px, calc(var(--mark-h, 24px) / 7));
+    width: max(2px, round(calc(var(--mark-h, 24px) / 7), 1px));
+    height: var(--mark-h, 24px);
+    color: var(--brand);
+    background: currentColor;
+}
+
 /* ─── Motion ───────────────────────────────────────────────── */
 
 /* Hyprland's popin 87%: what opens grows from 87% and fades in. */
@@ -548,11 +563,6 @@ kbd {
 }
 
 .boot-mark {
-    font:
-        4.5rem/1 Georgia,
-        "Times New Roman",
-        serif;
-    color: var(--brand);
     animation: boot-breathe 2.4s var(--ease-in-out) infinite;
 }
 
@@ -560,10 +570,6 @@ kbd {
     50% {
         opacity: 0.55;
     }
-}
-
-.boot.inline .boot-mark {
-    font-size: 3rem;
 }
 
 .boot-bar {
@@ -749,6 +755,7 @@ kbd {
 @media (max-height: 500px) {
     .rail {
         gap: 2px;
+        padding-top: calc(env(safe-area-inset-top) + 12px);
     }
     .rail > :is(span.rail-brand, span.rail-brand + .rail-gap, span.rail-button) {
         display: none;
@@ -757,11 +764,19 @@ kbd {
 
 /* Side by side only where both fit: a short window that is also narrow keeps them stacked. */
 @media (max-height: 500px) and (min-width: 600px) {
+    /* The bots, the sessions' head, and search beside tabs take the rows they need (one may be empty, and has no
+     * height); the sessions take the rest, in the last. The sidebar's head goes, as the rail's mark does. */
     .home-list > .sessions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        grid-template-rows: auto auto minmax(0, 1fr);
+        grid-template-rows: repeat(4, auto) minmax(0, 1fr);
         column-gap: 8px;
+    }
+    .home-list > .sessions > .sidebar-head {
+        display: none;
+    }
+    .home-list > .sessions > .session-items {
+        grid-row: 5;
     }
     .home-list > .sessions > * {
         grid-column: 1 / -1;
@@ -832,54 +847,61 @@ kbd {
     }
 }
 
-/* Drag the sidebar's edge to resize it; double-click puts it back. Inside the window, which cuts off what is past it. */
-.resize-handle {
+/* The edge between panes (`splitter.js`): drag it, or focus it and use the arrow keys; a double click (or Enter) puts
+ * the usual width back. A strip to grab along the pane's border, inside the pane so a tiled window's corners do not
+ * cut it; the border lights up under the pointer, while it drags, and with the keyboard's focus. */
+.splitter {
     position: absolute;
     top: 0;
     bottom: 0;
-    right: 0;
-    width: 8px;
+    width: 7px;
     cursor: col-resize;
     z-index: 7;
     touch-action: none;
+    outline: none;
 }
 
-/* A sidebar a theme put on the right: its handle is on its left edge (`useSide`). */
-.resize-handle.at-left {
+.splitter.at-right {
+    right: 0;
+}
+
+.splitter.at-left {
     left: 0;
-    right: auto;
 }
 
-.resize-handle::before {
+.splitter::before {
     content: "";
     position: absolute;
-    top: 50%;
-    left: 3px;
-    width: 2px;
-    height: 36px;
-    margin-top: -18px;
-    border-radius: 1px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
     background: var(--accent);
     opacity: 0;
-    transform: scaleY(0.4);
-    transition:
-        opacity var(--t-hover) var(--ease-out),
-        transform var(--t-in) var(--ease-out);
+    transition: opacity var(--t-hover) var(--ease-out);
 }
 
-:root.resizing .resize-handle::before {
+.splitter.at-right::before {
+    right: 0;
+}
+
+.splitter.at-left::before {
+    left: 0;
+}
+
+:root.resizing .splitter::before,
+.splitter:focus-visible::before {
     opacity: 1;
-    transform: none;
+    width: 2px;
 }
 
 @media (hover: hover) {
-    .resize-handle:hover::before {
-        opacity: 1;
-        transform: none;
+    .splitter:hover::before {
+        opacity: 0.7;
+        transition-delay: 150ms;
     }
 }
 
-:root[data-rail="on"] .resize-handle {
+:root[data-rail="on"] .sidebar > .splitter {
     display: none;
 }
 
@@ -895,7 +917,7 @@ kbd {
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: calc(46px + 12px * var(--space-y) + env(safe-area-inset-top));
+    min-height: calc(var(--head-h) + env(safe-area-inset-top));
     padding: env(safe-area-inset-top) 0 0;
     border-bottom: 1px solid var(--hair);
     background: var(--bg);
@@ -1348,8 +1370,8 @@ kbd {
     color: var(--muted);
 }
 
-.empty .pi {
-    font-size: 3.2rem;
+.empty .noid-mark {
+    justify-self: center;
     opacity: 0.8;
 }
 
@@ -3648,10 +3670,6 @@ pre.diff .del {
 }
 
 .rail-brand {
-    font:
-        22px/1 Georgia,
-        serif;
-    color: var(--brand);
     transition: background-color var(--t-hover) var(--ease-out);
 }
 
@@ -3678,6 +3696,19 @@ pre.diff .del {
 .rail-gap {
     flex: none;
     height: 6px;
+}
+
+/* The mark heads the rail, a cell as tall as the panes' heads with their line under it. */
+.rail {
+    padding-top: 0;
+}
+
+.rail > .rail-brand:first-child {
+    width: 100%;
+    height: calc(var(--head-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    border-bottom: 1px solid var(--hair);
+    border-radius: 0;
 }
 
 .rail-fill {
@@ -3867,49 +3898,100 @@ pre.diff .del {
     container: sessions / inline-size;
 }
 
-.sessions-head {
+/* A section's head (`SectionHead`): its name small and spaced in capitals, as an editor's side bar has them, folding
+ * what is under it; a plus at its end adds to it. */
+/* The sidebar's head: noid's name beside the mark in the rail, as tall as the top bar so their lines meet. The list
+ * under it starts below its line. */
+.sidebar-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 32px;
-    padding-left: 4px;
     flex: none;
+    height: calc(var(--head-h) + env(safe-area-inset-top));
+    margin: 0 -12px 10px;
+    padding: env(safe-area-inset-top) 16px 0;
+    border-bottom: 1px solid var(--hair);
 }
 
-.sessions-name {
-    font-weight: 600;
-    font-size: 15px;
+.sessions:not(.compact) {
+    padding-top: 0;
+}
+
+.wordmark {
+    font: 700 16px var(--mono);
+    letter-spacing: -0.02em;
     color: var(--text);
 }
 
+.sessions-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 30px;
+    margin: 0 -4px;
+    flex: none;
+}
+
+.section-fold {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px;
+    border-radius: var(--r-row);
+    color: var(--muted);
+    text-align: left;
+}
+
+.section-fold > .icon {
+    transform: rotate(90deg);
+    transition: transform var(--t-hover) var(--ease-out);
+}
+
+.section-fold[aria-expanded="false"] > .icon {
+    transform: none;
+}
+
+.sessions-name {
+    font: 600 11px var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
 .sessions-count {
-    margin-right: auto;
     font: 11px var(--mono);
     color: var(--faint);
 }
 
 .new-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 30px;
-    padding: 0 11px 0 9px;
-    border-radius: calc(var(--r-row) - 1px);
-    background: var(--accent-fill);
-    color: var(--accent-ink);
-    font-weight: 600;
-    font-size: 13px;
-    transition: background-color var(--t-hover) var(--ease-out);
+    flex: none;
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-row);
+    color: var(--muted);
+    transition:
+        background-color var(--t-hover) var(--ease-out),
+        color var(--t-hover) var(--ease-out);
 }
 
 @media (hover: hover) {
+    .section-fold:hover .sessions-name,
     .new-button:hover {
-        background: color-mix(in oklab, var(--accent-fill) 85%, var(--text));
+        color: var(--text);
+    }
+    .new-button:hover {
+        background: var(--hover);
     }
 }
 
-.new-button .icon {
-    stroke-width: 2.4;
+/* Folded, a section keeps its head alone. */
+.bots.folded > .bot-items,
+.sessions-folded > :is(.search, .session-tabs, .session-items) {
+    display: none;
 }
 
 /* A search field: the sheets' (providers, a message's, the pickers') and the session list's. */
@@ -4904,12 +4986,24 @@ pre.diff .del {
     gap: 36px;
 }
 
+/* The icon in pixels (`LOGO`), each a pair of full blocks: at this size the rows touch, as Pi's logo does. It blinks
+ * three times as it comes, as a terminal's cursor does, then stays. */
 .fetch-logo {
     margin: 0;
-    font: 13px / 1.15 var(--mono);
+    font: 26px / 1.15 var(--mono);
     color: var(--brand);
+    /* Closes the hairline seams a font leaves between neighboring blocks. */
+    -webkit-text-stroke: 0.75px currentColor;
     user-select: none;
-    animation: popin 0.6s var(--ease-out) backwards;
+    animation:
+        popin 0.6s var(--ease-out) backwards,
+        cursor-blink 1.06s steps(1, end) 0.6s 3;
+}
+
+@keyframes cursor-blink {
+    50% {
+        opacity: 0;
+    }
 }
 
 .fetch-info {
@@ -7127,9 +7221,8 @@ pre.diff .del {
     gap: 0.8rem;
 }
 
-.signin .pi.big {
-    font-size: 4rem;
-    text-align: center;
+.signin .signin-mark {
+    align-self: center;
 }
 
 .signin h1,
@@ -8986,7 +9079,7 @@ textarea.notes {
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 58px;
+    height: var(--head-h);
     flex: none;
     padding: 0 10px 0 16px;
     border-bottom: 1px solid var(--hair);
@@ -10411,8 +10504,6 @@ textarea.notes {
     }
     .files-resize {
         display: block;
-        left: 0;
-        right: auto;
     }
 }
 
@@ -10422,7 +10513,7 @@ textarea.notes {
     align-items: center;
     gap: 8px;
     flex: none;
-    height: calc(58px + env(safe-area-inset-top));
+    height: calc(var(--head-h) + env(safe-area-inset-top));
     padding: env(safe-area-inset-top) 10px 0 14px;
     border-bottom: 1px solid var(--hair);
 }
@@ -10788,8 +10879,6 @@ textarea.notes {
     }
     .browser-resize {
         display: block;
-        left: 0;
-        right: auto;
     }
 }
 
@@ -10797,7 +10886,7 @@ textarea.notes {
     display: flex;
     align-items: center;
     gap: 4px;
-    min-height: 58px;
+    min-height: calc(var(--head-h) + env(safe-area-inset-top));
     flex: none;
     padding: env(safe-area-inset-top) 8px 0 10px;
     border-bottom: 1px solid var(--hair);
@@ -12173,7 +12262,7 @@ textarea.notes {
         inset: -12px -8px;
     }
     .new-button::before {
-        inset: -6px -3px;
+        inset: -9px;
     }
     /* Rows of filters far enough apart that their taps do not overlap (after the board's own gap, hence .board). */
     .board .board-legend {

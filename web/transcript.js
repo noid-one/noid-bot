@@ -21,6 +21,7 @@ import {
     openSheet,
     store,
     TRANSCRIPT_ROWS,
+    sessionBot,
 } from "./store.js";
 import { openSubagent, stateOf } from "./subagents.js";
 import { prefs } from "./theme.js";
@@ -47,6 +48,7 @@ import {
     html,
     Icon,
     Markdown,
+    NoidMark,
     openFile,
     plainText,
     readable,
@@ -2636,9 +2638,15 @@ export function Transcript() {
                 entries.length === 0 &&
                 !view.live.busy &&
                 html`<div class="empty hint">
-                    <div class="pi">π</div>
+                    <${NoidMark} size=${44} />
                     <p>
-                        ${conversation.kind === "subagent" ? "This subagent has no messages yet." : "Ask anything. Pi works in this session's folder, and keeps working if the server restarts."}
+                        ${
+                            conversation.kind === "subagent"
+                                ? "This subagent has no messages yet."
+                                : sessionBot(conversation.id)
+                                  ? `${sessionBot(conversation.id).name} works on the shared computer, and keeps working if the server restarts.`
+                                  : "Ask anything. Pi works in this session's folder, and keeps working if the server restarts."
+                        }
                     </p>
                 </div>`
             }

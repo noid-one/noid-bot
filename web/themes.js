@@ -1,6 +1,58 @@
 // Omarchy's themes as palettes: each theme's colors.toml, keys as Omarchy names them. Generated from
 // /usr/share/omarchy/themes; "Follow desktop" reads the theme in use from the server instead.
 export const THEMES = {
+    // noid's own: the icon's ink (#222 on white) as a graphite pair, the status colors quiet. The accent is the ink
+    // itself, so the only color on screen is what says something.
+    noid: {
+        name: "Noid",
+        colors: {
+            mode: "dark",
+            accent: "#ecebe6",
+            selection: "#2a2a29",
+            muted: "#4a4a47",
+            background: "#141414",
+            dark_background: "#0f0f0f",
+            darker_background: "#0a0a0a",
+            lighter_background: "#1e1e1d",
+            foreground: "#b9b8b3",
+            dark_foreground: "#6a6964",
+            light_foreground: "#d4d3ce",
+            bright_foreground: "#ecebe6",
+            red: "#e0685f",
+            yellow: "#d9a54a",
+            orange: "#d98a52",
+            green: "#8fbf7a",
+            cyan: "#6fb3b0",
+            blue: "#7f9fd4",
+            magenta: "#b48ead",
+            bright_yellow: "#e6bb6a",
+        },
+    },
+    "noid-light": {
+        name: "Noid Light",
+        colors: {
+            mode: "light",
+            accent: "#222222",
+            selection: "#dcdcd7",
+            muted: "#a5a5a0",
+            background: "#fafaf8",
+            dark_background: "#f1f1ee",
+            darker_background: "#e7e7e3",
+            lighter_background: "#ecece8",
+            foreground: "#2b2b2a",
+            dark_foreground: "#8a8a86",
+            light_foreground: "#3a3a38",
+            bright_foreground: "#222222",
+            red: "#b4372f",
+            yellow: "#96690f",
+            orange: "#a8551b",
+            green: "#3f7a2e",
+            cyan: "#227a76",
+            blue: "#2f5ea8",
+            magenta: "#84508a",
+            bright_yellow: "#96690f",
+        },
+    },
     catppuccin: {
         name: "Catppuccin",
         colors: {

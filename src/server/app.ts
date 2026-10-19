@@ -2759,10 +2759,11 @@ export class PocketApp {
             }
 
             const look = lookGone ? BASE_THEME : before.look;
-            const colors = colorsGone ? "desktop" : before.colors;
+            // noid: its own colors are what browsers start with, and are always there.
+            const colors = colorsGone ? "noid" : before.colors;
 
             this.config.themeDefault =
-                look === BASE_THEME && colors === "desktop" ? undefined : { look, colors };
+                look === BASE_THEME && colors === "noid" ? undefined : { look, colors };
             await this.#refreshClients();
         } catch (error) {
             this.#log(`The default theme could not be checked: ${describe(error)}`);

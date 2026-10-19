@@ -8,6 +8,7 @@ import { askPip, openPip, pipAvailable } from "./pip.js";
 import { actions, collab, navigate, notify, openSheet, scoped, store } from "./store.js";
 import {
     BASE_LOOK,
+    BASE_LOOK_NAME,
     chooseLook,
     chooseTheme,
     folderPaletteIds,
@@ -458,10 +459,10 @@ function setTheme(arg) {
         const listed = store.state.themeList?.find((each) => each.id === id);
 
         return id === BASE_LOOK || listed?.usable
-            ? [{ id, name: id === BASE_LOOK ? "Pocket" : (listed?.name ?? id) }]
+            ? [{ id, name: id === BASE_LOOK ? BASE_LOOK_NAME : (listed?.name ?? id) }]
             : [];
     });
-    // The desktop's colors only where the server has a desktop: elsewhere "desktop" would show Tokyo Night.
+    // The desktop's colors only where the server has a desktop: elsewhere "desktop" would show noid's own colors.
     const desktop = paletteOf("desktop").desktop === true;
     const palettes = [
         ...(desktop ? ["desktop"] : []),

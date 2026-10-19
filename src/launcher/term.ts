@@ -15,6 +15,24 @@ export const yellow = style("33", "39");
 export const red = style("31", "39");
 export const cyan = style("36", "39");
 
+/**
+ * noid's icon in pixels, the way Pi draws its own: each pixel two full blocks, square in a terminal's cell. The icon is
+ * one upright bar, a seventh as wide as it is tall (the web app's home screen draws the same, `web/home.js`).
+ */
+export const LOGO: readonly string[] = Array.from({ length: 7 }, () => "██");
+
+/** `lines` to the right of the logo, fastfetch's way: the logo's rows first, then any lines past them. */
+export function besideLogo(lines: readonly string[]): string[] {
+    const rows = Math.max(LOGO.length, lines.length);
+
+    return Array.from({ length: rows }, (_, index) => {
+        const mark = LOGO[index] === undefined ? "  " : bold(LOGO[index]);
+        const line = lines[index] ?? "";
+
+        return line === "" ? `  ${mark}` : `  ${mark}${line}`;
+    });
+}
+
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 export function visibleLength(text: string): number {

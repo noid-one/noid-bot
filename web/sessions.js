@@ -9,6 +9,7 @@ import { useDragToClose } from "./gestures.js";
 import { PeeksRailButton } from "./peeks.js";
 import { PipRailButton } from "./pip.js";
 import { sessionForest } from "./session-tree.js";
+import { Splitter } from "./splitter.js";
 import {
     actions,
     canSteer,
@@ -30,6 +31,7 @@ import {
     APPLE,
     html,
     Icon,
+    NoidMark,
     railState,
     scrimPress,
     shortPath,
@@ -543,8 +545,34 @@ export function botFaceState(session) {
     return FACE_STATES[sessionMark(session).shape.split(" ")[0]] ?? "idle";
 }
 
+/**
+ * noid: a section's head in the sidebar, as an editor's side bar has them: its name and count fold what is under it
+ * (kept with the folded day groups), and a plus adds to it.
+ */
+function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
+    return html`<div class="sessions-head">
+        <button
+            class="section-fold"
+            data-part=${part}
+            aria-expanded=${!folded}
+            title=${folded ? `Show ${name.toLowerCase()}` : `Hide ${name.toLowerCase()}`}
+            onClick=${onFold}
+        >
+            <${Icon} name="chevron" size=${12} />
+            <span class="sessions-name">${name}</span>
+            <span class="sessions-count">${count}</span>
+        </button>
+        ${
+            onAdd &&
+            html`<button class="new-button" title=${add} aria-label=${add} onClick=${onAdd}>
+                <${Icon} name="plus" size=${15} />
+            </button>`
+        }
+    </div>`;
+}
+
 /** noid: the bots, above the sessions: Noid first, then by name. */
-function BotList({ compact, canStart }) {
+function BotList({ compact, canStart, folded, onFold }) {
     const { sessions, conversationId } = store.state;
     const bots = sessions
         .filter((session) => session.bot !== undefined && !session.archived)
@@ -558,18 +586,16 @@ function BotList({ compact, canStart }) {
         return null;
     }
 
-    return html`<div class="bots" data-part="bot-list">
-        <div class="sessions-head">
-            <span class="sessions-name" data-part="bot-list-title">Bots</span>
-            <span class="sessions-count">${bots.length}</span>
-            ${
-                canStart &&
-                html`<button class="new-button" title="New bot" onClick=${() => openSheet({ type: "bot" })}>
-                    <${Icon} name="plus" size=${14} />
-                    New
-                </button>`
-            }
-        </div>
+    return html`<div class=${`bots ${folded ? "folded" : ""}`} data-part="bot-list">
+        <${SectionHead}
+            name="Bots"
+            count=${bots.length}
+            part="bot-list-title"
+            folded=${folded}
+            onFold=${onFold}
+            add="New bot"
+            onAdd=${canStart && (() => openSheet({ type: "bot" }))}
+        />
         <div class="bot-items">
             ${bots.map(
                 (session) => html`<${BotRow}
@@ -1082,25 +1108,34 @@ export function SessionList({ compact = false }) {
     const count = sessions.filter(
         (session) => !session.archived && session.bot === undefined,
     ).length;
+    const sessionsFolded = closed.has("section:sessions");
     let index = 0;
 
-    return html`<div class=${`sessions ${compact ? "compact" : ""}`} data-part="session-list">
-        <${BotList} compact=${compact} canStart=${canStart} />
-        <div class="sessions-head">
-            <span class="sessions-name" data-part="session-list-title">Sessions</span>
-            <span class="sessions-count">${sessionsLoaded ? count : ""}</span>
-            ${
-                canStart &&
-                html`<button
-                    class="new-button"
-                    title="New session (Alt+N)"
-                    onClick=${() => openSheet({ type: "cwd", mode: "new" })}
-                >
-                    <${Icon} name="plus" size=${14} />
-                    New
-                </button>`
-            }
-        </div>
+    return html`<div
+        class=${`sessions ${compact ? "compact" : ""} ${sessionsFolded ? "sessions-folded" : ""}`}
+        data-part="session-list"
+    >
+        ${
+            !compact &&
+            html`<div class="sidebar-head" data-part="sidebar-head">
+                <span class="wordmark">noid</span>
+            </div>`
+        }
+        <${BotList}
+            compact=${compact}
+            canStart=${canStart}
+            folded=${closed.has("section:bots")}
+            onFold=${() => toggleGroup("section:bots")}
+        />
+        <${SectionHead}
+            name="Sessions"
+            count=${sessionsLoaded ? count : ""}
+            part="session-list-title"
+            folded=${sessionsFolded}
+            onFold=${() => toggleGroup("section:sessions")}
+            add="New session (Alt+N)"
+            onAdd=${canStart && (() => openSheet({ type: "cwd", mode: "new" }))}
+        />
         <label class=${`search ${query ? "filled" : ""}`} data-part="session-search">
             <${Icon} name="search" size=${14} />
             <input
@@ -1358,14 +1393,13 @@ export function RailNav({ foldable = false, folded = false }) {
             foldable
                 ? html`<button
                     class="rail-brand"
-                    data-part="brand-mark"
                     title="Home"
                     aria-label="Home"
                     onClick=${toSessions}
                 >
-                    π
+                    <${NoidMark} size=${20} />
                 </button>`
-                : html`<span class="rail-brand" data-part="brand-mark" aria-hidden="true">π</span>`
+                : html`<span class="rail-brand" aria-hidden="true"><${NoidMark} size=${20} /></span>`
         }
         <span class="rail-gap"></span>
         ${
@@ -1497,66 +1531,32 @@ export function RailNav({ foldable = false, folded = false }) {
     </nav>`;
 }
 
-/** The sidebar's list is this wide at least and at most; the rail beside it stays 56px. */
-const LIST_MIN = 204;
-const LIST_MAX = 464;
-
 /** The sidebar's usual width, the rail and its list together: the one a new browser starts with (theme.js). */
 export const SIDEBAR_WIDTH = 312;
 
-/** Drag the sidebar's right edge to resize its list; a double click puts it back to its usual width. */
+/** The open sidebar's narrowest and widest, the rail included (theme.js keeps a saved width within them too). */
+export const SIDEBAR_MIN = 264;
+export const SIDEBAR_MAX = 524;
+
+/**
+ * Drag the sidebar's edge to resize it, or step it with the arrow keys; a double click puts back its usual width. No
+ * wider than the stylesheet lets it be: 40% of the screen.
+ */
 export function ResizeHandle() {
     const ref = useRef(null);
     // A theme may put the sidebar on the right: the handle goes to its other edge, and drags the other way.
     const side = useSide(ref, (handle) => handle.parentElement);
 
-    const start = (event) => {
-        if (event.button !== 0) {
-            return;
-        }
-
-        event.preventDefault();
-        const root = document.documentElement;
-        const sidebar = event.currentTarget.parentElement;
-        const box = sidebar.getBoundingClientRect();
-        // The rail and the borders, which keep their width.
-        const rest = sidebar.offsetWidth - (sidebar.querySelector(".sessions")?.offsetWidth ?? 0);
-        let width = prefs().sidebarWidth;
-
-        root.classList.add("resizing");
-
-        // No wider than the stylesheet lets it be: 40% of the screen.
-        const max = Math.min(LIST_MAX + rest, Math.max(SIDEBAR_WIDTH, innerWidth * 0.4));
-
-        const move = (each) => {
-            const across = side === "right" ? box.right - each.clientX : each.clientX - box.left;
-
-            width = Math.round(Math.min(max, Math.max(LIST_MIN + rest, across)));
-            root.style.setProperty("--sidebar-w", `${width}px`);
-        };
-
-        const stop = () => {
-            root.classList.remove("resizing");
-            removeEventListener("pointermove", move);
-            removeEventListener("pointerup", stop);
-            removeEventListener("pointercancel", stop);
-            setPrefs({ sidebarWidth: width });
-        };
-
-        addEventListener("pointermove", move);
-        addEventListener("pointerup", stop);
-        addEventListener("pointercancel", stop);
-    };
-
-    return html`<div
-        class=${`resize-handle ${side === "right" ? "at-left" : ""}`}
-        ref=${ref}
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onPointerDown=${start}
-        onDblClick=${() => setPrefs({ sidebarWidth: SIDEBAR_WIDTH })}
-    ></div>`;
+    return html`<span class="splitter-host" ref=${ref} hidden></span>
+        <${Splitter}
+            edge=${side === "right" ? "left" : "right"}
+            label="Resize the sidebar"
+            variable="--sidebar-w"
+            min=${SIDEBAR_MIN}
+            max=${() => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_WIDTH, innerWidth * 0.4))}
+            commit=${(width) => setPrefs({ sidebarWidth: width })}
+            reset=${() => setPrefs({ sidebarWidth: SIDEBAR_WIDTH })}
+        />`;
 }
 
 /** The rail and the session list, sliding in from the left on narrow screens. */

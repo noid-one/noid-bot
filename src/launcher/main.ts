@@ -27,7 +27,7 @@ import {
 } from "./access.ts";
 import { fail, parseArgs } from "./options.ts";
 import {
-    accent,
+    besideLogo,
     bold,
     type Choice,
     choose,
@@ -369,20 +369,23 @@ const KEYS_HINT = "q quit · r restart server · a access · o open here · s si
 async function showPanel(withQr: boolean): Promise<void> {
     const width = columns();
     const row = (label: string, value: string) => `  ${dim(label.padEnd(9))}${value}`;
-    const lines = ["", `  ${accent("π")} ${bold("Pi Pocket")}  ${green("● running")}`, ""];
+    const facts = [`  ${bold("noid")}  ${green("● running")}`, ""];
 
-    lines.push(row("Access", `${modeLabel()}${modeNote() ? dim(` · ${modeNote()}`) : ""}`));
-    lines.push(row("Open", cyan(appUrl())));
+    facts.push(row("Access", `${modeLabel()}${modeNote() ? dim(` · ${modeNote()}`) : ""}`));
+    facts.push(row("Open", cyan(appUrl())));
 
     if (state.mode === "lan") {
         for (const address of lanAddresses().slice(1)) {
-            lines.push(row("", cyan(`http://${address}:${options.port}`)));
+            facts.push(row("", cyan(`http://${address}:${options.port}`)));
         }
     }
 
-    lines.push(row("Folder", tilde(options.cwd)));
-    lines.push(row("Data", tilde(options.data)));
-    lines.push("");
+    facts.push(row("Folder", tilde(options.cwd)));
+    facts.push(row("Data", tilde(options.data)));
+
+    // The facts beside the logo, as Pi shows its own.
+    const lines = ["", ...besideLogo(facts), ""];
+
     const login =
         state.loginPath === undefined
             ? undefined
@@ -787,7 +790,7 @@ async function main(): Promise<void> {
 
     if (interactive && mode === undefined && !options.yes) {
         log("");
-        log(`  ${accent("π")} ${bold("Pi Pocket")}  ${dim(tilde(options.cwd))}`);
+        log(`  ${bold("▌")} ${bold("noid")}  ${dim(tilde(options.cwd))}`);
         log("");
     }
 

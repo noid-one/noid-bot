@@ -1,12 +1,12 @@
 {
-    "name": "Pi Pocket",
-    "short_name": "Pi Pocket",
-    "description": "Durable, multiplayer Pi agents in your browser",
+    "name": "noid",
+    "short_name": "noid",
+    "description": "Your bots, on one shared computer",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",
-    "background_color": "#13141c",
-    "theme_color": "#13141c",
+    "background_color": "#141414",
+    "theme_color": "#141414",
     "share_target": {
         "action": "/share",
         "method": "POST",
@@ -15,13 +15,30 @@
             "title": "title",
             "text": "text",
             "url": "url",
-            "files": [{ "name": "files", "accept": ["*/*"] }]
+            "files": [
+                {
+                    "name": "files",
+                    "accept": ["*/*"]
+                }
+            ]
         }
     },
     "icons": [
-        { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" },
-        { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-        { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+        {
+            "src": "/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        },
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
         {
             "src": "/icon-maskable-512.png",
             "sizes": "512x512",

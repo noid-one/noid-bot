@@ -997,7 +997,20 @@ export function Loader({ label = "Loading" }) {
     </div>`;
 }
 
-/** The full-screen loader: π over Omarchy's boot bar, and what is happening under it. */
+/**
+ * noid's mark: the icon's upright bar, as tall as `size` and a seventh as wide, in the brand color. Marks the app where
+ * Pi Pocket put its π.
+ */
+export function NoidMark({ size = 24, className = "" }) {
+    return html`<span
+        class=${`noid-mark ${className}`}
+        data-part="brand-mark"
+        style=${`--mark-h:${size}px`}
+        aria-hidden="true"
+    ></span>`;
+}
+
+/** The full-screen loader: the mark over Omarchy's boot bar, and what is happening under it. */
 export function Boot({ caption = "starting", detail = "", inline = false }) {
     return html`<div
         class=${`boot ${inline ? "inline" : ""}`}
@@ -1005,7 +1018,7 @@ export function Boot({ caption = "starting", detail = "", inline = false }) {
         role="status"
         aria-live="polite"
     >
-        <div class="boot-mark" data-part="brand-mark" aria-hidden="true">π</div>
+        <${NoidMark} size=${inline ? 48 : 72} className="boot-mark" />
         <div class="boot-bar" aria-hidden="true"><span></span></div>
         <div class="boot-caption">${caption}</div>
         ${detail && html`<div class="boot-detail">${detail}</div>`}

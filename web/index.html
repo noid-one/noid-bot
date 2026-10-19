@@ -7,10 +7,10 @@
             content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
         <meta name="color-scheme" content="dark" />
-        <meta name="theme-color" content="#13141c" />
+        <meta name="theme-color" content="#141414" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <title>Pi Pocket</title>
+        <title>noid</title>
         <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -112,7 +112,12 @@
         <!-- The same boot screen the app shows while it starts (Boot in ui.js), so nothing jumps when the script takes over. -->
         <div id="app">
             <div class="boot" data-part="boot" role="status">
-                <div class="boot-mark" data-part="brand-mark" aria-hidden="true">π</div>
+                <span
+                    class="noid-mark boot-mark"
+                    data-part="brand-mark"
+                    style="--mark-h: 72px"
+                    aria-hidden="true"
+                ></span>
                 <div class="boot-bar" aria-hidden="true"><span></span></div>
                 <div class="boot-caption">starting</div>
             </div>

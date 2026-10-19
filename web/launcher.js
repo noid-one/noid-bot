@@ -30,6 +30,7 @@ import {
 } from "./store.js";
 import {
     BASE_LOOK,
+    BASE_LOOK_NAME,
     chooseLook,
     folderPaletteIds,
     lookIds,
@@ -400,7 +401,7 @@ function lookItems() {
         .map(
             (id) =>
                 store.state.themeList?.find((each) => each.id === id && each.usable) ??
-                (id === BASE_LOOK ? { id, name: "Pocket", builtIn: true } : null),
+                (id === BASE_LOOK ? { id, name: BASE_LOOK_NAME, builtIn: true } : null),
         )
         .filter(Boolean)
         .map((look) => ({

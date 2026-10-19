@@ -13,9 +13,11 @@ import {
 } from "../store.js";
 import {
     BASE_LOOK,
+    BASE_LOOK_NAME,
     chooseLook,
     chooseTheme,
     colorsOnly,
+    DEFAULT_COLORS,
     folderPaletteIds,
     lookIds,
     paletteOf,
@@ -37,10 +39,10 @@ const touch = matchMedia("(pointer: coarse)").matches;
 function ThemeCard({ id, desktop = false }) {
     const palette = paletteOf(id);
     const vars = varsStyle(themeVars(palette));
-    // "Desktop" on a server without an Omarchy desktop shows Tokyo Night.
+    // "Desktop" on a server without an Omarchy desktop shows noid's own colors.
     const on =
         prefs().theme === id ||
-        (id === "tokyo-night" && prefs().theme === "desktop" && !store.state.desktopTheme);
+        (id === DEFAULT_COLORS && prefs().theme === "desktop" && !store.state.desktopTheme);
     const dots = ["--o-red", "--o-yellow", "--o-green", "--o-cyan", "--o-blue", "--o-magenta"];
     const desk = html`<div class="tc-desk">
         <div class="tc-win"><i></i><i></i><i class="lit"></i></div>
@@ -85,7 +87,9 @@ function ThemeCard({ id, desktop = false }) {
 /** A theme folder as the server lists it, or the app's own look. */
 const lookInfo = (id) =>
     store.state.themeList?.find((each) => each.id === id) ??
-    (id === BASE_LOOK ? { id, name: "Pocket", builtIn: true, usable: true, css: [] } : undefined);
+    (id === BASE_LOOK
+        ? { id, name: BASE_LOOK_NAME, builtIn: true, usable: true, css: [] }
+        : undefined);
 
 /** A theme as a card: its name, what it says it is, and why it cannot be used, if it cannot. */
 function LookCard({ id }) {
@@ -309,12 +313,12 @@ function DefaultTools() {
         ? p.look
         : BASE_LOOK;
     const colors = paletteOf(p.theme).id;
-    // What new browsers get already: the default, or with none, Pocket and the desktop's colors.
+    // What new browsers get already: the default, or with none, noid's look and colors.
     const same = current
         ? current.look === look && current.colors === colors
-        : look === BASE_LOOK && p.theme === "desktop";
+        : look === BASE_LOOK && colors === DEFAULT_COLORS;
     // A theme with its own colors is named once: "My Lantern", not "My Lantern with My Lantern". The desktop's colors
-    // are Tokyo Night where the server has no desktop.
+    // are noid's where the server has no desktop.
     const name = (look, colors) =>
         colors.split("@")[0] === look
             ? (lookInfo(look)?.name ?? look)
@@ -326,13 +330,13 @@ function DefaultTools() {
                 "info",
                 value
                     ? `Browsers that have not chosen start with ${name(value.look, value.colors)}.`
-                    : "Browsers that have not chosen start with Pocket.",
+                    : `Browsers that have not chosen start with ${BASE_LOOK_NAME}.`,
             );
         });
 
     return html`<div class="look-tools">
         <span class="muted small grow">
-            ${current ? `For new browsers: ${name(current.look, current.colors)}.` : `New browsers start with ${name(BASE_LOOK, "desktop")}.`}
+            ${current ? `For new browsers: ${name(current.look, current.colors)}.` : `New browsers start with ${name(BASE_LOOK, DEFAULT_COLORS)}.`}
         </span>
         ${
             !same &&

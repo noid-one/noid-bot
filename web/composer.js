@@ -24,6 +24,7 @@ import {
     store,
     typing,
     uid,
+    sessionBot,
 } from "./store.js";
 import { useDock } from "./dock.js";
 import { SubagentsBar } from "./subagents.js";
@@ -997,7 +998,9 @@ export function Composer() {
           ? steer
               ? "Steer the current run…"
               : "Queue a message for after this run…"
-          : "Ask Pi anything…";
+          : sessionBot()
+            ? `Message ${sessionBot().name}…`
+            : "Ask anything…";
     const inbox = view.inbox ?? [];
     const { me, users } = store.state;
     const queuedBy = (item) =>

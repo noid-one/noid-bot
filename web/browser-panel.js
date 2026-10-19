@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useBack } from "./back.js";
+import { Splitter } from "./splitter.js";
 import {
     browserApi,
     browserAvailable,
@@ -652,54 +653,21 @@ function StartScreen({ steer }) {
     </div>`;
 }
 
-/** Drag the panel's left edge to resize it on wide screens; double-click goes back to half. */
+/** Drag the panel's left edge to resize it on wide screens, or step it with the arrow keys; a double click goes back to half. */
 function ResizeEdge() {
-    const start = (event) => {
-        if (event.button !== 0) {
-            return;
-        }
-
-        event.preventDefault();
-        const root = document.documentElement;
-        const right = event.currentTarget.parentElement.getBoundingClientRect().right;
-        let width = 0;
-
-        root.classList.add("resizing");
-
-        const move = (each) => {
-            width = Math.round(Math.min(innerWidth - 420, Math.max(360, right - each.clientX)));
-            root.style.setProperty("--browser-w", `${width}px`);
-        };
-
-        const stop = () => {
-            root.classList.remove("resizing");
-            removeEventListener("pointermove", move);
-            removeEventListener("pointerup", stop);
-            removeEventListener("pointercancel", stop);
-
-            if (width > 0) {
-                localStorage.setItem(WIDTH_KEY, String(width));
-            }
-        };
-
-        addEventListener("pointermove", move);
-        addEventListener("pointerup", stop);
-        addEventListener("pointercancel", stop);
-    };
-
-    const reset = () => {
-        localStorage.removeItem(WIDTH_KEY);
-        document.documentElement.style.removeProperty("--browser-w");
-    };
-
-    return html`<div
-        class="resize-handle browser-resize"
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onPointerDown=${start}
-        onDblClick=${reset}
-    ></div>`;
+    return html`<${Splitter}
+        edge="left"
+        label="Resize the browser"
+        variable="--browser-w"
+        className="browser-resize"
+        min=${360}
+        max=${() => innerWidth - 420}
+        commit=${(width) => localStorage.setItem(WIDTH_KEY, String(width))}
+        reset=${() => {
+            localStorage.removeItem(WIDTH_KEY);
+            document.documentElement.style.removeProperty("--browser-w");
+        }}
+    />`;
 }
 
 const savedWidth = Number(localStorage.getItem(WIDTH_KEY));

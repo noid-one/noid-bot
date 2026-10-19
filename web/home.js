@@ -4,25 +4,23 @@ import { folderColor } from "./avatar.js";
 import { useEffect, useRef } from "preact/hooks";
 import { sessionMark } from "./sessions.js";
 import { canSteer, navigate, openSheet, scoped, store, workspaceOrder } from "./store.js";
-import { lookLabel, prefs } from "./theme.js";
+import { lookLabel } from "./theme.js";
 import { html, Icon, Keys, shortPath, timeAgo } from "./ui.js";
 
-const LOGO = [
-    "▗▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▖",
-    "▝▀▀▀▜██▀▀▀▀▀▀██▛▀▀▀▘",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "    ▐██      ██▌   ",
-    "   ▗██▘      ▝██▄▖ ",
-    "  ▝▀▀          ▀▀▀▘",
-].join("\n");
+/**
+ * noid's icon in pixels, the way Pi draws its own: each pixel two full blocks, square in a monospace cell. The icon is
+ * one upright bar, a seventh as wide as it is tall.
+ */
+export const LOGO = Array.from({ length: 7 }, () => "██").join("\n");
 
-/** The home screen on wide screens: what fastfetch shows for a machine, for this Pi Pocket. */
+/** The home screen on wide screens: what fastfetch shows for a machine, for this noid. */
 export function Splash() {
     const { me, sessions, models, server, guard } = store.state;
-    const p = prefs();
     const busy = sessions.filter((session) => session.busy && !session.archived).length;
+    const bots = sessions.filter((session) => session.bot !== undefined && !session.archived);
+    const main = bots.find((session) => session.bot.main);
+    const working = bots.filter((session) => session.busy).length;
+    const plain = sessions.filter((session) => session.bot === undefined && !session.archived);
     const recent = workspaceOrder().slice(0, 5);
     const splash = useRef(null);
 
@@ -63,15 +61,8 @@ export function Splash() {
         return () => removeEventListener("keydown", onKey);
     }, []);
     const rows = [
-        ["theme", lookLabel()],
-        [
-            "layout",
-            `${p.tiling ? "tiled windows" : "flat"}, sidebar ${p.sidebar === "rail" ? "folded" : "open"}`,
-        ],
-        [
-            "sessions",
-            `${sessions.filter((session) => !session.archived).length}${busy > 0 ? `, ${busy} running` : ""}`,
-        ],
+        ["bots", `${bots.length}${working > 0 ? `, ${working} working` : ""}`],
+        ["sessions", `${plain.length}${busy - working > 0 ? `, ${busy - working} running` : ""}`],
         ["models", String(models.length)],
         ["folder", shortPath(server?.defaultCwd, server?.home) || "~"],
         [
@@ -82,6 +73,7 @@ export function Splash() {
                     : "Lancet Guard on"
                 : "off",
         ],
+        ["theme", lookLabel()],
         ["you", `${me?.name ?? "?"} (${me?.role ?? "?"})`],
     ];
     const colors = [
@@ -102,7 +94,7 @@ export function Splash() {
             <pre class="fetch-logo" data-part="home-logo" aria-hidden="true">${LOGO}</pre>
             <div class="fetch-info">
                 <div class="fetch-title" data-part="home-title" style=${`--i:${line++}`}>
-                    <b>${(me?.name ?? "you").toLowerCase().replace(/\s+/g, "-")}</b>@<b>pi-pocket</b>
+                    <b>${(me?.name ?? "you").toLowerCase().replace(/\s+/g, "-")}</b>@<b>noid</b>
                 </div>
                 ${rows.map(
                     ([key, value]) => html`<dl
@@ -124,19 +116,25 @@ export function Splash() {
         </div>
         <div class="splash-actions" data-part="home-actions">
             ${
-                canStart &&
-                html`<button
-                    class="button primary"
-                    onClick=${() => openSheet({ type: "cwd", mode: "new" })}
-                >
-                    <${Icon} name="plus" size=${16} /> New session <${Keys} keys="Alt N" />
+                main &&
+                html`<button class="button primary" onClick=${() => navigate(main.id)}>
+                    Message ${main.bot.name}
                 </button>`
+            }
+            ${
+                canStart &&
+                html`<button class="button" onClick=${() => openSheet({ type: "bot" })}>
+                        <${Icon} name="plus" size=${16} /> New bot
+                    </button>
+                    <button
+                        class="button"
+                        onClick=${() => openSheet({ type: "cwd", mode: "new" })}
+                    >
+                        <${Icon} name="plus" size=${16} /> New session <${Keys} keys="Alt N" />
+                    </button>`
             }
             <button class="button" onClick=${() => store.set({ launcher: true })}>
                 <${Icon} name="command" size=${16} /> Launcher <${Keys} keys="Mod K" />
-            </button>
-            <button class="button" onClick=${() => openSheet({ type: "appearance" })}>
-                <${Icon} name="palette" size=${16} /> Appearance
             </button>
         </div>
         ${

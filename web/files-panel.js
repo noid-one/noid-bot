@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useBack } from "./back.js";
+import { Splitter } from "./splitter.js";
 import { DiffReview, KIND_LETTERS, reloadChanges, useChanges, useWidth } from "./diff.js";
 import { loadFiles, suggestFiles } from "./files.js";
 import { FileView } from "./sheets/file.js";
@@ -223,54 +224,21 @@ function Matches({ query, root, onPick }) {
 
 // ─── The tile ──────────────────────────────────────────────────────────────────────
 
-/** Drag the tile's left edge to resize it on wide screens; double-click goes back to the usual width. */
+/** Drag the panel's left edge to resize it on wide screens, or step it with the arrow keys; a double click goes back to the usual width. */
 function ResizeEdge() {
-    const start = (event) => {
-        if (event.button !== 0) {
-            return;
-        }
-
-        event.preventDefault();
-        const root = document.documentElement;
-        const right = event.currentTarget.parentElement.getBoundingClientRect().right;
-        let width = 0;
-
-        root.classList.add("resizing");
-
-        const move = (each) => {
-            width = Math.round(Math.min(innerWidth - 420, Math.max(320, right - each.clientX)));
-            root.style.setProperty("--files-w", `${width}px`);
-        };
-
-        const stop = () => {
-            root.classList.remove("resizing");
-            removeEventListener("pointermove", move);
-            removeEventListener("pointerup", stop);
-            removeEventListener("pointercancel", stop);
-
-            if (width > 0) {
-                localStorage.setItem(WIDTH_KEY, String(width));
-            }
-        };
-
-        addEventListener("pointermove", move);
-        addEventListener("pointerup", stop);
-        addEventListener("pointercancel", stop);
-    };
-
-    const reset = () => {
-        localStorage.removeItem(WIDTH_KEY);
-        document.documentElement.style.removeProperty("--files-w");
-    };
-
-    return html`<div
-        class="resize-handle files-resize"
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize"
-        onPointerDown=${start}
-        onDblClick=${reset}
-    ></div>`;
+    return html`<${Splitter}
+        edge="left"
+        label="Resize the files tile"
+        variable="--files-w"
+        className="files-resize"
+        min=${320}
+        max=${() => innerWidth - 420}
+        commit=${(width) => localStorage.setItem(WIDTH_KEY, String(width))}
+        reset=${() => {
+            localStorage.removeItem(WIDTH_KEY);
+            document.documentElement.style.removeProperty("--files-w");
+        }}
+    />`;
 }
 
 const savedWidth = Number(localStorage.getItem(WIDTH_KEY));

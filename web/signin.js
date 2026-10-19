@@ -1,7 +1,7 @@
 // The sign-in screen, for a browser that is not signed in.
 
 import { useState } from "preact/hooks";
-import { html } from "./ui.js";
+import { html, NoidMark } from "./ui.js";
 
 export function SignIn() {
     const [value, setValue] = useState("");
@@ -35,10 +35,10 @@ export function SignIn() {
     };
 
     return html`<div class="signin" data-part="sign-in">
-        <div class="pi big">π</div>
-        <h1>Pi Pocket</h1>
+        <${NoidMark} size=${64} className="signin-mark" />
+        <h1>noid</h1>
         <p class="muted">
-            Open the sign-in link Pi Pocket printed when it started, or an invite from a signed-in device. You can also paste the link, the token, or an invite code here.
+            Open the sign-in link noid printed when it started, or an invite from a signed-in device. You can also paste the link, the token, or an invite code here.
         </p>
         <div class="row">
             <input

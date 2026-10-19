@@ -10,21 +10,32 @@ const KEY = "pocket.appearance";
 const CACHE = "pocket.themeCache";
 const DESKTOP_CACHE = "pocket.desktopTheme";
 const PINNED = "pocket.pinned";
-const FALLBACK = "tokyo-night";
+/** Which of the theme (`look`) and the colors (`theme`) this browser's person chose (see `chosen`). */
+const CHOSEN = "pocket.themeChosen";
+
+/** The colors noid starts with, and the ones "desktop" shows where the server has no desktop. */
+export const DEFAULT_COLORS = "noid";
+const FALLBACK = DEFAULT_COLORS;
 
 /** The app's own look, which every theme builds on: it loads no stylesheet. */
 export const BASE_LOOK = "pocket";
 
+/** What the app's own look is called: its id stays "pocket", which browsers have saved. */
+export const BASE_LOOK_NAME = "noid";
+
 const DEFAULTS = {
     /**
-     * The colors: "desktop" follows the Omarchy theme of the machine Pi Pocket runs on; otherwise a key of THEMES, or the
-     * id of a theme folder with a colors.toml. (Its name is from before themes were folders.)
+     * The colors: "desktop" follows the Omarchy theme of the machine noid runs on; otherwise a key of THEMES, or the id
+     * of a theme folder with a colors.toml. (Its name is from before themes were folders.) noid starts in its own.
      */
-    theme: "desktop",
+    theme: DEFAULT_COLORS,
     /** The theme: a theme folder's id, or "pocket", the app's own look. */
     look: BASE_LOOK,
-    /** Wide screens: the sidebar and the conversation as Hyprland windows, with gaps and borders. */
-    tiling: true,
+    /**
+     * Wide screens: the sidebar and the conversation as Hyprland windows, with gaps and borders. Off, they meet at a
+     * hairline as panes of one window, which is how noid starts.
+     */
+    tiling: false,
     /** The desktop's wallpaper in the gaps, when following the desktop. */
     wallpaper: false,
     /** "auto" follows the system's reduced-motion setting. */
@@ -71,12 +82,41 @@ const RAIL_KEY = "pocket.railBeside";
 /** Set once this browser's saved look has the soft tiles' text size and sidebar. */
 const SOFT_KEY = "pocket.softTiles";
 
+/** Set once this browser's saved look has dropped Pi Pocket's defaults for noid's. */
+const NOID_KEY = "pocket.noidLook";
+
+/**
+ * noid: a browser that saved Pi Pocket's defaults (the desktop's colors, tiled windows) saved every preference, chosen or
+ * not, so they cannot be told from a choice. Once, drop them for noid's own (its colors, panes), unless the colors were
+ * this browser's person's choice.
+ */
+function noidDefaults(saved) {
+    if (localStorage.getItem(NOID_KEY) !== null) {
+        return saved;
+    }
+
+    const next = { ...saved };
+
+    if (next.theme === "desktop" && readJson(CHOSEN, null)?.theme !== true) {
+        delete next.theme;
+    }
+
+    if (next.tiling === true) {
+        delete next.tiling;
+    }
+
+    localStorage.setItem(NOID_KEY, "1");
+    localStorage.setItem(KEY, JSON.stringify(next));
+
+    return next;
+}
+
 /**
  * What this browser saved. The sidebar's usual width was 300 before the rail went beside the list, then 324, and is
  * 312 with soft tiles. The text size was the whole app's, 12 to 16; it is now the conversation's, a step larger.
  */
 function savedPrefs() {
-    const saved = readJson(KEY, {});
+    const saved = noidDefaults(readJson(KEY, {}));
 
     if (localStorage.getItem(SOFT_KEY) !== null) {
         return saved;
@@ -119,7 +159,6 @@ const sidebarWidth = (p) => `${Math.min(524, Math.max(264, p.sidebarWidth))}px`;
 let own = { ...DEFAULTS, ...savedPrefs() };
 
 /** Which of the theme (`look`) and the colors (`theme`) this browser's person chose; the rest follow the owner's default. */
-const CHOSEN = "pocket.themeChosen";
 const chosen = readJson(CHOSEN, null) ?? {
     // From before there were defaults: colors other than the desktop's were someone's choice.
     theme: own.theme !== DEFAULTS.theme,
@@ -357,9 +396,12 @@ export function lookLabel() {
     const palette = paletteOf();
     const colors = palette.desktop ? `${palette.name} (desktop)` : palette.name;
 
+    // The app's own look goes without saying: its colors alone.
     return look && prefs().theme.split("@")[0] === look.id
         ? look.name
-        : `${look?.name ?? "Pocket"} · ${colors}`;
+        : look && look.id !== BASE_LOOK
+          ? `${look.name} · ${colors}`
+          : colors;
 }
 
 /** Theme folders that change the look, in the order the server lists them: the app's own first. */

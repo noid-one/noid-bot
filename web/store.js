@@ -221,6 +221,11 @@ export function sessionUnread(session, state = store.state) {
     return session.chatAt !== undefined && session.chatBy !== state.me?.id && session.chatAt > read;
 }
 
+/** noid: the bot whose session `id` is, if it is a bot's. */
+export function sessionBot(id = store.state.conversationId, state = store.state) {
+    return state.sessions.find((session) => session.id === id)?.bot;
+}
+
 /**
  * Sessions in "workspace" order, as Alt+1…9 and the rail number them: pinned ones first (in the order they were
  * pinned), then the rest, newest first, each followed by the linked sessions under it, as the list shows them
