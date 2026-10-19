@@ -11038,6 +11038,28 @@ textarea.notes {
     }
 }
 
+/* noid: the Browser as a page in the conversation's place: the conversation goes, the Browser takes its room. */
+@media (min-width: 1100px) {
+    .layout.browsing.browser-page > .pane,
+    .layout.browsing.browser-page > .peeks {
+        display: none;
+    }
+    .layout.browsing.browser-page .browser {
+        flex: 1 1 auto;
+        max-width: none;
+        border-left: 0;
+    }
+    .layout.browsing.browser-page .browser-resize {
+        display: none;
+    }
+}
+
+/* The whole screen: no frame, no corners. */
+.browser.full {
+    border: 0;
+    border-radius: 0;
+}
+
 /* The Browser's tools, under the panel's head: a toolbar row, as a page's tools sit under an editor's tabs. */
 .browser-bar {
     display: flex;
@@ -12531,6 +12553,28 @@ textarea.notes {
 
 .desktop-frame .desktop-shot {
     margin: 0;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.desktop-frame {
+    border-radius: var(--r-row);
+    outline: none;
+    touch-action: none;
+    cursor: default;
+}
+
+/* Keys go to the desktop while it has the focus: it says so with the accent around it. */
+.desktop-frame.focused {
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.desktop-frame .desktop-shot {
+    cursor: default;
+}
+
+.desktop-foot {
+    align-items: center;
 }
 
 .desktop-empty {

@@ -123,6 +123,8 @@ export const store = {
         browser: null,
         /** The Browser panel shows; kept per tab, so the reload after a live edit keeps it. */
         browserOpen: sessionStorage.getItem("pocket.browser") === "1",
+        /** noid: the Browser in the conversation's place on wide screens, not a panel beside it (this tab). */
+        browserPage: sessionStorage.getItem("noid.browser-page") === "1",
         /** The Files tile shows (`files-panel.js`); kept per tab, like the browser's. */
         filesOpen: sessionStorage.getItem("pocket.files") === "1",
         /** The Files tile's tab: `files` or `changes`. */
@@ -1322,6 +1324,12 @@ export function openTool(kind, { cwd } = {}) {
 }
 
 export const closeTool = () => store.set({ tool: null });
+
+/** noid: the Browser as a page in the conversation's place, or a panel beside it; this tab remembers which. */
+export function setBrowserPage(page) {
+    sessionStorage.setItem("noid.browser-page", page ? "1" : "0");
+    store.set({ browserPage: page });
+}
 
 /** noid: open Settings at `page`, or at the first one (a phone shows the list first). */
 export function openSettings(page = null) {

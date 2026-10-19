@@ -475,7 +475,7 @@ function App() {
     const peekColumn = peeking && PEEK_WIDE.matches && !browsing && !filing && !people;
 
     return html`<div
-        class=${`layout ${inConversation || placed ? "" : "home"} ${browsing ? "browsing" : ""} ${filing ? "filing" : ""}`}
+        class=${`layout ${inConversation || placed ? "" : "home"} ${browsing ? "browsing" : ""} ${browsing && state.browserPage ? "browser-page" : ""} ${filing ? "filing" : ""}`}
         data-part="app"
     >
         <aside class="sidebar window" data-part="sidebar">

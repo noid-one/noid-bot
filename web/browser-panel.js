@@ -15,7 +15,7 @@ import {
     setBrowserOpen,
     toggleBrowser,
 } from "./browser.js";
-import { api, attempt, canSteer, notify, panelsBeside, store } from "./store.js";
+import { api, attempt, canSteer, notify, panelsBeside, setBrowserPage, store } from "./store.js";
 import { APPLE, html, Icon, Spinner } from "./ui.js";
 
 const WIDTH_KEY = "pocket.browserWidth";
@@ -680,6 +680,23 @@ if (savedWidth > 0) {
 /** The page may close again after it opens (a crash, a long while unused): open it by itself at most this often. */
 const REOPEN_MS = 2 * 60_000;
 
+/** noid: whether the Browser sits beside the conversation (1100px and wider): only then can it be a page instead. */
+const WIDE = matchMedia("(min-width: 1100px)");
+
+function useWide() {
+    const [wide, setWide] = useState(WIDE.matches);
+
+    useEffect(() => {
+        const change = () => setWide(WIDE.matches);
+
+        WIDE.addEventListener("change", change);
+
+        return () => WIDE.removeEventListener("change", change);
+    }, []);
+
+    return wide;
+}
+
 export function BrowserPanel({ leaving = false }) {
     const { conversationId, browser: state, me, view } = store.state;
     // Using the page takes what steering Pi takes: while take turns is on, the wheel.
@@ -698,6 +715,26 @@ export function BrowserPanel({ leaving = false }) {
     const wasOpen = useRef(false);
     const stageRef = useRef(null);
     const typeInput = useRef(null);
+    // noid: how it shows: a panel beside the conversation, a page in its place (wide screens), or the whole screen.
+    const panel = useRef(null);
+    const [full, setFull] = useState(false);
+    const wide = useWide();
+
+    useEffect(() => {
+        const change = () =>
+            setFull(document.fullscreenElement === panel.current && panel.current !== null);
+
+        document.addEventListener("fullscreenchange", change);
+
+        return () => document.removeEventListener("fullscreenchange", change);
+    }, []);
+
+    const toggleFull = () =>
+        full
+            ? document.exitFullscreen().catch(() => {})
+            : panel.current
+                  ?.requestFullscreen()
+                  .catch(() => notify("error", "Full screen is not allowed here."));
     /** The size this tab last fitted the page to: the page follows the panel only while it still has it. */
     const fittedHere = useRef(null);
     const beside = panelsBeside();
@@ -876,7 +913,8 @@ export function BrowserPanel({ leaving = false }) {
     }
 
     return html`<section
-        class=${`browser window ${leaving ? "leaving" : ""}`}
+        ref=${panel}
+        class=${`browser window ${leaving ? "leaving" : ""} ${full ? "full" : ""}`}
         data-part="browser-panel"
         data-state=${leaving ? "closing" : undefined}
         role=${beside ? undefined : "dialog"}
@@ -995,6 +1033,31 @@ export function BrowserPanel({ leaving = false }) {
                     }}
                 >
                     <${Icon} name="keyboard" size=${18} />
+                </button>`
+            }
+            ${
+                wide &&
+                !full &&
+                html`<button
+                    class=${`icon-button ${store.state.browserPage ? "on" : ""}`}
+                    aria-label=${store.state.browserPage ? "Back to a panel" : "Full page"}
+                    title=${store.state.browserPage ? "Back to a panel beside the conversation" : "Full page: in the conversation's place"}
+                    aria-pressed=${store.state.browserPage ? "true" : "false"}
+                    onClick=${() => setBrowserPage(!store.state.browserPage)}
+                >
+                    <${Icon} name=${store.state.browserPage ? "shrink" : "expand"} size=${18} />
+                </button>`
+            }
+            ${
+                document.fullscreenEnabled &&
+                html`<button
+                    class=${`icon-button ${full ? "on" : ""}`}
+                    aria-label=${full ? "Leave full screen" : "Full screen"}
+                    title=${full ? "Leave full screen (Esc)" : "Full screen"}
+                    aria-pressed=${full ? "true" : "false"}
+                    onClick=${toggleFull}
+                >
+                    <${Icon} name="fullscreen" size=${18} />
                 </button>`
             }
         </div>
