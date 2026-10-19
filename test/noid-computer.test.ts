@@ -456,6 +456,26 @@ test("someone other than the owner reaches only the session's folder, links incl
 // ─── The Computer's lifecycle, with a fake docker ───────────────────────────────────────────
 
 /** A docker that remembers what it was asked, with a container in `state` and an image present or not. */
+test("a computer on another machine: every docker command names its engine", async () => {
+    const engines = new Set<string>();
+    const inner = fakeDocker({ state: "stopped", image: true });
+
+    const docker: Docker = (args, input) => {
+        assert.equal(args[0], "-H");
+        engines.add(args[1]!);
+
+        return inner.docker(args.slice(2), input);
+    };
+
+    const computer = new Computer({ dockerHost: "ssh://me@box" }, docker);
+
+    await computer.start();
+    await computer.stop();
+    assert.deepEqual([...engines], ["ssh://me@box"]);
+    assert.ok(inner.calls.includes("start noid-computer"));
+    assert.ok(inner.calls.some((call) => call.startsWith("stop")));
+});
+
 function fakeDocker(initial: { state: "missing" | "stopped" | "running"; image: boolean }) {
     const calls: string[] = [];
     let { state, image } = initial;

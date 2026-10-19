@@ -26,6 +26,11 @@ export const COMPUTER_HOME = "/home/noid";
 export type ComputerOptions = {
     /** The docker command, for example Docker Desktop's `docker.exe` from WSL (`NOID_DOCKER`). */
     docker?: string;
+    /**
+     * The Docker engine that runs the computer, when it is not this machine's (`NOID_DOCKER_HOST`): `ssh://me@box` puts
+     * the computer on another machine, which keeps working while this one sleeps. Every docker command gets `-H`.
+     */
+    dockerHost?: string;
     /** Names of the container, its home volume, and its image. */
     container?: string;
     volume?: string;
@@ -133,6 +138,8 @@ export class Computer {
     readonly image: string;
     readonly #docker: Docker;
     readonly #binary: string;
+    /** `-H <engine>` before every docker command, when the computer is on another machine. */
+    readonly #hostArgs: string[];
     readonly #idleMs: number;
     readonly #now: () => number;
     readonly #buildContext: string;
@@ -155,7 +162,12 @@ export class Computer {
 
     constructor(options: ComputerOptions = {}, docker?: Docker) {
         this.#binary = options.docker ?? process.env.NOID_DOCKER ?? "docker";
-        this.#docker = docker ?? dockerCommand(this.#binary);
+        const host = options.dockerHost ?? process.env.NOID_DOCKER_HOST;
+
+        this.#hostArgs = host === undefined || host === "" ? [] : ["-H", host];
+        const run = docker ?? dockerCommand(this.#binary);
+
+        this.#docker = (args, input) => run([...this.#hostArgs, ...args], input);
         this.container = options.container ?? "noid-computer";
         this.volume = options.volume ?? "noid-computer-home";
         this.image = options.image ?? "noid-computer:1";
@@ -168,7 +180,14 @@ export class Computer {
             command: async () => {
                 await this.start();
 
-                return [this.#binary, "exec", "-i", this.container, "/opt/pi-env/pi-env"];
+                return [
+                    this.#binary,
+                    ...this.#hostArgs,
+                    "exec",
+                    "-i",
+                    this.container,
+                    "/opt/pi-env/pi-env",
+                ];
             },
             onLog: (text) => this.#log(`pi-env: ${text.trim()}`),
         });
@@ -359,9 +378,13 @@ export class Computer {
             `exec chromium ${BROWSER_FLAGS.join(" ")} about:blank 3<&0 4>&1 1>/dev/null 2>>/tmp/chromium.log`,
         ].join("; ");
 
-        return spawn(this.#binary, ["exec", "-i", this.container, "sh", "-c", script], {
-            stdio: ["pipe", "pipe", "ignore"],
-        });
+        return spawn(
+            this.#binary,
+            [...this.#hostArgs, "exec", "-i", this.container, "sh", "-c", script],
+            {
+                stdio: ["pipe", "pipe", "ignore"],
+            },
+        );
     }
 
     /** Build the image from `computer/`, with pi-env's daemon for Linux put in beside the Dockerfile. */
