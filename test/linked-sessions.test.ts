@@ -100,8 +100,13 @@ test("someone who cannot see the origin learns nothing of it and cannot reach it
         assert.ok(!JSON.stringify(list).includes(`"id":${Number(id)}`));
     }
 
+    const { submissionId } = await app.commands.submit(target, user, {
+        text: "hello",
+        requestId: "guest",
+    });
+
     // With Pi working for them in the linked session, its peers are out of reach.
-    await app.commands.submit(target, user, { text: "hello", requestId: "guest" });
+    await (await app.harness.submission(submissionId, context))!.wait(context);
     assert.deepEqual(await app.linkedSessions.list(target), []);
     await assert.rejects(send(target, origin.address), /not linked/);
 });
