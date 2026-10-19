@@ -5,6 +5,7 @@ import {
     type App,
     cleanUp,
     context,
+    home,
     lastText,
     openApp,
     owner,
@@ -14,7 +15,7 @@ import {
     work,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
@@ -452,4 +453,65 @@ test("each bot keeps memories of its own, and everywhere's reach them all", asyn
     assert.ok(seenByOne.includes("One-only-walrus.") && seenByOne.includes("Everyone-llama."));
     assert.ok(!seenByTwo.includes("One-only-walrus.") && seenByTwo.includes("Everyone-llama."));
     assert.equal((await app.memory.view(one.id, owner(app))).project?.name, "memo-one");
+});
+
+test("an agent file is a bot: made, kept up with its file, locked to it, archived without it, and back with it", async () => {
+    const folder = join(home, ".agents", "agents");
+    const path = join(folder, "reviewer.md");
+    const find = () => app.bots.list({ archived: true }).find((each) => each.bot.file === path);
+
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(
+        path,
+        "---\nname: Reviewer\ndescription: Reviews pull requests\nmodel: sonnet\n---\nRead the diff closely.\n",
+    );
+    await app.bots.syncAgentFiles();
+
+    const made = find();
+
+    assert.ok(made, "a bot for the file");
+    assert.equal(made.bot.name, "Reviewer");
+    assert.equal(made.bot.role, "Reviews pull requests");
+    assert.equal(made.bot.kind, "computer");
+    assert.equal(
+        (await app.agentState(made.conversationId))?.instructions,
+        "Read the diff closely.",
+    );
+
+    const id = made.conversationId;
+
+    // Edited: the bot follows. Its file's name and role are not changed here, nor its instructions; its face is.
+    writeFileSync(path, "---\nname: Reviewer\ndescription: Reviews code\n---\nRead every line.\n");
+    await app.bots.syncAgentFiles();
+    assert.equal(find()?.bot.role, "Reviews code");
+    assert.equal((await app.agentState(id))?.instructions, "Read every line.");
+    await assert.rejects(app.bots.update(owner(app), id, { name: "Critic" }), /edit/);
+    await assert.rejects(app.commands.setInstructions(id, owner(app), "Skim."), /edit/);
+    assert.equal((await app.bots.update(owner(app), id, { color: "#123456" })).color, "#123456");
+
+    // A subagent can take its instructions by name.
+    assert.ok(app.bots.agentFiles().some((each) => each.name === "Reviewer"));
+
+    // Deleted: archived; back: the same bot, out of the archive.
+    rmSync(path);
+    await app.bots.syncAgentFiles();
+    assert.equal(app.sessionMeta(id)?.archived, true);
+    writeFileSync(path, "---\nname: Reviewer\n---\nRead every line.\n");
+    await app.bots.syncAgentFiles();
+    assert.equal(app.sessionMeta(id)?.archived, false);
+    assert.equal(find()?.conversationId, id);
+    assert.equal(
+        app.bots.list({ archived: true }).filter((each) => each.bot.name === "Reviewer").length,
+        1,
+    );
+
+    // A file named as another bot is makes no bot.
+    writeFileSync(join(folder, "noid.md"), "---\nname: Noid\n---\nBe someone else.\n");
+    await app.bots.syncAgentFiles();
+    assert.equal(
+        app.bots.list({ archived: true }).filter((each) => each.bot.name === "Noid").length,
+        1,
+    );
+    rmSync(folder, { recursive: true });
+    await app.bots.syncAgentFiles();
 });

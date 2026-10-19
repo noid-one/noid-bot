@@ -21,6 +21,8 @@ export function BotSheet({ id }) {
     const { sessions, view } = store.state;
     const editing = sessions.find((session) => session.id === id && session.bot !== undefined);
     const bot = editing?.bot;
+    // noid: a bot made from an agent file is what its file says; only its face is changed here.
+    const file = bot?.file;
     const [name, setName] = useState(bot?.name ?? "");
     const [role, setRole] = useState(bot?.role ?? "");
     const [instructions, setInstructions] = useState(
@@ -56,7 +58,9 @@ export function BotSheet({ id }) {
                 // Instructions only change when they were shown here (this bot's session is open).
                 await actions.updateBot(
                     id,
-                    view.conversation?.id === id ? { ...body, instructions } : body,
+                    view.conversation?.id === id && file === undefined
+                        ? { ...body, instructions }
+                        : body,
                 );
                 closeSheet();
 
@@ -129,11 +133,19 @@ export function BotSheet({ id }) {
                 </label>
             </div>
         </div>
+        ${
+            file !== undefined &&
+            html`<p class="bot-file muted">
+                From the agent file <code>${shortPath(file)}</code>. Its name, role, and instructions
+                are the file's: edit it to change them.
+            </p>`
+        }
         ${field(
             "Name",
             html`<div class="bot-name-field">
                 <input
-                    autofocus
+                    autofocus=${file === undefined}
+                    readonly=${file !== undefined}
                     aria-label="Name"
                     value=${name}
                     maxlength="40"
@@ -142,6 +154,7 @@ export function BotSheet({ id }) {
                 />
                 ${
                     bot !== undefined &&
+                    file === undefined &&
                     html`<button
                         class="button"
                         disabled=${naming}
@@ -157,6 +170,7 @@ export function BotSheet({ id }) {
             "Role",
             html`<input
                 aria-label="Role"
+                readonly=${file !== undefined}
                 value=${role}
                 maxlength="160"
                 placeholder="e.g. Finds things out and writes them up"
@@ -170,6 +184,7 @@ export function BotSheet({ id }) {
                 html`<textarea
                     rows="4"
                     aria-label="Instructions"
+                    readonly=${file !== undefined}
                     value=${instructions}
                     placeholder="e.g. Cite every source."
                     onInput=${(event) => setInstructions(event.currentTarget.value)}
@@ -232,4 +247,11 @@ export function BotSheet({ id }) {
             </button>
         </div>
     <//>`;
+}
+
+/** An agent file's path from its dot folder on (`.agents/agents/x.md`): enough to find it, without the home folder. */
+function shortPath(path) {
+    const at = path.search(/\/\.(agents|pi|claude)\//);
+
+    return at === -1 ? path : `~${path.slice(at)}`;
 }

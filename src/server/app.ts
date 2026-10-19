@@ -192,6 +192,9 @@ export function subagentState(entry: SubagentEntry): SubagentState {
  */
 const BOARD_FINISHED = 24;
 
+/** How often agent files are looked at again (`Bots.syncAgentFiles`). */
+const AGENT_FILES_MS = 10_000;
+
 /** How long a read of Pi's settings serves skills and trust before it is read again. */
 const SETTINGS_STALE_MS = 30_000;
 
@@ -377,6 +380,8 @@ export class PocketApp {
     readonly #subagents = new Map<ConversationId, SubagentsOf>();
     #sessions: Record<string, SessionMeta> = {};
     #sessionsTimer: NodeJS.Timeout | undefined;
+    /** noid: how often agent files are looked at again, for the bots made from them. */
+    #agentFilesTimer: NodeJS.Timeout | undefined;
     /** The extensions installed now: every conversation runs with them, except the session tools, which bots select. */
     #registry: Registry | undefined;
     #unsubscribeCommits: (() => void) | undefined;
@@ -390,6 +395,11 @@ export class PocketApp {
     readonly #mainBot: boolean;
     /** The clock durable work runs by. */
     readonly now: () => number;
+
+    /** The home folder: its `.agents/` has skills and agent files. */
+    get home(): string {
+        return this.#home;
+    }
 
     private constructor(options: OpenOptions) {
         this.#configureModels = options.configureModels;
@@ -612,6 +622,7 @@ export class PocketApp {
                 }
             },
             skills: (cwd) => this.skills(cwd),
+            agentFiles: () => this.bots.agentFiles(),
             resolveModel: (spec) => resolveModel(this.models, spec, this.signInNeeded),
             subagentModels: () => this.config.subagentModels,
             modelProblem: (ref, fresh) => this.providers.problem(ref, fresh),
@@ -740,6 +751,14 @@ export class PocketApp {
 
         // Bots made before their tools existed get them (a no-op for the rest).
         await this.bots.ensureTools();
+
+        // noid: a bot for each agent file, kept up with the files while the server runs.
+        if (this.#mainBot) {
+            await this.#syncAgentFiles();
+            this.#agentFilesTimer = setInterval(() => void this.#syncAgentFiles(), AGENT_FILES_MS);
+            this.#agentFilesTimer.unref();
+        }
+
         await this.desktop.restore();
 
         // Work a previous process left unfinished continues now.
@@ -2370,6 +2389,15 @@ export class PocketApp {
         return { agentDir: getAgentDir(), home: this.#home, settingsPaths, defaultProjectTrust };
     }
 
+    /** Bring the agent files' bots up to date; a failure is told, and the next look tries again. */
+    async #syncAgentFiles(): Promise<void> {
+        try {
+            await this.bots.syncAgentFiles();
+        } catch (error) {
+            this.#log(`agent files: ${describe(error)}`);
+        }
+    }
+
     /** Pi's skills for a session working in `cwd`, from the places Pi looks (`skills.ts`). */
     skills(cwd: string): Skill[] {
         return loadSessionSkills(cwd, this.#skillSources());
@@ -2914,6 +2942,7 @@ export class PocketApp {
     close(): Promise<void> {
         this.#closing ??= (async () => {
             clearTimeout(this.#sessionsTimer);
+            clearInterval(this.#agentFilesTimer);
             this.alerts.close();
             this.themes.close();
             this.spend.close();

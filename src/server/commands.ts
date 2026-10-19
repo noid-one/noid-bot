@@ -1493,6 +1493,13 @@ export class Commands {
             return;
         }
 
+        // noid: a bot from an agent file is what its file says (`agent-files.ts`).
+        const file = app.sessionMeta(id)?.bot?.file;
+
+        if (file !== undefined) {
+            throw new HttpError(409, `This bot's instructions are its file's: edit ${file}.`);
+        }
+
         await (
             await app.conversation(id)
         ).configure({ instructions: instructions === "" ? null : instructions }, context);

@@ -793,6 +793,12 @@ export default function createSubagents(host: PocketHost) {
                 description: "spawn only: the tool names it may use. Default: your tools.",
             }),
         ),
+        agent: Type.Optional(
+            Type.String({
+                description:
+                    "spawn only: the name of an agent file (~/.agents/agents/NAME.md; each is a bot too) whose instructions the subagent takes.",
+            }),
+        ),
     };
     const offered = Type.Object({
         ...base,
@@ -813,7 +819,7 @@ export default function createSubagents(host: PocketHost) {
             (choosing
                 ? "model, only one the user allows (it runs on your model otherwise), "
                 : "") +
-            "thinking level, yours or lower, and tools to allow" +
+            "thinking level, yours or lower, tools to allow, and agent: an agent file whose instructions it takes" +
             (choosing ? "" : "; it runs on your model") +
             "), send (name, message; followUp: true queues it after the current answer instead of steering), stop " +
             "(name: aborts its current work), status (one name, or all). Answers come back to you as messages at your " +
@@ -947,6 +953,22 @@ export default function createSubagents(host: PocketHost) {
                       });
             // TypeBox infers no type from a union built from a list; the schema itself checks the value.
             const asked = args.thinking as ModelThinkingLevel | undefined;
+            // noid: an agent file's instructions, after a subagent's own.
+            const profile =
+                action === "spawn" && args.agent !== undefined
+                    ? host
+                          .agentFiles()
+                          .find((each) => each.name.toLowerCase() === args.agent!.toLowerCase())
+                    : undefined;
+
+            if (action === "spawn" && args.agent !== undefined && profile === undefined) {
+                const names = host.agentFiles().map((each) => each.name);
+
+                throw new Error(
+                    `No agent file named ${args.agent}. ${names.length === 0 ? "There are none." : `There are: ${names.join(", ")}.`}`,
+                );
+            }
+
             // The session's own level is the most a subagent may think: its person chose it.
             const most = parent.thinkingLevel ?? "off";
             const wanted = asked === undefined ? most : rank(asked) > rank(most) ? most : asked;
@@ -996,7 +1018,7 @@ export default function createSubagents(host: PocketHost) {
 
                     await configure(tx, child.id, {
                         extensions: { remove: [SubagentTools, AgentTeams] },
-                        instructions: `You are the subagent "${name}". You work for another agent, not directly for a person, although a person may open your conversation and talk to you. Answer requests completely but concisely: your final answer is what gets reported back.`,
+                        instructions: `You are the subagent "${name}". You work for another agent, not directly for a person, although a person may open your conversation and talk to you. Answer requests completely but concisely: your final answer is what gets reported back.${profile === undefined || profile.instructions === "" ? "" : `\n\n${profile.instructions}`}`,
                         ...(model === undefined ? {} : { model }),
                         ...(thinking === undefined ? {} : { thinkingLevel: thinking }),
                         ...(tools === undefined ? {} : { tools }),

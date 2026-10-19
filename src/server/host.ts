@@ -216,6 +216,8 @@ export interface PocketHost {
     skillPaths(): string[];
     /** Pi's skills for a session working in `cwd`, from the places Pi looks (`skills.ts`). */
     skills(cwd: string): Skill[];
+    /** noid: the agent files (`noid/agent-files.ts`), whose instructions a subagent can take. */
+    agentFiles(): { name: string; description: string; instructions: string }[];
     /**
      * `provider/modelId` (or a bare model id) to a signed-in model whose sign-in has not expired, or an error that says
      * it is not available. The error names no other models: models are a person's to choose.

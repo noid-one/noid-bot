@@ -5,6 +5,7 @@
  * (Durable's per-conversation `instructions`). A computer bot works in `bots/<slug>` on the shared computer, a host bot
  * in a folder of this machine. Noid, the main bot, is made on first open and cannot be archived.
  */
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { SESSION_TOOLS_EXTENSION } from "../session-tools.ts";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { AgentDoc, type AgentState, type ConversationId } from "@earendil-works/pi-durable";
@@ -17,6 +18,12 @@ import { ownerOf } from "./owner.ts";
 import { COMPUTER_HOME } from "./computer.ts";
 import { nameBot, type Naming } from "./naming.ts";
 import { recordUsage } from "../titles.ts";
+import {
+    type AgentFile,
+    agentFilesSignature,
+    agentFolders,
+    loadAgentFiles,
+} from "./agent-files.ts";
 
 /** Faces: the skins and eyes `web/faces/params.js` draws. */
 export const SKINS = ["jelly", "clay", "chrome", "holo", "pixel"] as const;
@@ -35,6 +42,10 @@ export type BotProfile = {
     kind: "computer" | "host";
     /** Noid, the main bot: made on first open, never archived. */
     main?: true;
+    /** The agent file it is made from (`agent-files.ts`): its name, role, and instructions are the file's. */
+    file?: string;
+    /** Archived because its file is gone: it comes back with the file. */
+    fileGone?: true;
 };
 
 export type BotRequest = {
@@ -138,6 +149,11 @@ export function slug(text: string, max: number, fallback: string): string {
 
 export class Bots {
     readonly #app: PocketApp;
+    /** The agent files as last synced (`agentFilesSignature`): none of them changed while it is the same. */
+    #synced: string | undefined;
+    /** Agent files no bot could be made from, by path, so each is told about once. */
+    readonly #refused = new Set<string>();
+    #syncing: Promise<void> | undefined;
 
     constructor(app: PocketApp) {
         this.#app = app;
@@ -176,6 +192,7 @@ export class Bots {
     async create(
         user: User,
         request: BotRequest,
+        file?: string,
     ): Promise<{ id: ConversationId; bot: BotProfile }> {
         const app = this.#app;
 
@@ -233,6 +250,7 @@ export class Bots {
             ...optional("eyes", pick(request.eyes, EYES, "eyes")),
             kind,
             ...(request === NOID_REQUEST ? { main: true as const } : {}),
+            ...optional("file", file),
         };
         const { id } = await app.commands.createSession(
             user,
@@ -301,6 +319,18 @@ export class Bots {
 
         const name = text(request.name, "name", MAX_NAME, false) || current.name;
 
+        // A bot from an agent file is what its file says; only its face is noid's.
+        if (
+            current.file !== undefined &&
+            (name !== current.name ||
+                (text(request.role, "role", MAX_ROLE, false) ?? current.role) !== current.role)
+        ) {
+            throw new HttpError(
+                409,
+                `This bot's name and role are its file's: edit ${current.file}.`,
+            );
+        }
+
         if (
             name.toLowerCase() !== current.name.toLowerCase() &&
             this.list().some((each) => each.bot.name.toLowerCase() === name.toLowerCase())
@@ -341,6 +371,151 @@ export class Bots {
         }, context);
 
         return next;
+    }
+
+    /** Where agent files are looked for (`agent-files.ts`). */
+    agentFolders(): string[] {
+        return agentFolders(this.#app.home, getAgentDir());
+    }
+
+    /** The agent files, the first of each name: bots, and what `subagent` takes as `agent`. */
+    agentFiles(): AgentFile[] {
+        return loadAgentFiles(this.agentFolders());
+    }
+
+    /**
+     * Make the agent files' bots match them: a bot for each new file, its name, role, and instructions brought up to
+     * date, and archived when its file is gone (and back when it returns). Nothing to do while no file changed. A bot a
+     * person archived stays archived. A file whose name another bot has, or whose instructions are too long, makes no
+     * bot: the owner is told, once.
+     */
+    syncAgentFiles(): Promise<void> {
+        // One at a time: a look that comes while one runs waits for it.
+        this.#syncing ??= this.#syncAgentFiles().finally(() => {
+            this.#syncing = undefined;
+        });
+
+        return this.#syncing;
+    }
+
+    async #syncAgentFiles(): Promise<void> {
+        const folders = this.agentFolders();
+        const signature = agentFilesSignature(folders);
+
+        if (signature === this.#synced) {
+            return;
+        }
+
+        const app = this.#app;
+        const owner = ownerOf(app);
+
+        if (owner === undefined) {
+            return;
+        }
+
+        const files = loadAgentFiles(folders);
+        const bots = this.list({ archived: true });
+
+        for (const file of files) {
+            const name = file.name.replace(/\s+/g, " ").trim().slice(0, MAX_NAME).trim();
+            const role =
+                file.description.length > MAX_ROLE
+                    ? `${file.description.slice(0, MAX_ROLE - 1).trimEnd()}…`
+                    : file.description;
+
+            const refuse = (why: string) => {
+                if (!this.#refused.has(file.path)) {
+                    this.#refused.add(file.path);
+
+                    app.notice("warning", `No bot from ${file.path}: ${why}`);
+                }
+            };
+
+            if (file.instructions.length > MAX_INSTRUCTIONS) {
+                refuse(`its instructions are over ${MAX_INSTRUCTIONS} characters.`);
+
+                continue;
+            }
+
+            const own = bots.find((each) => each.bot.file === file.path);
+            const clash = bots.find(
+                (each) =>
+                    each.bot.file !== file.path &&
+                    each.bot.name.toLowerCase() === name.toLowerCase() &&
+                    app.sessionMeta(each.conversationId)?.archived !== true,
+            );
+
+            if (clash !== undefined) {
+                refuse(`there is a bot called ${clash.bot.name} already.`);
+
+                continue;
+            }
+
+            this.#refused.delete(file.path);
+
+            if (own === undefined) {
+                await this.create(
+                    owner,
+                    { name, role, instructions: file.instructions },
+                    file.path,
+                );
+
+                continue;
+            }
+
+            const { conversationId: id, bot } = own;
+
+            if ((await app.agentState(id))?.instructions !== (file.instructions || undefined)) {
+                await (
+                    await app.conversation(id)
+                ).configure(
+                    { instructions: file.instructions === "" ? null : file.instructions },
+                    context,
+                );
+            }
+
+            if (bot.name !== name || bot.role !== role || bot.fileGone === true) {
+                await app.harness.commit(async (tx) => {
+                    const meta = (await tx.doc(SessionsDoc)).items[String(id)];
+
+                    if (meta?.bot !== undefined) {
+                        const { fileGone, ...rest } = meta.bot;
+
+                        meta.bot = { ...rest, name, role };
+                        meta.title = name;
+
+                        if (fileGone === true) {
+                            meta.archived = false;
+                        }
+
+                        meta.updatedAt = Date.now();
+                    }
+                }, context);
+            }
+        }
+
+        const paths = new Set(files.map((file) => file.path));
+
+        for (const { conversationId: id, bot } of bots) {
+            if (
+                bot.file !== undefined &&
+                !paths.has(bot.file) &&
+                bot.fileGone !== true &&
+                app.sessionMeta(id)?.archived !== true
+            ) {
+                await app.harness.commit(async (tx) => {
+                    const meta = (await tx.doc(SessionsDoc)).items[String(id)];
+
+                    if (meta?.bot !== undefined) {
+                        meta.bot = { ...meta.bot, fileGone: true };
+                        meta.archived = true;
+                        meta.updatedAt = Date.now();
+                    }
+                }, context);
+            }
+        }
+
+        this.#synced = signature;
     }
 
     /** Make Noid when there is no main bot: on first open, and after an older store without one. */

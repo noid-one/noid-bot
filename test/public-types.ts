@@ -45,7 +45,8 @@ type Internal =
     | "browsers"
     | "memory"
     | "onHost"
-    | "botOf";
+    | "botOf"
+    | "agentFiles";
 
 type PublicHost = Pick<PocketHost, keyof Host>;
 

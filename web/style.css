@@ -15129,6 +15129,13 @@ pre.gallery-code {
     flex: none;
 }
 
+/* noid: a bot from an agent file says where its name, role, and instructions come from. */
+.bot-file {
+    margin: 0;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
 .bot-preview {
     display: flex;
     align-items: center;
