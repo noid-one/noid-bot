@@ -20,10 +20,13 @@ import type { PocketApp } from "../app.ts";
 import { blockedInPlanMode } from "../extensions/plan.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
+import { AutoReviewDoc, consequential, review } from "./auto-review.ts";
 import type { BotProfile } from "./bots.ts";
 
 /** The start of the id of every question noid asks, which only it may turn into an "always allow" rule. */
 export const NOID_APPROVAL = "noid:";
+/** The start of the id of a question auto review raised: never made into an "always allow" rule. */
+export const AUTO_REVIEW_APPROVAL = `${NOID_APPROVAL}review:`;
 
 /** Rules the owner made with "Always allow": a bot's calls of a tool that run without asking from then on. */
 export const ApprovalRulesDoc = defineDoc<{
@@ -114,12 +117,7 @@ export function classify(
         return { ask: false };
     }
 
-    const subject =
-        tool === "bash"
-            ? flat(String(args.command ?? ""))
-            : tool === "write" || tool === "edit"
-              ? flat(String(args.path ?? ""))
-              : flat(JSON.stringify(args));
+    const subject = subjectOf(tool, args);
     const reason =
         tool === "bash"
             ? "runs a command on your machine"
@@ -130,6 +128,15 @@ export function classify(
                 : `uses ${tool} on your machine`;
 
     return { ask: true, reason, subject };
+}
+
+/** A call as an approval card shows it: the command, the file, or its arguments. */
+export function subjectOf(tool: string, args: Record<string, unknown>): string {
+    return tool === "bash"
+        ? flat(String(args.command ?? ""))
+        : tool === "write" || tool === "edit"
+          ? flat(String(args.path ?? ""))
+          : flat(JSON.stringify(args));
 }
 
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */
@@ -157,30 +164,77 @@ export function createApprovals(app: PocketApp) {
                     const declared = (await runtime.agent?.(context))?.tools.find(
                         (tool) => tool.name === call.name,
                     ) as { annotations?: ToolAnnotations } | undefined;
-                    const verdict = classify(
+                    const args = call.arguments as Record<string, unknown>;
+                    const readOnly =
+                        !BUILT_IN_TOOLS.has(call.name) &&
+                        declared?.annotations?.readOnlyHint === true;
+                    let verdict = classify(
                         bot,
                         app.onHost(api.conversationId) ? "host" : "computer",
                         call.name,
-                        call.arguments as Record<string, unknown>,
-                        !BUILT_IN_TOOLS.has(call.name) &&
-                            declared?.annotations?.readOnlyHint === true,
+                        args,
+                        readOnly,
                     );
+                    // What this call was already found, or told, before a restart stands, whatever has changed since:
+                    // a flagged call waiting for the owner runs only once the owner says so.
+                    let answer = await api.memo<ApprovalAnswer>("noid.approval", context);
+                    let reviewed = await api.memo<{ ask: boolean; reason: string }>(
+                        "noid.review",
+                        context,
+                    );
+
+                    if (answer === undefined && reviewed === undefined) {
+                        const ruled = async () =>
+                            ((await api.snapshot(ApprovalRulesDoc, context))?.rules ?? []).some(
+                                (rule) => rule.bot === bot!.id && rule.tool === call.name,
+                            );
+
+                        if (verdict.ask) {
+                            // "Always allow" answers a question for good.
+                            if (await ruled()) {
+                                return undefined;
+                            }
+                        } else {
+                            // Auto review looks only at calls that would run without asking and change something;
+                            // "always allow" wins over it too. Checked once per call: a replay asks no model again.
+                            if (
+                                !consequential(call.name, args, readOnly) ||
+                                (await api.snapshot(AutoReviewDoc, context))?.on !== true ||
+                                (await ruled())
+                            ) {
+                                return undefined;
+                            }
+
+                            const signal = (api as typeof api & { signal?: AbortSignal }).signal;
+
+                            reviewed = await api.memo(
+                                "noid.review",
+                                await review(app, api.conversationId, bot, call.name, args, signal),
+                                context,
+                            );
+                        }
+                    }
+
+                    if (!verdict.ask && reviewed !== undefined) {
+                        if (!reviewed.ask) {
+                            return undefined;
+                        }
+
+                        verdict = {
+                            ask: true,
+                            reason: reviewed.reason,
+                            subject: subjectOf(call.name, args),
+                        };
+                    }
 
                     if (!verdict.ask) {
                         return undefined;
                     }
 
-                    const rules = (await api.snapshot(ApprovalRulesDoc, context))?.rules ?? [];
-
-                    if (rules.some((rule) => rule.bot === bot!.id && rule.tool === call.name)) {
-                        return undefined;
-                    }
-
-                    let answer = await api.memo<ApprovalAnswer>("noid.approval", context);
-
                     if (answer === undefined) {
-                        // Its own id (Lancet Guard's is the bare call): "always allow" only answers noid's own questions.
-                        const id = `${NOID_APPROVAL}${api.taskId}:${call.id}`;
+                        // Its own id (Lancet Guard's is the bare call): "always allow" only answers noid's own questions,
+                        // and never one auto review raised (that would turn auto review off for the tool for good).
+                        const id = `${reviewed?.ask === true ? AUTO_REVIEW_APPROVAL : NOID_APPROVAL}${api.taskId}:${call.id}`;
                         const timer = setTimeout(
                             () => app.approvals.answer(id, { allow: false, by: "nobody, in time" }),
                             waitMs(),

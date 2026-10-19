@@ -2,6 +2,7 @@
  * `/api`: the routes the web app calls. Each needs a signed-in person, and each but a GET needs the `X-Pocket` header,
  * which a form on another site cannot send. A conversation's routes are in `conversation-routes.ts`.
  */
+import { autoReview } from "../noid/auto-review.ts";
 import type { BotRequest } from "../noid/bots.ts";
 import { readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -487,6 +488,15 @@ export function createApi(options: HttpOptions, auth: Auth) {
             await app.commands.updateSession(conversationId(second), user, body);
 
             return json(response, 200, { ok: true });
+        }
+
+        // noid: auto review of bots' calls, which the owner turns on and off.
+        if (first === "auto-review" && second === undefined) {
+            const body = method === "POST" ? await readJson<{ on?: unknown }>(request) : undefined;
+
+            return json(response, 200, {
+                on: await autoReview(app, user, body === undefined ? undefined : body.on === true),
+            });
         }
 
         // noid: the owner's terminals on the shared computer. Output is read by long polling from an offset.

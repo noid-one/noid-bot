@@ -1347,7 +1347,9 @@ function ApprovalCard({ approval }) {
     const bot = approval.id.startsWith("noid:")
         ? sessions.find((session) => session.id === conversationId)?.bot
         : undefined;
-    const canAlways = bot !== undefined && me?.role === "owner";
+    // One auto review raised is never made a rule: that would turn auto review off for the tool for good.
+    const canAlways =
+        bot !== undefined && me?.role === "owner" && !approval.id.startsWith("noid:review:");
 
     const answer = (allow, always = false) => {
         setBusy(true);

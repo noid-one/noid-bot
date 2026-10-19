@@ -515,6 +515,7 @@ export function MenuSheet({ places = true }) {
             ${item("Spend", () => openSheet({ type: "spend" }), me?.role === "owner" ? "by person and session, limits" : "yours")}
             ${triggersOn() && me?.role !== "viewer" && item("Webhooks and watches", () => openSheet({ type: "hooks" }), "GitHub, other services")}
             ${me?.role === "owner" && item("Providers", () => openSheet({ type: "providers" }))}
+            ${me?.role === "owner" && item("Auto review", () => openSheet({ type: "auto-review" }), "a model checks bots' calls")}
             ${modelRefreshAvailable() && item("Refresh models", refreshModels, store.state.modelRefresh.loading ? "refreshing…" : "models.json and providers")}
             ${extensionMenuItems().map((each) => item(each.label, each.run, each.hint))}
             ${item("Extensions", () => openSheet({ type: "extensions" }), extensionsHint())}

@@ -77,7 +77,12 @@ import { type ApprovalRequest, Approvals, type PocketHost, type WebAccess } from
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
-import { ApprovalRulesDoc, createApprovals, NOID_APPROVAL } from "./noid/approvals.ts";
+import {
+    ApprovalRulesDoc,
+    createApprovals,
+    AUTO_REVIEW_APPROVAL,
+    NOID_APPROVAL,
+} from "./noid/approvals.ts";
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
@@ -2166,7 +2171,8 @@ export class PocketApp {
             always &&
             bot !== undefined &&
             user.role === "owner" &&
-            id.startsWith(NOID_APPROVAL)
+            id.startsWith(NOID_APPROVAL) &&
+            !id.startsWith(AUTO_REVIEW_APPROVAL)
         ) {
             await this.harness.commit(async (tx) => {
                 const doc = await tx.doc(ApprovalRulesDoc);

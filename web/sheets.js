@@ -5,6 +5,7 @@ import { ExtensionSheet, onExtensionsGone } from "./extension-ui.js";
 import { NotificationsSheet } from "./notify.js";
 import { ShareSheet } from "./share.js";
 import { AppearanceSheet } from "./sheets/appearance.js";
+import { AutoReviewSheet } from "./sheets/auto-review.js";
 import { BotSheet } from "./sheets/bot.js";
 import { BranchPicker } from "./sheets/branch.js";
 import { ExtensionsSheet } from "./sheets/extensions.js";
@@ -336,6 +337,9 @@ function sheetBody(sheet) {
             break;
         case "bot":
             body = html`<${BotSheet} id=${sheet.id} />`;
+            break;
+        case "auto-review":
+            body = me?.role === "owner" ? html`<${AutoReviewSheet} />` : null;
             break;
         case "terminal":
             body = me?.role === "owner" ? html`<${TerminalSheet} cwd=${sheet.cwd} />` : null;

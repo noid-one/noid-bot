@@ -65,6 +65,32 @@ export function cleanTitle(reply: string): string | undefined {
     return line.length > MAX_TITLE ? `${line.slice(0, MAX_TITLE - 1).trimEnd()}…` : line;
 }
 
+/** Count one of the app's own model requests in a session's spend, as Pi Durable counts its own. */
+export async function recordUsage(
+    tx: {
+        doc: (
+            token: typeof UsageDoc,
+            id: ConversationId,
+        ) => Promise<{ models: Record<string, unknown> }>;
+    },
+    id: ConversationId,
+    model: { provider: string; id: string },
+    used: Usage,
+): Promise<void> {
+    const usage = await tx.doc(UsageDoc, id);
+    const key = `${model.provider}/${model.id}`;
+
+    usage.models[key] ??= {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    };
+    addUsage(usage.models[key] as Usage, used);
+}
+
 /** Add one response's usage to the session's ledger, as Pi Durable does for its own. */
 function addUsage(total: Usage, usage: Usage): void {
     total.input += usage.input;
@@ -136,18 +162,7 @@ export async function writeTitle(
         );
 
         await app.harness.commit(async (tx) => {
-            const usage = await tx.doc(UsageDoc, id);
-            const key = `${model.provider}/${model.id}`;
-
-            usage.models[key] ??= {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-            };
-            addUsage(usage.models[key] as Usage, reply.usage);
+            await recordUsage(tx, id, model, reply.usage);
 
             // Only a reply that ended by itself: one cut off at the token limit is a model that went on, not a title.
             if (title === undefined || reply.stopReason !== "stop") {
