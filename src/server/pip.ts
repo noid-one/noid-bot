@@ -1,7 +1,7 @@
 /**
- * PiP, "Pi in Pocket": the owner's assistant, which looks after their other sessions. PiP is a conversation of its own,
- * kept out of the session list and shown in a small panel over whatever is open (`web/pip.js`). Its extension
- * (`extensions/pip.ts`) is selected there only, and gives it tools to list, read, start, message, stop, archive, and
+ * PiP, "Pi in Pocket": the owner's assistant, which looks after their other sessions. In Pi Pocket PiP is a conversation
+ * of its own, kept out of the session list; in noid, Noid's conversation is it (`idOf`), and there is no PiP panel. Its
+ * extension (`extensions/pip.ts`) is selected there only, and gives it tools to list, read, start, message, stop, archive, and
  * schedule sessions, to see the calls waiting for approval and deny them (never allow: that stays a person's), and to
  * follow a session until its run ends. Every tool acts as PiP's person, with exactly their rights: the checks are the
  * ones their own requests meet.
@@ -225,8 +225,29 @@ export class Pip {
         return user.role === "owner" && this.#app.loader.extensionNames().includes(PIP_EXTENSION);
     }
 
-    /** The conversation of this person's PiP, once they have one. */
+    /**
+     * noid: Noid's conversation, where the server has a main bot. Noid does PiP's work for the owner, in its own
+     * conversation: there is no PiP beside it.
+     */
+    noid(): ConversationId | undefined {
+        return this.#app.bots.list().find((each) => each.bot.main === true)?.conversationId;
+    }
+
+    /** Whether a conversation is Noid's, doing PiP's work. */
+    isNoid(conversationId: ConversationId): boolean {
+        const noid = this.noid();
+
+        return noid !== undefined && Number(noid) === Number(conversationId);
+    }
+
+    /** The conversation of this person's PiP, once they have one: Noid's, for the owner, where there is a Noid. */
     idOf(userId: string): ConversationId | undefined {
+        const noid = this.noid();
+
+        if (noid !== undefined) {
+            return this.#app.config.userById(userId)?.role === "owner" ? noid : undefined;
+        }
+
         for (const [id, meta] of Object.entries(this.#app.sessionCatalogue())) {
             if (meta.pip === userId) {
                 return Number(id) as unknown as ConversationId;
@@ -263,9 +284,14 @@ export class Pip {
         }
     }
 
-    /** The person whose PiP a conversation is; undefined for every other conversation. */
+    /** The person whose PiP a conversation is (Noid's is the owner's); undefined for every other conversation. */
     ownerOf(conversationId: ConversationId): string | undefined {
-        return this.#app.sessionMeta(conversationId)?.pip;
+        return (
+            this.#app.sessionMeta(conversationId)?.pip ??
+            (this.isNoid(conversationId)
+                ? this.#app.config.users.find((user) => user.role === "owner")?.id
+                : undefined)
+        );
     }
 
     /** The name of the person whose PiP a conversation is; undefined for every other conversation. */
@@ -305,6 +331,11 @@ export class Pip {
         }
 
         const existing = this.idOf(user.id);
+
+        // Noid keeps its own tools and extensions (`Bots.ensureTools` gives it PiP's): it is not tuned to PiP's.
+        if (existing !== undefined && this.isNoid(existing)) {
+            return existing;
+        }
 
         if (existing !== undefined) {
             await this.#tune(existing);

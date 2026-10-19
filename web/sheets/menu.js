@@ -8,7 +8,6 @@ import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
 import { modelRefreshAvailable, refreshModels } from "../model-refresh.js";
-import { openPip, pipAvailable, pipUnread } from "../pip.js";
 import { setArchived } from "../sessions.js";
 import { onComputer } from "./terminal.js";
 import { openSubagent } from "../subagents.js";
@@ -127,17 +126,6 @@ function PlacesGrid({ changes = null }) {
             icon: "fork",
             label: "Branch",
             run: () => openSheet({ type: "branch" }),
-        },
-        pipAvailable() && {
-            id: "pip",
-            icon: "pip",
-            label: "PiP",
-            dot: pipUnread(),
-            dotLabel: "something new",
-            run: () => {
-                openPip();
-                closeSheet();
-            },
         },
         server?.peeks === true && {
             id: "peeks",

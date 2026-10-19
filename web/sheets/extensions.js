@@ -144,7 +144,7 @@ function GalleryPart({ module, installed, busy, turnOff }) {
     </div>`;
 }
 
-/** When PiP compacts its own context: once idle above so many tokens (`pip-compact.ts`), or only as sessions do. */
+/** When Noid compacts its own context: once idle above so many tokens (`pip-compact.ts`), or only as sessions do. */
 const PIP_COMPACT = [
     [40000, "Above 40k tokens"],
     [60000, "Above 60k tokens"],
@@ -158,12 +158,12 @@ function PipCompactAt({ owner }) {
 
     return html`<div class="setting wrap">
         <div class="grow">
-            <div class="small">Compact PiP's context</div>
+            <div class="small">Compact Noid's context</div>
             <div class="muted small">
-                Once PiP is idle above this, older messages become a short summary.
+                Once Noid is idle above this, older messages become a short summary.
             </div>
         </div>
-        <div class="segmented" role="group" aria-label="Compact PiP's context">
+        <div class="segmented" role="group" aria-label="Compact Noid's context">
             ${PIP_COMPACT.map(
                 ([value, label]) => html`<button
                     class=${at === value ? "on" : ""}

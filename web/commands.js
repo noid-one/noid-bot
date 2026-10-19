@@ -4,7 +4,7 @@ import { filesAvailable, toggleFiles } from "./files-panel.js";
 import { branchAvailable } from "./sheets/branch.js";
 import { memoryAvailable, remember } from "./sheets/memory.js";
 import { togglePeeks } from "./peeks.js";
-import { askPip, openPip, pipAvailable } from "./pip.js";
+import { askNoid, mainBot, toNoid } from "./noid.js";
 import { actions, collab, navigate, notify, openSheet, scoped, store } from "./store.js";
 import {
     BASE_LOOK,
@@ -405,11 +405,11 @@ const COMMANDS = [
         run: (arg) => openSheet({ type: "branch", query: arg }),
     },
     {
-        name: "pip",
+        name: "noid",
         args: "[message]",
-        description: "Open PiP, your assistant over every session, or ask it something",
-        available: pipAvailable,
-        run: (arg) => (arg === "" ? openPip() : askPip(arg)),
+        description: "Go to Noid, your main bot, or send it something from here",
+        available: () => mainBot() !== undefined,
+        run: (arg) => (arg === "" ? toNoid() : askNoid(arg)),
     },
     {
         name: "peek",

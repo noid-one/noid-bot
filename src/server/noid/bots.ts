@@ -5,6 +5,7 @@
  * (Durable's per-conversation `instructions`). A computer bot works in `bots/<slug>` on the shared computer, a host bot
  * in a folder of this machine. Noid, the main bot, is made on first open and cannot be archived.
  */
+import { PIP_EXTENSION } from "../pip.ts";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { AgentDoc, type AgentState, type ConversationId } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
@@ -316,7 +317,11 @@ export class Bots {
      */
     async ensureTools(): Promise<void> {
         for (const { conversationId, bot } of this.list({ archived: true })) {
-            const want = this.#toolsOf(bot).map((extension) => extension.name);
+            // Noid does PiP's work too: PiP's tools, in Noid's conversation (`Pip.idOf`).
+            const want = [
+                ...this.#toolsOf(bot).map((extension) => extension.name),
+                ...(bot.main === true ? [PIP_EXTENSION] : []),
+            ];
             const has = (selection: AgentState["extensions"]) =>
                 Array.isArray(selection)
                     ? want.every((name) => selection.includes(name))

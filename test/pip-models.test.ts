@@ -87,13 +87,13 @@ before(async () => {
         supervised: false,
         log: () => {},
         home,
+        // Pi Pocket's own PiP, beside the sessions: without Noid, which takes PiP's place in noid.
+        mainBot: false,
         configureModels: (models) => {
             models.registerNativeProvider(faux.provider);
             models.registerNativeProvider(hub as never);
         },
     });
-    // noid ships PiP off; these are PiP's tests.
-    await app.setExtensionEnabled(owner(app), "pip.ts", true);
 });
 
 after(async () => {

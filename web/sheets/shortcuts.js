@@ -23,7 +23,7 @@ const SHORTCUTS = [
         [
             ["Alt B", "Open or close the browser"],
             ["Alt E", "Open or close the Files tile: the folder's files, and what changed"],
-            ["Alt A", "Open or close PiP, your assistant"],
+            ["Alt A", "Go to Noid, your main bot"],
             ["Alt P", "Show or hide peek tiles"],
             ["Alt T", "Show thinking: turn the live disclosure on or off"],
             ["Mod F", "Find in this session"],

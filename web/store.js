@@ -132,12 +132,6 @@ export const store = {
         peopleOpen: sessionStorage.getItem("pocket.people") === "1",
         /** The last request to show the People panel: which tab and chat message, and a count that tells requests apart. */
         peopleAsk: { tab: null, highlight: null, n: 0 },
-        /** This person's PiP, as the server last told (`{ id, busy, endedAt }`); null when they have none yet. */
-        pip: null,
-        /** The PiP panel shows; kept per tab, like the browser's, so the reload after a live edit keeps it. */
-        pipOpen: sessionStorage.getItem("pocket.pip") === "1",
-        /** PiP's conversation, while the panel shows. */
-        pipView: emptyView(),
     },
     listeners: new Set(),
     /**
@@ -476,11 +470,6 @@ function applyView(data) {
     store.set((state) => ({ view: mergeView(state.view, data), missing: null }));
 }
 
-/** PiP's conversation, for its panel (`pip.js`): the same view, from a view of its own beside the session's. */
-function applyPipView(data) {
-    store.set((state) => ({ pipView: mergeView(state.pipView, data) }));
-}
-
 /** A view after an update from the server: the full view, or what changed since the last one. */
 function mergeView(current, data) {
     const base =
@@ -587,10 +576,7 @@ const handlers = {
     // Every subagent in every session, while this tab shows the subagents board (`subagents-board.js`).
     subagents: (agents) => store.state.board && store.set({ boardAgents: agents }),
     view: applyView,
-    // This person's PiP: its conversation, whether it works, and when it last answered (`pip.js`); null for none.
-    pip: (pip) => store.set({ pip }),
     // PiP's conversation, while this tab's PiP panel is open.
-    pipview: applyPipView,
     chat: applyChat,
     presence: (data) =>
         data.conversationId === store.state.conversationId && store.set({ presence: data.people }),

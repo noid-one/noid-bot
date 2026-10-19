@@ -30,7 +30,7 @@ let current = null;
  */
 const boxes = [];
 
-/** Alt+V: start or stop dictation in PiP's box or the newest; false when no box can. */
+/** Alt+V: start or stop dictation in the newest message box; false when no box can. */
 export function toggleDictation() {
     const shown = (each) => each.box.current?.isConnected === true;
     const box = boxes.findLast((each) => each.top && shown(each)) ?? boxes.findLast(shown);

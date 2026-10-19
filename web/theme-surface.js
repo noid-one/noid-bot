@@ -223,7 +223,6 @@ export const PARTS = [
     "files-panel",
     "panel-tabs",
     "browser-panel",
-    "pip",
     "subagents-board",
     "extension-page",
     "diff",

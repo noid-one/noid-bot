@@ -268,6 +268,7 @@ export interface PocketHost {
         Pip,
         | "ownerOf"
         | "ownerName"
+        | "isNoid"
         | "task"
         | "sessions"
         | "read"

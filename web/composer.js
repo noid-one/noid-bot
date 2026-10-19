@@ -500,6 +500,18 @@ export function Composer() {
         typing(value.trim() === "" || value.startsWith("/") ? null : "pi");
     };
 
+    // noid: something else on the page (Noid's starters) puts words in the box for the person to finish.
+    useEffect(() => {
+        const fill = (event) => {
+            update(event.detail);
+            box.current?.focus({ preventScroll: true });
+        };
+
+        document.addEventListener("pocket:compose", fill);
+
+        return () => document.removeEventListener("pocket:compose", fill);
+    }, [conversationId]);
+
     // Ctrl+R: what was sent before that has the words in the box.
     const recalled = searching ? searchHistory(text, historyScope) : [];
     const chosenRecall = recalled[Math.min(pick, recalled.length - 1)];

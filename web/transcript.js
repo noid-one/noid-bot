@@ -74,6 +74,32 @@ const FENCED =
     /<(ci-log|webhook-payload|github-event)((?: [a-z]+="[^"\n]*")*)>\n([\s\S]*?)\n<\/\1>/g;
 const FENCE_LABELS = { "webhook-payload": "What was posted", "github-event": "On GitHub" };
 
+/** noid: what Noid is good for, to start with: PiP's questions, now Noid's. One ending in "…" is finished by hand. */
+const NOID_STARTERS = [
+    "What needs me?",
+    "What happened today?",
+    "Start a session to …",
+    "Every weekday at 9:00, tell me what changed overnight",
+    "When CI fails on main in …",
+];
+
+function NoidStarters() {
+    const start = (text) =>
+        text.endsWith("…")
+            ? document.dispatchEvent(
+                  new CustomEvent("pocket:compose", { detail: text.slice(0, -1) }),
+              )
+            : attempt(() => actions.submit(text, []));
+
+    return html`<div class="noid-starters" data-part="noid-starters">
+        ${NOID_STARTERS.map(
+            (text) => html`<button class="noid-starter" key=${text} onClick=${() => start(text)}>
+                ${text}
+            </button>`,
+        )}
+    </div>`;
+}
+
 /** A message from the app with what it fenced for Pi shown as blocks of its own, named after what each is. */
 function FencedText({ text }) {
     const parts = [];
@@ -2673,6 +2699,7 @@ export function Transcript() {
                                   : "Ask anything. Pi works in this session's folder, and keeps working if the server restarts."
                         }
                     </p>
+                    ${sessionBot(conversation.id)?.main === true && html`<${NoidStarters} />`}
                 </div>`
             }
             <${Items}

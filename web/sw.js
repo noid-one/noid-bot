@@ -77,14 +77,6 @@ async function openUrl(url) {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     const open = windows.find((client) => new URL(client.url).origin === self.location.origin);
 
-    // PiP's notifications open its panel over whatever the window shows, rather than take the window elsewhere.
-    if (open && new URL(url).searchParams.has("pip")) {
-        await open.focus();
-        open.postMessage({ type: "pocket.pip" });
-
-        return;
-    }
-
     if (open) {
         await open.focus();
 

@@ -29,7 +29,7 @@ import {
     peeksWanted,
     togglePeeks,
 } from "./peeks.js";
-import { closePip, mainBot, openPip, PipHost, pipAvailable, togglePip } from "./pip.js";
+import { mainBot, toNoid } from "./noid.js";
 import { Face } from "./faces/face.js";
 import {
     botFaceState,
@@ -527,7 +527,6 @@ function App() {
         <${PanelHost} key=${`files:${state.conversationId}`} shown=${filing} panel=${FilesPanel} />
         ${inConversation && html`<${PeopleHost} shown=${people} replaced=${browsing || filing} />`}
         <${Drawer} />
-        <${PipHost} />
         <${Sheets} />
         <${LauncherHost} />
         <${Notices} />
@@ -708,20 +707,15 @@ addEventListener("keydown", (event) => {
             return;
         }
 
-        // PiP, the assistant over every screen; not under a sheet, where it would open unseen.
-        // noid: Noid first, whether or not PiP is on.
-        if (
-            event.code === "KeyA" &&
-            (mainBot() !== undefined || pipAvailable()) &&
-            !store.state.sheet
-        ) {
+        // noid: Noid, the main bot, which does what PiP did; not under a sheet, where it would open unseen.
+        if (event.code === "KeyA" && mainBot() !== undefined && !store.state.sheet) {
             event.preventDefault();
-            togglePip();
+            toNoid();
 
             return;
         }
 
-        // Dictation into the message box in view: PiP's while it is open, else the session's.
+        // Dictation into the session's message box.
         if (
             event.code === "KeyV" &&
             !store.state.sheet &&
@@ -732,20 +726,6 @@ addEventListener("keydown", (event) => {
 
             return;
         }
-    }
-
-    // Esc closes PiP first, unless a sheet or the launcher is over it: those close first.
-    if (
-        event.key === "Escape" &&
-        !event.defaultPrevented &&
-        store.state.pipOpen &&
-        !store.state.sheet &&
-        !store.state.launcher
-    ) {
-        event.preventDefault();
-        closePip();
-
-        return;
     }
 
     // Esc closes the Files tile or the Browser panel where it covers the conversation, as back does. What is inside
@@ -887,13 +867,13 @@ if (new URLSearchParams(location.search).has("chat")) {
     openSheet({ type: "chat" });
 }
 
-// PiP's notifications open its panel, over whatever was open: `/?pip=1`. Opened once the server says PiP is here.
+// Notifications from what PiP did (`/?pip=1`) open Noid, which does it now, once the sessions are known.
 if (new URLSearchParams(location.search).has("pip")) {
     replaceAddress(location.pathname);
     const stop = store.subscribe(() => {
-        if (store.state.server) {
+        if (mainBot() !== undefined) {
             stop();
-            openPip();
+            toNoid();
         }
     });
 }

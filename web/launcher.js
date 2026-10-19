@@ -9,7 +9,7 @@ import { extensionLauncherItems } from "./extension-ui.js";
 import { filesAvailable, toggleFiles } from "./files-panel.js";
 import { togglePeeks } from "./peeks.js";
 import { modelRefreshAvailable, refreshModels } from "./model-refresh.js";
-import { openPip, pipAvailable } from "./pip.js";
+import { mainBot, toNoid } from "./noid.js";
 import { setArchived } from "./sessions.js";
 import { branchAvailable, headLabel } from "./sheets/branch.js";
 import { recentLabels } from "./sheets/folder.js";
@@ -274,12 +274,12 @@ function actionItems() {
                 icon: "archive",
                 run: () => setArchived([conversation.id], !conversation.archived),
             },
-        pipAvailable() && {
-            label: "Ask PiP",
-            detail: "your assistant, over any screen",
-            icon: "pip",
+        mainBot() !== undefined && {
+            label: "Message Noid",
+            detail: "your main bot: bots, sessions, and what needs you",
+            icon: "chat",
             keys: "Alt A",
-            run: () => openPip(),
+            run: () => toNoid(),
         },
         {
             label: "Running now",

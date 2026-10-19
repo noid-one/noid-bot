@@ -30,10 +30,12 @@ at hairlines, a header line that runs across the whole width, quiet section head
 
     ![Bot mail in Noid's conversation](after-botmail.jpg)
 
-- **One assistant: Noid.** PiP, Pi Pocket's assistant over every session, did the job Noid does as overseer, from a
-  chat card floating on the right. noid now ships PiP off (Extensions can turn it back on), so there is no second chat:
-  you talk to Noid. Alt+A goes to Noid; the PiP panel, its bubble, its menu tile, and its launcher entry are gone with
-  it. Memories stay in the session menu.
+- **One assistant: Noid.** PiP, Pi Pocket's assistant over every session, did the overseer's job from a chat card
+  floating on the right. Noid does it now, in its own conversation: it has PiP's session tools (list, read, start,
+  message, follow, stop, archive, schedule, deny waiting calls, watch repositories and PRs) beside its bots and bash.
+  PiP's panel, bubble, menu tile, and launcher entry are gone; Alt+A, "Message Noid" in the launcher, and `/noid` go to
+  Noid. Its empty conversation starts with PiP's questions ("What needs me?", "What happened today?"), as a plain list.
+  Since its tools act as you, Noid is yours alone: a guest you invite cannot see it.
 - **Edges to drag.** The sidebar, browser, and files edges, and the line between the bots and the sessions, use one
   splitter (`web/splitter.js`) instead of separate copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
@@ -100,4 +102,5 @@ not exact, so the shipped mark, icons, and logo stay vector or computed; these a
   PiP's icon) went too.
 - Pi Pocket's names remain inside, such as the `pocket.*` storage keys and the `pocket` theme id. Changing them would
   reset saved settings for no visible gain. Help text that means the engine ("needs a newer Pi Pocket") also stays.
-- PiP's code stays, off: turning it on in Extensions brings back its panel and its GitHub repository watches.
+- PiP's server side stays, as Noid's session tools (Extensions › Noid's session tools); without a main bot, as in Pi
+  Pocket's own tests, PiP is still the separate conversation it was.
