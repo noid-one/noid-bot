@@ -72,7 +72,17 @@ export function ModelPicker() {
     // While the picker animates out, the store has no sheet any more.
     const [query, setQuery] = useState(store.state.sheet?.query ?? "");
     const [forDefault] = useState(() => store.state.sheet?.forDefault === true);
-    const scopedModels = models.filter((model) => model.scoped);
+    // noid: Pi's enabledModels when it is set, else the current models (`recent`, from an older server none): the
+    // session's model shows with them whatever it is.
+    const scopeName = models.some((model) => model.scoped) ? "scoped" : "recent";
+    const using = forDefault ? server?.defaultModel : view.agent?.model;
+    const scopedModels = models.some((model) => model[scopeName])
+        ? models.filter(
+              (model) =>
+                  model[scopeName] ||
+                  (using?.provider === model.provider && using?.modelId === model.id),
+          )
+        : [];
     // Opened already searching (`/model gem`) for models only outside the scope: it starts with all of them.
     const [showAll, setShowAll] = useState(
         () => query.trim() !== "" && !scopedModels.some((model) => matches(model, query)),
@@ -242,19 +252,19 @@ export function ModelPicker() {
                             class="model-scope"
                             role="group"
                             aria-label="Model scope"
-                            title="Tab switches between scoped and all models"
+                            title=${`Tab switches between ${scopeName} and all models`}
                         >
                             <span aria-hidden="true">[</span>
                             <button
                                 class=${!showAll ? "on" : ""}
                                 aria-pressed=${!showAll}
-                                title="Models from Pi’s enabledModels setting"
+                                title=${scopeName === "scoped" ? "Models from Pi’s enabledModels setting" : "Each provider’s current models"}
                                 onClick=${() => {
                                     setShowAll(false);
                                     setPicked(0);
                                 }}
                             >
-                                scoped
+                                ${scopeName}
                             </button>
                             <span aria-hidden="true">|</span>
                             <button

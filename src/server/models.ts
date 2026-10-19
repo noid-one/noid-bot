@@ -41,6 +41,8 @@ type ModelSummary = {
     images: boolean;
     levels: string[];
     scoped?: true;
+    /** noid: one of its provider's current models (`isRecent`), which the picker shows unless asked for all. */
+    recent?: true;
     /** Its provider's sign-in expired and could not be renewed: it works again once someone signs in. */
     signIn?: true;
 };
@@ -70,20 +72,57 @@ function capabilities(model: Model<Api>) {
 }
 
 /** The models people can pick: the ones with a configured sign-in, marked when that sign-in needs renewing. */
+/** A model id's version: "gpt-5.6-sol" 5.6, "claude-opus-4-5" 4.5, "grok-4.7" 4.7, "o3" 3; undefined without one ("sonnet"). */
+export function modelVersion(id: string): number | undefined {
+    // OpenAI's o-series ("o3", "o4-mini") by its number.
+    const found = /^(?:[a-z]+(?:-[a-z]+)*-|o(?=\d))(\d+)(?:[.-](\d)(?!\d))?/.exec(id);
+
+    return found === null ? undefined : Number(`${found[1]}.${found[2] ?? "0"}`);
+}
+
+/**
+ * noid: whether a model is one of its provider's current ones, the catalogs having no dates: its version is within
+ * `RECENT_SPAN` of the newest one's there (`newest`), and it is not a dated snapshot, a "chat-latest" alias, or a realtime model. A
+ * model with no version ("sonnet", the Claude CLI's) is current.
+ */
+/** How far below its provider's newest version a model is still current: GPT-5.6 beside GPT-6.1, Claude 5 beside 5.5. */
+const RECENT_SPAN = 0.5;
+
+export function isRecent(id: string, newest: number | undefined): boolean {
+    if (/-\d{4}-?\d{2}-?\d{2}$|chat-latest|realtime/.test(id)) {
+        return false;
+    }
+
+    const version = modelVersion(id);
+
+    return version === undefined || newest === undefined || version >= newest - RECENT_SPAN;
+}
+
 export function modelList(
     models: ModelRuntime,
     signInNeeded: SignInNeeded = () => false,
     scopedModels: readonly ScopedModel[] = [],
 ): ModelSummary[] {
     const scoped = new Set(scopedModels.map(({ model }) => `${model.provider}/${model.id}`));
+    const available = models.getAvailableSnapshot();
+    const newest = new Map<string, number>();
 
-    return models.getAvailableSnapshot().map((model) => ({
+    for (const model of available) {
+        const version = modelVersion(model.id);
+
+        if (version !== undefined && version > (newest.get(model.provider) ?? 0)) {
+            newest.set(model.provider, version);
+        }
+    }
+
+    return available.map((model) => ({
         provider: model.provider,
         id: model.id,
         name: model.name,
         contextWindow: model.contextWindow,
         ...capabilities(model),
         ...(scoped.has(`${model.provider}/${model.id}`) ? { scoped: true as const } : {}),
+        ...(isRecent(model.id, newest.get(model.provider)) ? { recent: true as const } : {}),
         ...(signInNeeded(model.provider) ? { signIn: true as const } : {}),
     }));
 }
