@@ -88,6 +88,7 @@ import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.
 import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
+import { claudeBinary, claudeCliProvider, stopClaudeCli } from "./noid/claude-cli.ts";
 import { Desktop, DESKTOP_EXTENSION } from "./noid/desktop.ts";
 import { Groups } from "./noid/groups.ts";
 import { Terminals } from "./noid/terminal.ts";
@@ -558,6 +559,17 @@ export class PocketApp {
         this.models = await ModelRuntime.create();
         this.providers.modelRefresh.watch(this.models);
         this.#configureModels?.(this.models);
+
+        // noid: Claude through the owner's Claude Code, where there is one. Tests bring models of their own.
+        if (this.#configureModels === undefined) {
+            const claude = await claudeBinary();
+
+            if (claude !== undefined) {
+                this.models.registerNativeProvider(claudeCliProvider(claude).provider);
+                this.#log(`Claude Code models through ${claude}`);
+            }
+        }
+
         measureModelStreams(this.models);
         await this.models.getAvailable().catch(() => []);
 
@@ -3035,6 +3047,7 @@ export class PocketApp {
                 // The container keeps running: the next server finds it (or it stops itself when idle).
                 this.#stopIdleWatch();
                 this.terminals.closeAll();
+                stopClaudeCli();
                 await this.computer.close(context);
             } finally {
                 // After the harness: a browser call cut off by the stop resumes as interrupted, not as failed.

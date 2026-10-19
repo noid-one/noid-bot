@@ -12,7 +12,11 @@ const run = Math.random().toString(36).slice(2, 7);
 const MODELS = {
     // The ChatGPT (Codex) account refuses gpt-5.5, gpt-5.4 and gpt-5.3-codex; it takes gpt-5.6-sol.
     codex: { provider: "openai", modelId: "gpt-5.6-sol" },
-    claude: { provider: "anthropic", modelId: "claude-sonnet-5-5" },
+    // Claude through the owner's Claude Code (noid/claude-cli.ts); "anthropic" when Pi has its own sign-in.
+    claude: {
+        provider: process.env.NOID_CLAUDE_PROVIDER ?? "claude-code",
+        modelId: process.env.NOID_CLAUDE_MODEL ?? "sonnet",
+    },
 };
 
 const log = (...parts) => {
