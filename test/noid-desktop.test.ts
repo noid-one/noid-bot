@@ -112,9 +112,46 @@ test("each action is its xdotool command, and arguments that do not fit are refu
 });
 
 test("only the owner watches or takes over the desktop", async () => {
-    const desktop = new Desktop({} as never);
+    const desktop = new Desktop({ computer: { onStop: () => {} } } as never);
     const guest = { id: "g", name: "Guest", role: "guest" } as User;
 
     await assert.rejects(desktop.view(guest), { status: 403 });
     await assert.rejects(desktop.act(guest, { action: "click", x: 1, y: 1 }), { status: 403 });
+});
+
+test("the computer stopping frees the desktop; a lesson picked up after a restart holds it again", async () => {
+    let stopped = () => {};
+
+    const lesson = {
+        name: "Stamp",
+        goal: "x",
+        folder: "/home/noid/.agents/skills/stamp",
+        by: "o",
+        startedAt: 0,
+        start: "/home/noid/.cache/noid-lessons/a.png",
+        steps: [],
+    };
+    const app = {
+        computer: {
+            onStop: (listener: () => void) => {
+                stopped = listener;
+            },
+        },
+        harness: {
+            commit: async () => undefined,
+            snapshot: async () => ({ lesson }),
+        },
+        config: { userById: () => ({ id: "o", name: "Owner", role: "owner" }) },
+    };
+    const desktop = new Desktop(app as never);
+    const holder = () => desktop.lease.holder?.name;
+
+    desktop.lease.take({ id: "1", name: "Scout" });
+    stopped();
+    assert.equal(holder(), undefined, "its programs are gone, and so is its hold");
+
+    await desktop.restore();
+    assert.equal(desktop.teaching.lesson?.name, "Stamp");
+    assert.equal(holder(), "Owner", "the owner holds it for the lesson again");
+    assert.equal((desktop.lease.take({ id: "1", name: "Scout" }) as { ok: boolean }).ok, false);
 });

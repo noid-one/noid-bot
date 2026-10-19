@@ -21,6 +21,7 @@ import { blockedInPlanMode } from "../extensions/plan.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
 import { AutoReviewDoc, consequential, review } from "./auto-review.ts";
+import { snippet } from "../projection.ts";
 import type { BotProfile } from "./bots.ts";
 
 /** The start of the id of every question noid asks, which only it may turn into an "always allow" rule. */
@@ -40,6 +41,18 @@ export const ApprovalRulesDoc = defineDoc<{
 
 export type Verdict = { ask: false } | { ask: true; reason: string; subject: string };
 
+/**
+ * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot. "Always allow" never
+ * answers them for good (rakazo asks for these whatever the rules say).
+ */
+export function alwaysAsks(tool: string, args: Record<string, unknown> = {}): boolean {
+    return (
+        tool === "bot_archive" ||
+        tool === "bot_update" ||
+        (tool === "memory" && args.action === "remove")
+    );
+}
+
 /** Where a bot's conversation runs now: its folder decides, not the kind it was made as (a folder can move). */
 export type Place = "host" | "computer";
 
@@ -58,12 +71,6 @@ const BOT_STATE_TOOLS = new Set([
     "bot_brief",
     "bot_create",
 ]);
-
-const flat = (text: string, max = 300) => {
-    const line = text.replace(/\s+/g, " ").trim();
-
-    return line.length > max ? `${line.slice(0, max - 1)}…` : line;
-};
 
 /**
  * Whether a bot's call asks the owner first, by rakazo's classes. On this machine a bot asks before anything that is
@@ -103,7 +110,7 @@ export function classify(
         return {
             ask: true,
             reason: "changes another bot",
-            subject: flat(
+            subject: snippet(
                 `${String(args.name ?? "")}: ${JSON.stringify({ role: args.role, instructions: args.instructions })}`,
             ),
         };
@@ -133,10 +140,10 @@ export function classify(
 /** A call as an approval card shows it: the command, the file, or its arguments. */
 export function subjectOf(tool: string, args: Record<string, unknown>): string {
     return tool === "bash"
-        ? flat(String(args.command ?? ""))
+        ? snippet(String(args.command ?? ""))
         : tool === "write" || tool === "edit"
-          ? flat(String(args.path ?? ""))
-          : flat(JSON.stringify(args));
+          ? snippet(String(args.path ?? ""))
+          : snippet(JSON.stringify(args));
 }
 
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */
@@ -190,8 +197,8 @@ export function createApprovals(app: PocketApp) {
                             );
 
                         if (verdict.ask) {
-                            // "Always allow" answers a question for good.
-                            if (await ruled()) {
+                            // "Always allow" answers a question for good, but those asked every time.
+                            if (!alwaysAsks(call.name, args) && (await ruled())) {
                                 return undefined;
                             }
                         } else {

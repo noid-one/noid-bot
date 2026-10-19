@@ -189,6 +189,16 @@ function checkModel(asked: { provider?: unknown; modelId?: unknown } | undefined
     }
 }
 
+/**
+ * The request id `Commands.submit` gives a message: a person's own, or, sent `via` an assistant, one sent for them.
+ * Code that sends once (a replayed tool call, a restarted round) looks for this id before it sends.
+ */
+export function submittedRequest(userId: string, key: string, via?: string): string {
+    return via === undefined
+        ? ownRequest(userId, clientKey(key))
+        : requestFor(userId, clientKey(key));
+}
+
 /** A person's message to a failed subagent (`subagent`, its conversation), followed to its end; `failure`, its own then. */
 type Followed = { subagent: number; requestId: string; failure: number; by: string };
 
@@ -821,10 +831,7 @@ export class Commands {
         }
 
         const content = parts.length === 1 ? body : parts;
-        const requestId =
-            via === undefined
-                ? ownRequest(user.id, clientKey(request.requestId))
-                : requestFor(user.id, clientKey(request.requestId));
+        const requestId = submittedRequest(user.id, request.requestId, via);
         // A failed subagent's failure as the person writes to it: what their message comes to settles it.
         const failure = await this.#failureOf(id);
 

@@ -78,6 +78,7 @@ import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
 import {
+    alwaysAsks,
     ApprovalRulesDoc,
     createApprovals,
     AUTO_REVIEW_APPROVAL,
@@ -2183,7 +2184,8 @@ export class PocketApp {
             bot !== undefined &&
             user.role === "owner" &&
             id.startsWith(NOID_APPROVAL) &&
-            !id.startsWith(AUTO_REVIEW_APPROVAL)
+            !id.startsWith(AUTO_REVIEW_APPROVAL) &&
+            !alwaysAsks(request.tool, { action: "remove" })
         ) {
             await this.harness.commit(async (tx) => {
                 const doc = await tx.doc(ApprovalRulesDoc);

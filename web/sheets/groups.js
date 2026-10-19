@@ -2,6 +2,7 @@
 // said, refreshed while it is open, and a message to the bots in it (all of them, or those named with @).
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Face } from "../faces/face.js";
+import { usePoll } from "../poll.js";
 import { api, attempt, closeSheet, store } from "../store.js";
 import { formatWhen, html, Sheet } from "../ui.js";
 
@@ -75,36 +76,30 @@ function Thread({ id, onBack }) {
     const list = useRef(null);
     const bots = botsById();
 
-    useEffect(() => {
-        let gone = false;
+    usePoll(
+        async (gone) => {
+            try {
+                const found = await api(`groups/${encodeURIComponent(id)}`);
 
-        void (async () => {
-            while (!gone) {
-                if (!document.hidden) {
-                    try {
-                        const found = await api(`groups/${encodeURIComponent(id)}`);
+                if (!gone()) {
+                    setGroup((now) => merged(found, now));
+                }
+            } catch (failure) {
+                // Deleted (in another tab, say): back to the list. Anything else is tried again in a moment.
+                if (failure.status === 404 || failure.status === 403) {
+                    onBack();
 
-                        if (!gone) {
-                            setGroup((now) => merged(found, now));
-                        }
-                    } catch (failure) {
-                        // Deleted (in another tab, say): back to the list. Anything else is tried again in a moment.
-                        if (failure.status === 404 || failure.status === 403) {
-                            onBack();
-
-                            return;
-                        }
-                    }
+                    return false;
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, EVERY_MS));
+                throw failure;
             }
-        })();
 
-        return () => {
-            gone = true;
-        };
-    }, [id]);
+            return true;
+        },
+        { every: EVERY_MS },
+        [id],
+    );
 
     // New answers come in below: keep them in view.
     const count = group?.messages.length ?? 0;

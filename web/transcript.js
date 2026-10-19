@@ -1348,8 +1348,12 @@ function ApprovalCard({ approval }) {
         ? sessions.find((session) => session.id === conversationId)?.bot
         : undefined;
     // One auto review raised is never made a rule: that would turn auto review off for the tool for good.
+    // Nor one asked every time: forgetting a memory, archiving a bot, changing another bot.
     const canAlways =
-        bot !== undefined && me?.role === "owner" && !approval.id.startsWith("noid:review:");
+        bot !== undefined &&
+        me?.role === "owner" &&
+        !approval.id.startsWith("noid:review:") &&
+        !["bot_archive", "bot_update", "memory"].includes(approval.tool);
 
     const answer = (allow, always = false) => {
         setBusy(true);

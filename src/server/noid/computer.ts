@@ -372,6 +372,7 @@ export class Computer {
                     `replacing ${this.container}: it was made from ${old}, not ${this.image}`,
                 );
                 await this.#docker(["rm", this.container]);
+                this.#stopped();
                 replaced = old;
             }
 
@@ -421,6 +422,7 @@ export class Computer {
             if (running && (!ifIdle || this.idle())) {
                 this.#log(`stopping ${this.container}`);
                 await this.#docker(["stop", "--time", "10", this.container]);
+                this.#stopped();
             }
 
             this.#mayBeRunning = !running ? false : ifIdle && !this.idle();
@@ -517,6 +519,25 @@ export class Computer {
         this.#made.delete(folder);
 
         return this.#make(folder);
+    }
+
+    /** Told each time what ran on the computer is gone (it stopped, or was made again): its process ids mean nothing now. */
+    readonly #onStop = new Set<() => void>();
+
+    onStop(listener: () => void): () => void {
+        this.#onStop.add(listener);
+
+        return () => this.#onStop.delete(listener);
+    }
+
+    #stopped(): void {
+        for (const listener of this.#onStop) {
+            try {
+                listener();
+            } catch (error) {
+                this.#log(`a stop listener failed: ${toError(error).message}`);
+            }
+        }
     }
 
     /** Stop the computer and start it again: what it runs stops, and an older image is replaced. */

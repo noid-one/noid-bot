@@ -12,6 +12,7 @@ import type { User } from "../config.ts";
 import { SessionsDoc } from "../docs.ts";
 import { MAX_INSTRUCTIONS } from "../commands.ts";
 import { HttpError } from "../errors.ts";
+import { ownerOf } from "./owner.ts";
 import { COMPUTER_HOME } from "./computer.ts";
 
 /** Faces: the skins and eyes `web/faces/params.js` draws. */
@@ -116,13 +117,19 @@ function color(value: unknown): string | undefined {
 
 /** A folder name from a bot's name: lowercase letters, digits, and dashes. */
 export function slugOf(name: string): string {
+    return slug(name, 32, "bot");
+}
+
+/** Text as a folder name: accents dropped, lowercase words joined by dashes, at most `max`, never ending in a dash. */
+export function slug(text: string, max: number, fallback: string): string {
     return (
-        name
+        text
             .normalize("NFKD")
+            .replace(/\p{M}+/gu, "")
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 32) || "bot"
+            .slice(0, max)
+            .replace(/^-+|-+$/g, "") || fallback
     );
 }
 
@@ -138,15 +145,12 @@ export class Bots {
         conversationId: ConversationId;
         bot: BotProfile;
     }[] {
-        return this.#app
-            .sessions()
-            .filter(
-                (session) => session.bot !== undefined && (archived || session.archived !== true),
-            )
-            .map((session) => ({
-                conversationId: session.id as unknown as ConversationId,
-                bot: session.bot!,
-            }));
+        // From the catalogue the app keeps, not the list it builds for the app: bots are looked up often.
+        return Object.entries(this.#app.sessionCatalogue()).flatMap(([id, meta]) =>
+            meta.bot !== undefined && (archived || meta.archived !== true)
+                ? [{ conversationId: Number(id) as unknown as ConversationId, bot: meta.bot }]
+                : [],
+        );
     }
 
     /** The bot a conversation works for: its own, or its session's for a subagent. */
@@ -290,7 +294,7 @@ export class Bots {
             return found.conversationId;
         }
 
-        const owner = this.#app.config.users.find((user) => user.role === "owner")!;
+        const owner = ownerOf(this.#app)!;
 
         return (await this.create(owner, NOID_REQUEST)).id;
     }

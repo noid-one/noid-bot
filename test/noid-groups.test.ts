@@ -269,3 +269,30 @@ test("a round that died without ending holds up no message", async () => {
     await app.groups.send(owner(app), group.id, { text: "still there?" });
     await until(async () => (await replies(group.id)).length === 2, "the answers");
 });
+
+test("auto review checks a bot's calls in a round against the owner's group message", async () => {
+    const one = await bot("Checker");
+    const two = await bot("Other");
+    const group = await app.groups.create(owner(app), {
+        name: "Review",
+        members: [one.botId, two.botId],
+    });
+
+    await app.harness.commit(async (tx) => {
+        const live = (await tx.doc(GroupsDoc)).groups[group.id]!;
+
+        live.messages.push({
+            id: "m1",
+            from: "owner",
+            name: "Owner",
+            text: "deploy the docs site",
+            at: 1,
+        });
+        live.round = { taskId: 1 as never, messageId: "m1" };
+    }, context);
+    assert.equal(await app.groups.roundTask(one.id), "deploy the docs site");
+    await app.harness.commit(async (tx) => {
+        delete (await tx.doc(GroupsDoc)).groups[group.id]!.round;
+    }, context);
+    assert.equal(await app.groups.roundTask(one.id), undefined);
+});

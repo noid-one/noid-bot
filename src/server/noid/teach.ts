@@ -8,6 +8,7 @@
 import type { JsonValue } from "@earendil-works/chord";
 import { defineDoc } from "@earendil-works/pi-durable";
 import type { User } from "../config.ts";
+import { slug } from "./bots.ts";
 import { HttpError } from "../errors.ts";
 
 /** One of the owner's actions on the desktop, as it was asked for. */
@@ -69,15 +70,7 @@ export function describeStep(step: TaughtStep): string | undefined {
 
 /** A skill's folder name: lowercase words joined by dashes. */
 export function skillSlug(name: string): string {
-    return (
-        name
-            .normalize("NFKD")
-            .replace(/\p{M}+/gu, "")
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .slice(0, 48)
-            .replace(/^-+|-+$/g, "") || "taught-skill"
-    );
+    return slug(name, 48, "taught-skill");
 }
 
 /** The SKILL.md for what was shown. */

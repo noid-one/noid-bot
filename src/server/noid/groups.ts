@@ -22,11 +22,12 @@ import {
 } from "@earendil-works/pi-durable";
 import { randomUUID } from "node:crypto";
 import type { PocketApp } from "../app.ts";
-import { followed } from "../commands.ts";
+import { followed, submittedRequest } from "../commands.ts";
 import type { User } from "../config.ts";
 import { describe, HttpError } from "../errors.ts";
-import { clip } from "../fence.ts";
-import { clientKey, requestFor } from "../requests.ts";
+import { ownerOf, requireOwner } from "./owner.ts";
+import { attribute, clip } from "../fence.ts";
+import { clientKey } from "../requests.ts";
 
 export const GROUPS_EXTENSION = "noid-groups";
 const MAX_GROUPS = 50;
@@ -128,7 +129,7 @@ export function roundPrompt(
     const lines = since.map((message) =>
         message.from === "owner"
             ? `<owner>${asData(message.text)}</owner>`
-            : `<bot name="${asData(message.name).replaceAll('"', "'")}">${asData(message.text)}</bot>`,
+            : `<bot name="${attribute(message.name)}">${asData(message.text)}</bot>`,
     );
     const asked = group.messages.find((message) => message.id === answering);
 
@@ -167,9 +168,7 @@ export class Groups {
     }
 
     #owner(user: User): void {
-        if (user.role !== "owner") {
-            throw new HttpError(403, "Only the owner has group threads.");
-        }
+        requireOwner(user, "Only the owner has group threads.");
     }
 
     #bot(id: string) {
@@ -221,7 +220,7 @@ export class Groups {
         const app = this.#app;
         const botId = input.members[index];
         const group = (await runtime.snapshot(GroupsDoc, context))?.groups[input.groupId];
-        const owner = app.config.users.find((user) => user.role === "owner");
+        const owner = ownerOf(app);
 
         if (botId === undefined || group === undefined || owner === undefined) {
             return runtime.commit(async (tx) => {
@@ -243,7 +242,7 @@ export class Groups {
                 return each === undefined ? [] : [each.bot.name];
             });
             const token = `group-${input.groupId}-${input.messageId}-${botId}`;
-            const requestId = requestFor(owner.id, clientKey(token));
+            const requestId = submittedRequest(owner.id, token, `group ${group.name}`);
             const id = member.conversationId;
             let sent = false;
 
@@ -341,6 +340,32 @@ export class Groups {
         }, context);
 
         return text === "" ? { text: "answered without words.", failed: true } : { text };
+    }
+
+    /**
+     * What the owner asked in a group round going on now with a bot (its conversation): the task its calls are for, as
+     * auto review checks them. The round's message reaches the bot sent for the owner, so it is not one the owner wrote
+     * there. Undefined when the bot is in no round.
+     */
+    async roundTask(conversationId: ConversationId): Promise<string | undefined> {
+        const botId = this.#app.bots.of(conversationId)?.id;
+        const groups = Object.values(
+            (await this.#app.harness.snapshot(GroupsDoc, context))?.groups ?? {},
+        );
+
+        for (const group of groups) {
+            if (group.round !== undefined && botId !== undefined && group.members.includes(botId)) {
+                const asked = group.messages.find(
+                    (message) => message.id === group.round!.messageId,
+                );
+
+                if (asked !== undefined) {
+                    return asked.text;
+                }
+            }
+        }
+
+        return undefined;
     }
 
     /** The owner's groups, newest first, without their messages. */

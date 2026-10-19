@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import { openTerminal, type RemoteTerminal, type TerminalOptions } from "@earendil-works/pi-env";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
+import { requireOwner } from "./owner.ts";
 import { type Computer, COMPUTER_HOME, normalFolder, onComputer } from "./computer.ts";
 
 /** How much of a terminal's output is kept for reading again. */
@@ -64,9 +65,7 @@ export class Terminals {
 
     /** Only the owner gets a shell: it reaches everything on the computer. */
     #require(user: User): void {
-        if (user.role !== "owner") {
-            throw new HttpError(403, "Only the owner can open a terminal on the computer.");
-        }
+        requireOwner(user, "Only the owner can open a terminal on the computer.");
     }
 
     #get(user: User, id: string): Terminal {

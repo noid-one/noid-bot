@@ -23,6 +23,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
+import { requireOwner } from "./owner.ts";
 import { COMPUTER_HOME, onComputer } from "./computer.ts";
 import { type Lesson, LessonDoc, playbook, skillSlug, type TaughtStep, Teaching } from "./teach.ts";
 
@@ -89,6 +90,11 @@ export class DesktopLease {
         };
 
         return { ok: true };
+    }
+
+    /** Nobody holds it: what the holder held is gone (the computer stopped). */
+    clear(): void {
+        this.#holder = undefined;
     }
 
     /** Give it back; only its holder can. */
@@ -316,6 +322,13 @@ export class Desktop {
     constructor(app: PocketApp) {
         this.#app = app;
         this.lease = new DesktopLease();
+        // The computer stopped, or was made again: its programs, and their process ids, are gone. Ids kept from before
+        // would name other processes in the new one; and the next look checks again that it has the desktop.
+        app.computer.onStop(() => {
+            this.#opened.clear();
+            this.lease.clear();
+            this.#ready = undefined;
+        });
         this.teaching = new Teaching((lesson) =>
             app.harness.commit(async (tx) => {
                 const doc = await tx.doc(LessonDoc);
@@ -384,20 +397,31 @@ export class Desktop {
         }
     }
 
+    /** Whether the running computer has the desktop: asked once per start of it, not on every look. */
+    #ready: Promise<boolean> | undefined;
+
     /** Fails when the computer runs an image without the desktop: one made before it, still running. */
     async #require(env: ExecutionEnv, context: Context): Promise<void> {
+        this.#ready ??= this.#hasDesktop(env, context);
+
+        if (!(await this.#ready)) {
+            this.#ready = undefined;
+
+            throw new HttpError(
+                409,
+                "The computer runs an older image, without the desktop. It moves to the new one when it next stops: restart it from the desktop view.",
+            );
+        }
+    }
+
+    async #hasDesktop(env: ExecutionEnv, context: Context): Promise<boolean> {
         const found = await env.exec(
             ["sh", "-c", "command -v xdotool >/dev/null && command -v scrot >/dev/null"],
             undefined,
             context,
         );
 
-        if (!found.ok || found.value.exitCode !== 0) {
-            throw new HttpError(
-                409,
-                "The computer runs an older image, without the desktop. It moves to the new one when it next stops: restart it from the desktop view.",
-            );
-        }
+        return found.ok && found.value.exitCode === 0;
     }
 
     #tool() {
@@ -481,9 +505,7 @@ export class Desktop {
     }
 
     #owner(user: User): void {
-        if (user.role !== "owner") {
-            throw new HttpError(403, "Only the owner can see or use the desktop.");
-        }
+        requireOwner(user, "Only the owner can see or use the desktop.");
     }
 
     /** The owner's view: the screen, who holds it, and the demonstration under way. */
@@ -700,9 +722,20 @@ export class Desktop {
 
     /** Pick up a lesson the server stopped in the middle of. */
     async restore(): Promise<void> {
-        this.teaching.restore(
-            (await this.#app.harness.snapshot(LessonDoc, BACKGROUND_CONTEXT))?.lesson,
-        );
+        const lesson = (await this.#app.harness.snapshot(LessonDoc, BACKGROUND_CONTEXT))?.lesson;
+
+        this.teaching.restore(lesson);
+
+        // The owner held the desktop for it: still, so no bot acts on it in the middle of the lesson.
+        if (lesson !== undefined) {
+            const owner = this.#app.config.userById(lesson.by);
+
+            this.lease.take(
+                { id: `owner:${lesson.by}`, name: owner?.name ?? "the owner" },
+                true,
+                LESSON_MS,
+            );
+        }
     }
 
     /** A bot's own run ended (not a subagent's): the desktop is free again; what it opened stays until another takes it. */

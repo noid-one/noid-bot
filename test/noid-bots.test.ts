@@ -21,7 +21,7 @@ import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { SessionsDoc } from "../src/server/docs.ts";
-import { ApprovalRulesDoc, classify } from "../src/server/noid/approvals.ts";
+import { alwaysAsks, ApprovalRulesDoc, classify } from "../src/server/noid/approvals.ts";
 import type { BotProfile } from "../src/server/noid/bots.ts";
 import { slugOf } from "../src/server/noid/bots.ts";
 
@@ -370,6 +370,42 @@ test("Always allow keeps a rule only for noid's own questions", async () => {
         ).length,
         0,
     );
+});
+
+test("Always allow never answers for good what is asked every time", async () => {
+    const { id } = await hostBot("Keeper of rules");
+
+    for (const tool of ["bot_archive", "bot_update"]) {
+        const asked = app.approvals.request(
+            {
+                id: `noid:${tool}:1`,
+                conversationId: id,
+                taskId: 1 as never,
+                tool,
+                subject: "x",
+                reason: "changes a bot",
+                createdAt: Date.now(),
+            },
+            context,
+        );
+
+        assert.ok(await app.answerApproval(`noid:${tool}:1`, true, owner(app), true));
+        await asked;
+    }
+
+    assert.deepEqual(
+        ((await app.harness.snapshot(ApprovalRulesDoc, context))?.rules ?? []).filter((rule) =>
+            ["bot_archive", "bot_update"].includes(rule.tool),
+        ),
+        [],
+    );
+    assert.equal(alwaysAsks("memory", { action: "remove" }), true);
+    assert.equal(alwaysAsks("memory", { action: "add" }), false);
+});
+
+test("a bot's folder name drops accents and never ends in a dash", () => {
+    assert.equal(slugOf("Renée"), "renee");
+    assert.ok(!slugOf(`${"a".repeat(31)} b`).endsWith("-"));
 });
 
 test("a bot's edits check before they change anything; its face can go back to its name's", async () => {

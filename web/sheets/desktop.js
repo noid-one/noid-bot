@@ -1,8 +1,10 @@
 // noid: the shared computer's desktop, for the owner: what it shows, refreshed while it is in view, and the owner's own
 // clicks and typing, which take it over from any bot for a while.
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
+import { usePoll } from "../poll.js";
 import { api, attempt, closeSheet, store } from "../store.js";
 import { html, Sheet } from "../ui.js";
+import { onComputer } from "./terminal.js";
 
 const WIDTH = 1280;
 const HEIGHT = 800;
@@ -24,54 +26,37 @@ export function DesktopSheet() {
     const [secret, setSecret] = useState(false);
     const image = useRef(null);
     const computerBots = store.state.sessions.filter(
-        (session) =>
-            session.bot !== undefined &&
-            !session.archived &&
-            (session.cwd === "/home/noid" || session.cwd?.startsWith("/home/noid/")),
+        (session) => session.bot !== undefined && !session.archived && onComputer(session.cwd),
     );
 
-    useEffect(() => {
-        let gone = false;
+    usePoll(
+        async (gone) => {
+            try {
+                const view = await api("desktop");
 
-        void (async () => {
-            while (!gone) {
-                // Nothing to show while the tab is hidden: no screenshots for nobody.
-                if (document.hidden) {
-                    await new Promise((resolve) => setTimeout(resolve, EVERY_MS));
-                    continue;
+                if (gone()) {
+                    return false;
                 }
 
-                try {
-                    const view = await api("desktop");
+                setShot(`data:image/png;base64,${view.image}`);
+                setHolder(view.holder);
+                setTeaching(view.teaching);
+                setError(undefined);
+            } catch (failure) {
+                setError({ status: failure.status, message: failure.message });
 
-                    if (gone) {
-                        return;
-                    }
-
-                    setShot(`data:image/png;base64,${view.image}`);
-                    setHolder(view.holder);
-                    setTeaching(view.teaching);
-                    setError(undefined);
-                } catch (failure) {
-                    setError({ status: failure.status, message: failure.message });
-
-                    // Only the owner sees it: anyone else has nothing to wait for.
-                    if (failure.status === 403) {
-                        return;
-                    }
-
-                    await new Promise((resolve) => setTimeout(resolve, AFTER_FAILURE_MS));
-                    continue;
+                // Only the owner sees it: anyone else has nothing to wait for.
+                if (failure.status === 403) {
+                    return false;
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, EVERY_MS));
+                throw failure;
             }
-        })();
 
-        return () => {
-            gone = true;
-        };
-    }, []);
+            return true;
+        },
+        { every: EVERY_MS, afterFailure: AFTER_FAILURE_MS },
+    );
 
     const act = (input) => attempt(() => api("desktop/input", input));
 
