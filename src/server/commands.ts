@@ -55,6 +55,7 @@ import { describe, HttpError, optionalText } from "./errors.ts";
 import { homePath } from "./paths.ts";
 import { mentionedPaths, viewFile } from "./files.ts";
 import type { BotProfile } from "./noid/bots.ts";
+import type { Extension } from "@earendil-works/pi-durable";
 import { normalFolder } from "./noid/computer.ts";
 import { viewFileIn } from "./noid/env-files.ts";
 import { isThinkingLevel, THINKING_LEVELS } from "./models.ts";
@@ -363,7 +364,14 @@ export class Commands {
             projectDefaults = true,
             bot,
             instructions,
-        }: { projectDefaults?: boolean; bot?: BotProfile; instructions?: string } = {},
+            extensions,
+        }: {
+            projectDefaults?: boolean;
+            bot?: BotProfile;
+            instructions?: string;
+            /** noid: extensions this session selects besides the host's (a bot's own tools). */
+            extensions?: Extension[];
+        } = {},
     ): Promise<{ id: ConversationId }> {
         const app = this.#app;
 
@@ -409,6 +417,9 @@ export class Commands {
                                 ? {}
                                 : { thinkingLevel: initial.thinkingLevel }),
                             ...(instructions === undefined ? {} : { instructions }),
+                            ...(extensions === undefined
+                                ? {}
+                                : { extensions: { add: extensions } }),
                         },
                         init: async (tx, id) => {
                             const sessions = await tx.doc(SessionsDoc);
@@ -843,9 +854,10 @@ export class Commands {
         app.collab.setTyping(id, user, null);
         await this.#touched(id, typed, text === typed ? undefined : text);
 
-        // A person's own words: linked sessions may message each other again (`linked-sessions.ts`).
+        // A person's own words: linked sessions may message each other again (`linked-sessions.ts`), and bots too.
         if (via === undefined) {
             await app.linkedSessions.personWrote(id);
+            await app.botMail.personWrote(id);
         }
 
         this.#reportUnanswered(id, submission.wait(context));

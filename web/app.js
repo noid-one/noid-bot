@@ -29,7 +29,7 @@ import {
     peeksWanted,
     togglePeeks,
 } from "./peeks.js";
-import { closePip, openPip, PipHost, pipAvailable, togglePip } from "./pip.js";
+import { closePip, mainBot, openPip, PipHost, pipAvailable, togglePip } from "./pip.js";
 import { Face } from "./faces/face.js";
 import {
     botFaceState,
@@ -709,7 +709,12 @@ addEventListener("keydown", (event) => {
         }
 
         // PiP, the assistant over every screen; not under a sheet, where it would open unseen.
-        if (event.code === "KeyA" && pipAvailable() && !store.state.sheet) {
+        // noid: Noid first, whether or not PiP is on.
+        if (
+            event.code === "KeyA" &&
+            (mainBot() !== undefined || pipAvailable()) &&
+            !store.state.sheet
+        ) {
             event.preventDefault();
             togglePip();
 

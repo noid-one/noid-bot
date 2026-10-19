@@ -44,7 +44,17 @@ export type Place = "host" | "computer";
  * Tools a host bot uses without asking although plan mode would block them: they change the bot's own state, not this
  * machine (rakazo exempts remember, schedules, and subagents too). A subagent's own calls are checked as the bot's.
  */
-const BOT_STATE_TOOLS = new Set(["memory", "schedule", "subagent", "goal"]);
+const BOT_STATE_TOOLS = new Set([
+    "memory",
+    "schedule",
+    "subagent",
+    "goal",
+    // Bot mail and Noid's overseer tools change bots, not this machine (bot_archive asks above).
+    "bots",
+    "bot_message",
+    "bot_brief",
+    "bot_create",
+]);
 
 const flat = (text: string, max = 300) => {
     const line = text.replace(/\s+/g, " ").trim();
@@ -73,6 +83,26 @@ export function classify(
             ask: true,
             reason: "forgets a memory",
             subject: `forget ${String(args.id ?? "")}`,
+        };
+    }
+
+    // rakazo's archive_bot, and a bot changed by another bot (rakazo's propose_instructions_update): always asked,
+    // wherever it runs, as either changes what a bot does from then on.
+    if (tool === "bot_archive") {
+        return {
+            ask: true,
+            reason: "archives a bot",
+            subject: `archive ${String(args.name ?? "")}`,
+        };
+    }
+
+    if (tool === "bot_update") {
+        return {
+            ask: true,
+            reason: "changes another bot",
+            subject: flat(
+                `${String(args.name ?? "")}: ${JSON.stringify({ role: args.role, instructions: args.instructions })}`,
+            ),
         };
     }
 

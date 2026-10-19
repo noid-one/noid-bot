@@ -322,6 +322,17 @@ test("the rules: where a bot runs decides; on this machine, anything that is not
         false,
         "its own state",
     );
+    assert.equal(classify(computer, "host", "bot_message", { to: "x", message: "y" }).ask, false);
+    assert.equal(
+        classify(computer, "computer", "bot_update", { name: "x", instructions: "y" }).ask,
+        true,
+        "changing another bot always asks",
+    );
+    assert.equal(
+        classify(computer, "computer", "bot_archive", { name: "x" }).ask,
+        true,
+        "archiving a bot always asks",
+    );
 });
 
 test("a session a bot started counts as that bot, so it cannot slip its rules", async () => {

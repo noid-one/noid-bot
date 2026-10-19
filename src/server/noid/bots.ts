@@ -6,7 +6,7 @@
  * in a folder of this machine. Noid, the main bot, is made on first open and cannot be archived.
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import type { ConversationId } from "@earendil-works/pi-durable";
+import { AgentDoc, type AgentState, type ConversationId } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { SessionsDoc } from "../docs.ts";
@@ -213,7 +213,11 @@ export class Bots {
         const { id } = await app.commands.createSession(
             user,
             { cwd, title: name },
-            { bot, ...(instructions === "" ? {} : { instructions }) },
+            {
+                bot,
+                extensions: this.#toolsOf(bot),
+                ...(instructions === "" ? {} : { instructions }),
+            },
         );
 
         await app.collab.activity(id, user, `made the bot ${name}`);
@@ -289,6 +293,57 @@ export class Bots {
         const owner = this.#app.config.users.find((user) => user.role === "owner")!;
 
         return (await this.create(owner, NOID_REQUEST)).id;
+    }
+
+    /** A bot's own tools: mail for every bot, and the overseer's for Noid. */
+    #toolsOf(bot: BotProfile) {
+        const mail = this.#app.botMail;
+
+        return bot.main === true ? [mail.extension, mail.overseer] : [mail.extension];
+    }
+
+    /**
+     * Give every bot its tools (bots made before they existed), added to whatever its selection is (pi-pocket's PiP sets
+     * its own the same way): nothing else in it changes, and bots that have them are left alone.
+     */
+    async ensureTools(): Promise<void> {
+        for (const { conversationId, bot } of this.list({ archived: true })) {
+            const want = this.#toolsOf(bot).map((extension) => extension.name);
+            const has = (selection: AgentState["extensions"]) =>
+                Array.isArray(selection)
+                    ? want.every((name) => selection.includes(name))
+                    : want.every(
+                          (name) =>
+                              (selection?.add ?? []).includes(name) &&
+                              !(selection?.remove ?? []).includes(name),
+                      );
+
+            if (has((await this.#app.agentState(conversationId))?.extensions)) {
+                continue;
+            }
+
+            await this.#app.harness.commit(async (tx) => {
+                const state = await tx.doc(AgentDoc, conversationId);
+                const selection = state.extensions;
+
+                if (Array.isArray(selection)) {
+                    state.extensions = [
+                        ...selection,
+                        ...want.filter((name) => !selection.includes(name)),
+                    ];
+
+                    return;
+                }
+
+                const add = selection?.add ?? [];
+                const remove = (selection?.remove ?? []).filter((name) => !want.includes(name));
+
+                state.extensions = {
+                    add: [...add, ...want.filter((name) => !add.includes(name))],
+                    ...(remove.length === 0 ? {} : { remove }),
+                };
+            }, context);
+        }
     }
 
     /** A folder name under `bots/` that no bot uses yet. */

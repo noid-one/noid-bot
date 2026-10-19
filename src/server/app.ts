@@ -78,6 +78,7 @@ import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
 import { ApprovalRulesDoc, createApprovals, NOID_APPROVAL } from "./noid/approvals.ts";
+import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
@@ -313,6 +314,8 @@ export class PocketApp {
     readonly memory = new Memory(this);
     /** noid's bots: sessions with a name, a role, a face, and a place to work. */
     readonly bots = new Bots(this);
+    /** noid: bots messaging bots, and Noid's overseer tools. */
+    readonly botMail = new BotMail(this);
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Other people's drop-ins, from a reviewed index: found, installed off, read, updated, removed (`gallery.ts`). */
@@ -552,6 +555,9 @@ export class PocketApp {
         registry.install(CodingTools);
         // noid: approvals are a guard, so they are part of the app, not a module someone can turn off.
         registry.install(createApprovals(this));
+        // noid: bots' own tools, which bots select (`Bots.create`) and other conversations do not.
+        registry.install(this.botMail.extension);
+        registry.install(this.botMail.overseer);
         // Durable work of the app itself, whatever extension modules are on.
         registry.install(
             defineExtension({
@@ -704,6 +710,9 @@ export class PocketApp {
         if (this.#mainBot) {
             await this.bots.ensureNoid();
         }
+
+        // Bots made before their tools existed get them (a no-op for the rest).
+        await this.bots.ensureTools();
 
         // Work a previous process left unfinished continues now.
         this.harness.resume();
@@ -1001,7 +1010,12 @@ export class PocketApp {
                 return registry()
                     ?.snapshot()
                     .installed()
-                    .filter((extension) => extension.name !== PIP_EXTENSION);
+                    .filter(
+                        (extension) =>
+                            extension.name !== PIP_EXTENSION &&
+                            extension.name !== BOT_MAIL_EXTENSION &&
+                            extension.name !== OVERSEER_EXTENSION,
+                    );
             },
             get stream() {
                 return stream();
