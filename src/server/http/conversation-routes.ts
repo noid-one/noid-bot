@@ -208,6 +208,16 @@ export async function conversationRoutes(
         return json(response, 200, { ok: true });
     }
 
+    if (third === "schedules" && fourth !== undefined && parts[4] === "run" && method === "POST") {
+        await app.commands.runSchedule(id, user, fourth);
+
+        return json(response, 200, { ok: true });
+    }
+
+    if (third === "schedules" && fourth === "runs" && parts[4] === undefined && method === "GET") {
+        return json(response, 200, { runs: await app.commands.scheduleRuns(id, user) });
+    }
+
     if (third === "watch" && method === "POST") {
         const body = await readJson<{ pr?: unknown; stop?: unknown }>(request);
 

@@ -186,6 +186,15 @@ export function BotSheet({ id }) {
                 }`
         }
         <div class="sheet-actions">
+            ${
+                bot !== undefined &&
+                html`<button
+                    class="button ghost"
+                    onClick=${() => navigate(id, { sheet: { type: "schedules" } })}
+                >
+                    Routines
+                </button>`
+            }
             <button class="button" onClick=${closeSheet}>Cancel</button>
             <button class="button primary" disabled=${name.trim() === ""} onClick=${save}>
                 ${bot === undefined ? "Make the bot" : "Save"}

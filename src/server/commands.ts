@@ -67,6 +67,7 @@ import { clientKey, ownRequest, requestFor } from "./requests.ts";
 import { type Resend, resendContent, resendRequest, ResendTask, userContent } from "./resend.ts";
 import { whyUnanswered } from "./subagent-runs.ts";
 import { wantsTitle, writeTitle } from "./titles.ts";
+import type { RunOutcome } from "./schedules.ts";
 import { describeMoment, describeRepeat, knownZone } from "./when.ts";
 import {
     createWorktree,
@@ -1649,6 +1650,33 @@ export class Commands {
             user,
             `cancelled the scheduled “${snippet(schedule.text, 60)}”`,
         );
+    }
+
+    /** Send a scheduled message now, without moving its next time: to try a routine, or run it once more. */
+    async runSchedule(id: ConversationId, user: User, scheduleId: string): Promise<void> {
+        const app = this.#app;
+
+        app.requireSee(user, id);
+        await app.requireDriver(id, user);
+        app.spend.check(user, id);
+        const schedule = await app.schedules.runNow(id, scheduleId);
+
+        if (schedule === undefined) {
+            throw new HttpError(404, "No such scheduled message");
+        }
+
+        await app.collab.activity(
+            id,
+            user,
+            `ran the scheduled “${snippet(schedule.text, 60)}” now`,
+        );
+    }
+
+    /** What came of the latest sendings of each of the session's scheduled messages, newest first, by schedule id. */
+    async scheduleRuns(id: ConversationId, user: User): Promise<Record<string, RunOutcome[]>> {
+        this.#app.requireSee(user, id);
+
+        return this.#app.schedules.outcomes(id);
     }
 
     /** Watch the session's pull request (its branch's, or `pr`): Pi hears of failed checks, conflicts, and reviews. */

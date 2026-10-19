@@ -98,6 +98,14 @@ export class Alerts {
             return;
         }
 
+        // A routine that failed says which, and asks for a look sooner than a finished run. A run with no model to ask
+        // fails before it answers anything, so this goes out without an answer to show.
+        const routine = await app.schedules.failedSending(id).catch(() => undefined);
+
+        if (routine !== undefined) {
+            return this.#pushRoutineFailed(id, routine);
+        }
+
         const page = await conversation.entries({}, 12, undefined, context);
         const last = page.items
             .map((entry) => projectEntry(entry))
@@ -132,6 +140,29 @@ export class Alerts {
             }
 
             void this.push(userId, id, "done", message);
+        }
+    }
+
+    /** A schedule's run failed: everyone in the session hears which, sooner than of a finished run. */
+    async #pushRoutineFailed(
+        id: ConversationId,
+        routine: { schedule: { text: string } | undefined; error: string },
+    ): Promise<void> {
+        const app = this.#app;
+        const title = await app.conversationTitle(id);
+        const what =
+            routine.schedule === undefined
+                ? "A scheduled message"
+                : `“${snippet(routine.schedule.text, 60)}”`;
+        const message: PushMessage = {
+            title: `Routine failed · ${title}`,
+            body: snippet(`${what}: ${routine.error}`, 400),
+            url: app.sessionMeta(id)?.pip !== undefined ? "/?pip=1" : `/s/${String(id)}`,
+            tag: `done-${String(id)}`,
+        };
+
+        for (const userId of await this.participants(id)) {
+            void this.push(userId, id, "done", message, "high");
         }
     }
 

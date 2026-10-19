@@ -15061,3 +15061,17 @@ pre.gallery-code {
     display: flex;
     gap: 8px;
 }
+
+.schedule-run {
+    margin-top: 3px;
+    color: var(--muted);
+}
+
+.schedule-run.failed {
+    color: var(--err);
+}
+
+.schedule-history summary {
+    cursor: pointer;
+    margin-top: 3px;
+}

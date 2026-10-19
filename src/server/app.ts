@@ -101,6 +101,7 @@ import { type ExtensionInfo, ExtensionLoader, linkTypes, prepareDropInFolder } f
 import { ResendTask } from "./resend.ts";
 import { type Client, reportingOf, Room, ROOM_DOCS, subagentView } from "./room.ts";
 import { Schedules } from "./schedules.ts";
+import { FAILED_RUN } from "./subagent-runs.ts";
 import { Shell } from "./shell.ts";
 import {
     loadSessionSkills,
@@ -142,11 +143,6 @@ const MAX_SUBAGENT_MODELS = 50;
 
 /** The most peek tiles a tab gets live at once: the ones on its screen, which a tall screen fits a handful of. */
 export const MAX_PEEKS = 12;
-/**
- * How a run that failed leaves its messages: the model or its provider answered with an error, no model was there to
- * ask, or the run broke. Stopped (`aborted`), cleared (`reset`), and replaced (`stale`) runs did not fail.
- */
-const FAILED_RUN = new Set(["model_error", "no_model", "faulted"]);
 
 /** A conversation's subagents document, as far as the app reads it. */
 type SubagentsValue = {
@@ -805,6 +801,7 @@ export class PocketApp {
                 }
             } else if (change.type === "submission") {
                 this.attribution.submissionCommitted(change.value);
+                this.schedules.settled(change.value);
 
                 // A run that failed because its provider's sign-in could not be renewed marks that provider; one that
                 // was answered shows its provider works, and a mark it had (signed in again in Pi's terminal app, say)

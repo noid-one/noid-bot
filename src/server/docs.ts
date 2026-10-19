@@ -367,7 +367,12 @@ export type Schedule = {
     taskId: TaskId;
     /** Set by the same call already, when a tool call is replayed: its `taskId:callId`. */
     key?: string;
+    /** Its latest sendings, oldest first: what came of each is found by its request id. */
+    history?: ScheduleRun[];
 };
+
+/** One sending of a schedule: at its time, or when someone ran it now. */
+export type ScheduleRun = { at: number; requestId: string; now?: true };
 
 /** Messages that go to Pi later, or on repeat. A fork starts without them: they belong to who set them up. */
 export const ScheduleDoc = defineDoc<{ items: Record<string, Schedule> }>({

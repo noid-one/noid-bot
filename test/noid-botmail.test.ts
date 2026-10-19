@@ -213,9 +213,17 @@ test("Noid sees what the bots did, makes bots, and archives one only once the ow
     const worker = await bot("Worker");
 
     await send(worker, "finished the report");
+    await app.commands.schedule(worker, owner(app), {
+        when: "cron 0 8 * * 1-5 check the build",
+        zone: "UTC",
+    });
     await send(noid(), 'call bot_brief {"name": "worker"}');
     assert.match(await lastReply(noid()), /Worker \(no role\): idle/);
     assert.match(await lastReply(noid()), /<bot-reply name="Worker">\necho: finished the report/);
+    assert.match(
+        await lastReply(noid()),
+        /<bot-routines name="Worker">\n- cron 0 8 \* \* 1-5, next [^:]+:\d\d:\d\d\.\d+Z: “check the build” \(not run yet\)/,
+    );
 
     await send(noid(), 'call bot_create {"name": "Scribe", "role": "Takes notes"}');
     assert.match(await lastReply(noid()), /Made Scribe/);

@@ -11,18 +11,22 @@
 import { randomUUID } from "node:crypto";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
+    AssistantEntry,
     type ConversationId,
     defineTask,
+    type SubmissionRecord,
     type Task,
     type TaskRuntime,
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
 import { addActivity } from "./collab.ts";
-import { ChatDoc, type Schedule, ScheduleDoc } from "./docs.ts";
+import { ChatDoc, type Schedule, ScheduleDoc, type ScheduleRun } from "./docs.ts";
 import { describe, HttpError } from "./errors.ts";
 import { FROM_PREFIX } from "./entry-format.ts";
 import { snippet } from "./projection.ts";
+import { FAILED_RUN, whyUnanswered } from "./subagent-runs.ts";
 import { ownRequest, requestFor } from "./requests.ts";
 import { nextRepeat, parseWhen } from "./when.ts";
 
@@ -34,6 +38,33 @@ export const SCHEDULED_PREFIX = "[scheduled] ";
 export const SCHEDULES_EXTENSION = "pocket-schedules";
 const MAX_SCHEDULES = 50;
 const MAX_TEXT = 4000;
+/** How many sendings a schedule remembers. */
+const HISTORY = 10;
+
+/** What came of a sending: still going, answered, stopped by someone, or failed (and why). */
+export type RunOutcome = ScheduleRun & {
+    status: "running" | "done" | "stopped" | "failed";
+    error?: string;
+};
+
+/** A schedule's sendings go out as the person who set it up; Pi's as Pi's, but as the work of whom Pi worked for. */
+function sendingRequest(schedule: Schedule, key: string): string {
+    const sending = `schedule-${String(schedule.taskId)}-${key}`;
+
+    return schedule.by !== undefined
+        ? ownRequest(schedule.by, sending)
+        : schedule.requestedBy !== undefined
+          ? requestFor(schedule.requestedBy, sending)
+          : `schedule:${String(schedule.taskId)}-${key}`;
+}
+
+/** The task of the schedule a request id is a sending of; undefined for any other message. */
+const SENDING = /(?:^|:)schedule[-:](\d+)-/;
+
+/** Remember a sending, forgetting the oldest beyond the last few. */
+function remember(item: Schedule, run: ScheduleRun): void {
+    item.history = [...(item.history ?? []), run].slice(-HISTORY);
+}
 
 type ScheduleInput = { scheduleId: string };
 type ScheduleState = { phase: "wait" } | { phase: "send" };
@@ -68,6 +99,8 @@ export type ScheduleRequest = {
 
 export class Schedules {
     readonly #app: PocketApp;
+    /** By conversation: the task of the schedule whose sending's run failed last, until the failure is pushed. */
+    readonly #failedSendings = new Map<ConversationId, { task: string; error: string }>();
     /** How long a schedule of PiP's waits before it looks again whether PiP is back. */
     holdMs = 60_000;
     /** The durable task behind each schedule; the schedules extension installs it. */
@@ -135,13 +168,7 @@ export class Schedules {
 
         // Sent as the person who set it up, so it shows as theirs. Pi's own are sent as Pi's, but as the work of whom Pi
         // worked for when it set them up.
-        const sending = `${String(schedule.taskId)}-${schedule.runs}`;
-        const requestId =
-            schedule.by !== undefined
-                ? ownRequest(schedule.by, `schedule-${sending}`)
-                : schedule.requestedBy !== undefined
-                  ? requestFor(schedule.requestedBy, `schedule-${sending}`)
-                  : `schedule:${sending}`;
+        const requestId = sendingRequest(schedule, String(schedule.runs));
         const stopped = this.#stopped(conversationId, schedule);
 
         if (stopped === undefined) {
@@ -174,6 +201,10 @@ export class Schedules {
                 );
 
                 return finished;
+            }
+
+            if (stopped === undefined) {
+                remember(item, { at: runtime.now(), requestId });
             }
 
             if (item.every === undefined) {
@@ -365,6 +396,155 @@ export class Schedules {
         }, context);
 
         return schedule;
+    }
+
+    /**
+     * Send a schedule's message now, without moving its next time: as it would go out at its time, from whoever set it
+     * up, and only when it may go out at all. Undefined when there is no such schedule; throws an HttpError a person can
+     * act on when it may not go out. The caller checks that whoever asks may steer the session.
+     */
+    async runNow(
+        conversationId: ConversationId,
+        scheduleId: string,
+    ): Promise<Schedule | undefined> {
+        const app = this.#app;
+        const schedule = (await this.list(conversationId)).find((item) => item.id === scheduleId);
+        const conversation = await app.harness.conversation(conversationId, context);
+
+        if (schedule === undefined || conversation === undefined) {
+            return undefined;
+        }
+
+        if (!this.running) {
+            throw new HttpError(409, "Schedules are turned off in Extensions.");
+        }
+
+        if (this.#waitsForPip(conversationId)) {
+            throw new HttpError(409, "PiP is off: its schedules wait until it is back.");
+        }
+
+        const stopped = this.#stopped(conversationId, schedule);
+
+        if (stopped !== undefined) {
+            throw new HttpError(409, `It cannot go out: ${stopped.why}.`);
+        }
+
+        const requestId = sendingRequest(schedule, `now-${randomUUID()}`);
+
+        await conversation.submit(
+            { type: "input", content: schedule.content, whenBusy: "followUp", requestId },
+            context,
+        );
+        await app.harness.commit(async (tx) => {
+            const item = (await tx.doc(ScheduleDoc, conversationId)).items[scheduleId];
+
+            if (item !== undefined) {
+                remember(item, { at: app.now(), requestId, now: true });
+            }
+        }, context);
+
+        return schedule;
+    }
+
+    /** What came of the latest sendings of each of a conversation's schedules, newest first, by schedule id. */
+    async outcomes(conversationId: ConversationId): Promise<Record<string, RunOutcome[]>> {
+        const schedules = await this.list(conversationId);
+
+        return this.#app.harness.commit(async (tx) => {
+            const all: Record<string, RunOutcome[]> = {};
+
+            for (const schedule of schedules) {
+                const outcomes: RunOutcome[] = [];
+
+                for (const run of [...(schedule.history ?? [])].reverse()) {
+                    const submission = await tx.submissionByRequest(conversationId, run.requestId);
+
+                    // Recorded only once it was taken, so one not found is gone: nothing to say about it.
+                    if (submission === undefined) {
+                        continue;
+                    }
+
+                    if (submission.status === "queued" || submission.status === "placed") {
+                        outcomes.push({ ...run, status: "running" });
+                    } else if (submission.status === "unanswered") {
+                        outcomes.push(
+                            FAILED_RUN.has(submission.reason)
+                                ? {
+                                      ...run,
+                                      status: "failed",
+                                      error: whyUnanswered(submission.reason, submission.detail),
+                                  }
+                                : { ...run, status: "stopped" },
+                        );
+                    } else {
+                        const answer =
+                            submission.type === "input"
+                                ? ((await tx.entry(AssistantEntry, submission.answer))
+                                      ?.model?.[0] as AssistantMessage | undefined)
+                                : undefined;
+
+                        outcomes.push(
+                            answer?.stopReason === "error"
+                                ? {
+                                      ...run,
+                                      status: "failed",
+                                      error: answer.errorMessage ?? "The model request failed.",
+                                  }
+                                : answer?.stopReason === "aborted"
+                                  ? { ...run, status: "stopped" }
+                                  : { ...run, status: "done" },
+                        );
+                    }
+                }
+
+                all[schedule.id] = outcomes;
+            }
+
+            return all;
+        }, context);
+    }
+
+    /**
+     * A message to Pi settled. One a schedule sent whose run failed is remembered until its conversation's "Pi
+     * finished" push asks (`failedSending`); any other that settles there forgets it.
+     */
+    settled(record: SubmissionRecord): void {
+        const task = SENDING.exec(record.requestId ?? "")?.[1];
+
+        if (task !== undefined && record.status === "unanswered" && FAILED_RUN.has(record.reason)) {
+            this.#failedSendings.set(record.conversationId, {
+                task,
+                error: whyUnanswered(record.reason, record.detail),
+            });
+        } else if (
+            record.type === "input" &&
+            (record.status === "done" || record.status === "unanswered")
+        ) {
+            this.#failedSendings.delete(record.conversationId);
+        }
+    }
+
+    /**
+     * Whether the run that just failed in a conversation was a schedule's, and which one (undefined once it is gone, as
+     * a one-time message is once it went out). Asking forgets it.
+     */
+    async failedSending(
+        conversationId: ConversationId,
+    ): Promise<{ schedule: Schedule | undefined; error: string } | undefined> {
+        const failed = this.#failedSendings.get(conversationId);
+
+        this.#failedSendings.delete(conversationId);
+
+        if (failed === undefined) {
+            return undefined;
+        }
+
+        const schedules = await this.list(conversationId);
+
+        return {
+            schedule: schedules.find((item) => String(item.taskId) === failed.task),
+            error: failed.error,
+        };
     }
 
     /** A conversation's schedules, soonest first. */

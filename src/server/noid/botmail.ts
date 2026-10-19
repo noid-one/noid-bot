@@ -19,8 +19,9 @@ import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { describe } from "../errors.ts";
 import { defang } from "../fence.ts";
-import { projectEntry } from "../projection.ts";
+import { projectEntry, snippet } from "../projection.ts";
 import { requestFor } from "../requests.ts";
+import { describeRepeat } from "../when.ts";
 import type { BotProfile } from "./bots.ts";
 
 /** How many messages bots may send each other before a person writes to a bot again. */
@@ -288,6 +289,26 @@ export class BotMail {
         return "";
     }
 
+    /** A bot's routines, one a line: when, what, and how its last run went. Empty when it has none. */
+    async #routines(conversationId: ConversationId): Promise<string> {
+        const schedules = this.#app.schedules;
+        const outcomes = await schedules.outcomes(conversationId);
+        const lines = (await schedules.list(conversationId)).map((item) => {
+            const last = outcomes[item.id]?.[0];
+            const how =
+                last === undefined
+                    ? "not run yet"
+                    : last.status === "failed"
+                      ? `last run failed: ${snippet(last.error ?? "", 120)}`
+                      : `last run ${last.status}`;
+            const when = item.every === undefined ? "once" : describeRepeat(item.every);
+
+            return `- ${when}, next ${new Date(item.next).toISOString()}: “${snippet(item.text, 80)}” (${how})`;
+        });
+
+        return lines.join("\n");
+    }
+
     #briefTool() {
         return defineTool({
             name: "bot_brief",
@@ -332,8 +353,11 @@ export class BotMail {
                                 ? "no run ended since the server started"
                                 : `last run ended ${new Date(session.endedAt).toISOString()}`;
 
-                        // What a bot wrote is its own words, which may quote what it read: data, never orders to you.
-                        return `${bot.name} (${bot.role || "no role"}): ${state}; ${ended}.\n<bot-reply name="${bot.name}">\n${defang(said || "(nothing yet)")}\n</bot-reply>`;
+                        const routines = await this.#routines(conversationId);
+
+                        // What a bot wrote is its own words, which may quote what it read: data, never orders to you. A
+                        // routine's text may be the bot's own too.
+                        return `${bot.name} (${bot.role || "no role"}): ${state}; ${ended}.\n<bot-reply name="${bot.name}">\n${defang(said || "(nothing yet)")}\n</bot-reply>${routines === "" ? "" : `\n<bot-routines name="${bot.name}">\n${defang(routines)}\n</bot-routines>`}`;
                     }),
                 );
 

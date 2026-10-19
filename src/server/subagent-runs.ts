@@ -4,6 +4,12 @@
  */
 import { STOPPED } from "./docs.ts";
 
+/**
+ * How a run that failed leaves its messages: the model or its provider answered with an error, no model was there to
+ * ask, or the run broke. Stopped (`aborted`), cleared (`reset`), and replaced (`stale`) runs did not fail.
+ */
+export const FAILED_RUN: ReadonlySet<string> = new Set(["model_error", "no_model", "faulted"]);
+
 /** Why a subagent did not answer, for its report and its row: what went wrong, in a line, or that it was stopped. */
 export function whyUnanswered(reason: string, detail: unknown): string {
     if (reason === "aborted") {

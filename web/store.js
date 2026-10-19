@@ -1075,6 +1075,9 @@ export const actions = {
             zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         }),
     cancelSchedule: (id) => api(`c/${current()}/schedules/${encodeURIComponent(id)}/cancel`, {}),
+    /** Send a scheduled message now, without moving its next time; and what came of its latest runs. */
+    runSchedule: (id) => api(`c/${current()}/schedules/${encodeURIComponent(id)}/run`, {}),
+    scheduleRuns: () => api(`c/${current()}/schedules/runs`),
     setGoal: (command) => api(`c/${current()}/goal`, { command }),
     removeWorktree: (force) => api(`c/${current()}/worktree`, { remove: true, force }),
     clearGoal: () => api(`c/${current()}/goal`, { clear: true }),
