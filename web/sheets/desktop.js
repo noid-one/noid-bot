@@ -124,6 +124,9 @@ export function DesktopPage() {
     const [shot, setShot] = useState(undefined);
     const [blank, setBlank] = useState(false);
     const [holder, setHolder] = useState(null);
+    // Whether the owner holds it now, and has programs open on it: only then is there anything to be done with.
+    const [yours, setYours] = useState(false);
+    const [opened, setOpened] = useState(false);
     const [error, setError] = useState(undefined);
     const [focused, setFocused] = useState(false);
     const [restarting, setRestarting] = useState(false);
@@ -168,6 +171,8 @@ export function DesktopPage() {
                         setShot(source);
                         setBlank(await isBlank(source).catch(() => false));
                         setHolder(view.holder);
+                        setYours(view.yours);
+                        setOpened(view.opened);
                         setTeaching(view.teaching);
                         setError(undefined);
                     } catch (failure) {
@@ -226,7 +231,7 @@ export function DesktopPage() {
         typed.current.timer = setTimeout(flushTyped, 60);
     };
 
-    // Opened by the owner: it shows at the next picture, and is closed when the desktop is given back. Keys go to the
+    // Opened by the owner: it shows at the next picture, and closes when you are done with the desktop. Keys go to the
     // screen, where the program is.
     const open = (command) => {
         setBlank(false);
@@ -373,7 +378,11 @@ export function DesktopPage() {
     return html`<${ToolFrame}
         kind="desktop"
         title="Desktop"
-        sub=${`${holder ? `${holder} is using it` : "Nobody is using it"} · a click or typing here takes it over for two minutes`}
+        sub=${
+            yours
+                ? "You're using it · bots can have it when you're done, or two minutes after you last use it"
+                : `${holder ? `${holder} is using it` : "Nobody is using it"} · a click or typing here takes it over for two minutes`
+        }
         actions=${html`${PROGRAMS.map(
             (program) => html`<button
                 class="button ghost small"
@@ -403,13 +412,21 @@ export function DesktopPage() {
                       Record a skill
                   </button>`
         }
-        <button
-            class="button ghost small"
-            title="Let the bots have it again; what you opened closes"
-            onClick=${() => act({ action: "release" })}
-        >
-            Give back
-        </button>`}
+        ${
+            (yours || opened) &&
+            !teaching &&
+            html`<button
+                class="button ghost small"
+                title="Close what you opened, and let the bots have the desktop now"
+                onClick=${() => {
+                    setYours(false);
+                    setOpened(false);
+                    void act({ action: "release" });
+                }}
+            >
+                I'm done
+            </button>`
+        }`}
     >
         ${error && html`<p class="muted small" role="status">${error.message}</p>`}
         ${

@@ -159,3 +159,29 @@ test("the computer stopping frees the desktop; a lesson picked up after a restar
     assert.equal(holder(), "Owner", "the owner holds it for the lesson again");
     assert.equal((desktop.lease.take({ id: "1", name: "Scout" }) as { ok: boolean }).ok, false);
 });
+
+test("programs carry their holder: the others' close when it changes hands, and the holder's when it gives it back", async () => {
+    const calls: string[][] = [];
+    const env = {
+        exec: async (argv: string[]) => {
+            calls.push(argv);
+
+            return { ok: true, value: { exitCode: 0 } };
+        },
+    };
+    const desktop = new Desktop({ computer: { onStop: () => {}, env: () => env } } as never);
+    const owner = { id: "o", name: "Owner", role: "owner" } as User;
+    const closes = () => calls.filter((argv) => argv[3] === "close").map((argv) => argv.slice(4));
+
+    desktop.lease.take({ id: "1", name: "Scout" });
+    await desktop.act(owner, { action: "open", command: "xterm" });
+    assert.deepEqual(closes(), [["except", "owner:o"]], "Scout's programs close");
+    assert.deepEqual(calls.find((argv) => argv.includes("open"))!.slice(-2), ["xterm", "owner:o"]);
+
+    await desktop.act(owner, { action: "click", x: 1, y: 1 });
+    assert.equal(closes().length, 1, "still the owner's: nothing closes");
+
+    await desktop.act(owner, { action: "release" });
+    assert.deepEqual(closes().at(-1), ["only", "owner:o"]);
+    assert.equal(desktop.lease.holder, undefined);
+});

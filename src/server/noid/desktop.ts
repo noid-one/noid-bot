@@ -5,7 +5,8 @@
  * a lease (rakazo's screen lease), and another bot is told to wait. A lease ends with a release, two minutes after its
  * holder last acted (its run ending frees it too), or after ten minutes in a row when another bot wants it. The
  * programs a holder opened stay while it may come back to them, and close when it releases the desktop or another
- * holder takes it, so the next holder starts on a clear screen. The owner can watch it in the app and take it over; the owner's
+ * holder takes it, so the next holder starts on a clear screen. They carry their holder in their environment, so they
+ * are found again after the server restarts. The owner can watch it in the app and take it over; the owner's
  * lease wins. Calls run one at a time, and one cut off by a restart is never run again (pi-durable's default for a tool
  * that does not say it is safe to replay): a click may or may not have happened.
  */
@@ -258,11 +259,11 @@ export function commandFor(input: Record<string, unknown>): string[] | undefined
             }
 
             // Started in a session of its own, apart from the call (a program that keeps running does not hold it),
-            // and its id printed, so it can be closed when its holder lets the desktop go.
+            // marked with its holder (added when it runs), so it closes when its holder lets the desktop go.
             return [
                 "sh",
                 "-c",
-                'setsid sh -c "$1" >/dev/null 2>&1 & echo $!',
+                'NOID_DESKTOP_HOLDER="$2" setsid sh -c "$1" >/dev/null 2>&1 &',
                 "open",
                 input.command,
             ];
@@ -272,6 +273,22 @@ export function commandFor(input: Record<string, unknown>): string[] | undefined
             );
     }
 }
+
+/**
+ * The programs opened on the desktop, and what they started, by the holder in their environment: `only` one holder's
+ * closed, all `except` one holder's closed, or one holder's listed (`list`).
+ */
+const OPENED_BY = `mode=$1 id=$2
+for dir in /proc/[0-9]*; do
+    by=$(tr '\\0' '\\n' < "$dir/environ" 2>/dev/null | sed -n 's/^NOID_DESKTOP_HOLDER=//p')
+    [ -n "$by" ] || continue
+    if [ "$mode" = except ]; then [ "$by" = "$id" ] && continue; elif [ "$by" != "$id" ]; then continue; fi
+    if [ "$mode" = list ]; then echo "\${dir#/proc/}"; else kill -TERM "\${dir#/proc/}" 2>/dev/null; fi
+done
+true`;
+
+/** How long the owner's view trusts what it last found about the owner's programs. */
+const OPENED_FOR_MS = 5_000;
 
 /** Wait (ten seconds at most) for the desktop's display, which starts with the computer, then run the command. */
 const WAIT_FOR_DISPLAY = [
@@ -336,8 +353,6 @@ export class Desktop {
     readonly teaching: Teaching;
     /** The owner's actions, one after another. */
     #ownerTurn: Promise<unknown> = Promise.resolve();
-    /** The programs each holder opened, by process id: closed when the desktop leaves it. */
-    readonly #opened = new Map<string, number[]>();
 
     constructor(app: PocketApp) {
         this.#app = app;
@@ -345,7 +360,6 @@ export class Desktop {
         // The computer stopped, or was made again: its programs, and their process ids, are gone. Ids kept from before
         // would name other processes in the new one; and the next look checks again that it has the desktop.
         app.computer.onStop(() => {
-            this.#opened.clear();
             this.lease.clear();
             this.#ready = undefined;
         });
@@ -367,53 +381,70 @@ export class Desktop {
         });
     }
 
+    /** What the owner's view last found about a holder's programs being open, and when. */
+    readonly #opened = new Map<string, { open: boolean; at: number }>();
+
     #env(): ExecutionEnv {
         return this.#app.computer.env(COMPUTER_HOME);
     }
 
-    /** Take the desktop for a holder; the programs others opened close, so it starts on a clear screen. */
+    /**
+     * Take the desktop for a holder. When it changes hands, the programs others opened close, so it starts on a clear
+     * screen.
+     */
     #take(who: Holder, owner = false, ms = LEASE_MS): ReturnType<DesktopLease["take"]> {
+        const before = this.lease.holder?.id;
         const taken = this.lease.take(who, owner, ms);
 
-        if (taken.ok) {
-            for (const id of this.#opened.keys()) {
-                if (id !== who.id) {
-                    this.#closeOpened(id);
-                }
-            }
+        if (taken.ok && before !== who.id) {
+            this.#close("except", who.id);
         }
 
         return taken;
     }
 
-    /**
-     * Close what a holder opened, and what those programs started: each is a process group of its own, which a negative
-     * id names (dash's kill takes no `--`).
-     */
-    #closeOpened(holderId: string): void {
-        const pids = this.#opened.get(holderId) ?? [];
-
-        this.#opened.delete(holderId);
-
-        if (pids.length > 0) {
-            const kill = pids.map((pid) => `kill -TERM -${pid} 2>/dev/null`).join("; ");
-
-            void this.#env()
-                .exec(["sh", "-c", `${kill}; true`], undefined, BACKGROUND_CONTEXT)
-                .catch(() => undefined);
-        }
+    /** Close the programs one holder opened (`only`), or every other holder's (`except`). */
+    #close(mode: "only" | "except", holderId: string): void {
+        this.#opened.clear();
+        void this.#env()
+            .exec(["sh", "-c", OPENED_BY, "close", mode, holderId], undefined, BACKGROUND_CONTEXT)
+            .catch(() => undefined);
     }
 
-    /** Run an action for a holder (its arguments already checked), remembering what `open` started. */
+    /**
+     * Whether a holder has programs open on the desktop, for the owner's view: found again after a restart, which
+     * forgets who held it, and looked up every few seconds at most, not at every picture.
+     */
+    async #hasOpened(holderId: string): Promise<boolean> {
+        const known = this.#opened.get(holderId);
+
+        if (known !== undefined && this.#app.now() - known.at < OPENED_FOR_MS) {
+            return known.open;
+        }
+
+        let output = "";
+        const found = await this.#env().exec(
+            ["sh", "-c", OPENED_BY, "list", "list", holderId],
+            {
+                onOutput: (text) => {
+                    output += text;
+                },
+            },
+            BACKGROUND_CONTEXT,
+        );
+        const open = found.ok && output.trim() !== "";
+
+        this.#opened.set(holderId, { open, at: this.#app.now() });
+
+        return open;
+    }
+
+    /** Run an action for a holder (its arguments already checked); what `open` starts is marked as the holder's. */
     async #run(holder: Holder, argv: string[], env: ExecutionEnv, context: Context): Promise<void> {
-        const output = await onDisplay(env, argv, context);
+        await onDisplay(env, argv[3] === "open" ? [...argv, holder.id] : argv, context);
 
-        if (argv[0] === "sh" && argv[3] === "open") {
-            const pid = Number(output.trim().split(/\s+/).pop());
-
-            if (Number.isInteger(pid) && pid > 1) {
-                this.#opened.set(holder.id, [...(this.#opened.get(holder.id) ?? []), pid]);
-            }
+        if (argv[3] === "open") {
+            this.#opened.delete(holder.id);
         }
     }
 
@@ -476,7 +507,7 @@ export class Desktop {
 
                 if (args.action === "release") {
                     this.lease.release(who);
-                    this.#closeOpened(who.id);
+                    this.#close("only", who.id);
 
                     return text("Released the desktop; the programs you opened are closing.");
                 }
@@ -532,6 +563,8 @@ export class Desktop {
     async view(user: User): Promise<{
         image: string;
         holder: string | null;
+        yours: boolean;
+        opened: boolean;
         teaching: { name: string; steps: number } | null;
     }> {
         this.#owner(user);
@@ -541,6 +574,8 @@ export class Desktop {
         return {
             image: await screenshot(this.#env(), BACKGROUND_CONTEXT),
             holder: this.lease.holder?.name ?? null,
+            yours: this.lease.holder?.id === `owner:${user.id}`,
+            opened: await this.#hasOpened(`owner:${user.id}`),
             teaching:
                 lesson === undefined ? null : { name: lesson.name, steps: lesson.steps.length },
         };
@@ -717,7 +752,7 @@ export class Desktop {
 
         if (input.action === "release") {
             this.lease.release(who);
-            this.#closeOpened(who.id);
+            this.#close("only", who.id);
 
             return;
         }
