@@ -1,19 +1,50 @@
-// The edge between two panes, dragged to resize the one it belongs to: the sidebar, the browser, the files tile. One
-// handle for all three, so each drags, steps by keyboard, and resets the same way. The width lives in a CSS variable on
-// the root while it moves, and is kept by `commit` once it stops.
+// The edge between two panes, dragged to resize the one it belongs to: the sidebar, the browser, the files tile, and the
+// bots above the sessions. One handle for all, so each drags, steps by keyboard, and resets the same way. The size lives
+// in a CSS variable on the root while it moves, and is kept by `commit` once it stops.
 import { html } from "./ui.js";
 
 /** How far the arrow keys move the edge, and with Shift. */
 const STEP = 16;
 const BIG_STEP = 64;
 
+/** Per edge: the axis it moves along, the key that grows the pane (pointing away from it), and the one that shrinks it. */
+const EDGES = {
+    right: { size: "width", grow: "ArrowRight", shrink: "ArrowLeft" },
+    left: { size: "width", grow: "ArrowLeft", shrink: "ArrowRight" },
+    bottom: { size: "height", grow: "ArrowDown", shrink: "ArrowUp" },
+    top: { size: "height", grow: "ArrowUp", shrink: "ArrowDown" },
+};
+
+/** How big the pane is as a pointer at (x, y) would make it, from the pane's box. */
+const reach = (edge, box, x, y) =>
+    edge === "right"
+        ? x - box.left
+        : edge === "left"
+          ? box.right - x
+          : edge === "bottom"
+            ? y - box.top
+            : box.bottom - y;
+
 /**
- * A vertical splitter on one edge of its parent. `edge` is the side it sits on: "right" grows the pane as it moves
- * right (a sidebar on the left), "left" as it moves left (a panel on the right). `min` and `max()` bound the pane's
- * width, `variable` is the CSS variable that sizes it, `commit(width)` keeps a width, and `reset()` puts back the usual
- * one (a double click, or Enter).
+ * A splitter on one edge of a pane. `edge` is the side it sits on: "right" grows the pane as it moves right (a sidebar
+ * on the left), "left" as it moves left (a panel on the right), "bottom" as it moves down (a list above another). The
+ * pane is the handle's parent unless `of(handle)` names another. `min` and `max()` bound its size, `variable` is the CSS
+ * variable that sizes it, `commit(size)` keeps a size, and `reset()` puts back the usual one (a double click, or Enter).
  */
-export function Splitter({ edge, label, variable, min, max, commit, reset, className = "" }) {
+export function Splitter({
+    edge,
+    label,
+    variable,
+    min,
+    max,
+    commit,
+    reset,
+    of = (handle) => handle.parentElement,
+    className = "",
+}) {
+    const { size, grow, shrink } = EDGES[edge];
+    const measure = (handle) => of(handle).getBoundingClientRect()[size];
+
     // The handle says where it is as it moves: it does not draw again while it does.
     const set = (handle, next) => {
         const value = Math.round(Math.min(max(), Math.max(min, next)));
@@ -32,20 +63,17 @@ export function Splitter({ edge, label, variable, min, max, commit, reset, class
         event.preventDefault();
         const root = document.documentElement;
         const handle = event.currentTarget;
-        const box = handle.parentElement.getBoundingClientRect();
+        const box = of(handle).getBoundingClientRect();
         let value = 0;
 
-        root.classList.add("resizing");
+        root.classList.add(size === "width" ? "resizing" : "resizing-rows");
 
         const move = (each) => {
-            value = set(
-                handle,
-                edge === "right" ? each.clientX - box.left : box.right - each.clientX,
-            );
+            value = set(handle, reach(edge, box, each.clientX, each.clientY));
         };
 
         const stop = () => {
-            root.classList.remove("resizing");
+            root.classList.remove("resizing", "resizing-rows");
             removeEventListener("pointermove", move);
             removeEventListener("pointerup", stop);
             removeEventListener("pointercancel", stop);
@@ -60,7 +88,7 @@ export function Splitter({ edge, label, variable, min, max, commit, reset, class
         addEventListener("pointercancel", stop);
     };
 
-    // Back to the usual width: the next step measures it, as the handle no longer knows it.
+    // Back to the usual size: the next step measures it, as the handle no longer knows it.
     const back = (handle) => {
         reset();
         handle.removeAttribute("aria-valuenow");
@@ -68,13 +96,9 @@ export function Splitter({ edge, label, variable, min, max, commit, reset, class
 
     const key = (event) => {
         const step = event.shiftKey ? BIG_STEP : STEP;
-        // The key that points away from the pane widens it.
-        const grow = edge === "right" ? "ArrowRight" : "ArrowLeft";
-        const shrink = edge === "right" ? "ArrowLeft" : "ArrowRight";
-        // From where the last step set it: the pane may still be easing toward that width.
+        // From where the last step set it: the pane may still be easing toward that size.
         const last = Number(event.currentTarget.getAttribute("aria-valuenow"));
-        const now =
-            last > 0 ? last : event.currentTarget.parentElement.getBoundingClientRect().width;
+        const now = last > 0 ? last : measure(event.currentTarget);
         const next =
             event.key === grow
                 ? now + step
@@ -100,17 +124,14 @@ export function Splitter({ edge, label, variable, min, max, commit, reset, class
         role="separator"
         tabindex="0"
         aria-label=${label}
-        aria-orientation="vertical"
+        aria-orientation=${size === "width" ? "vertical" : "horizontal"}
         aria-valuemin=${min}
         aria-valuemax=${Math.round(max())}
-        onFocus=${(event) => {
-            const handle = event.currentTarget;
-
-            handle.setAttribute(
+        onFocus=${(event) =>
+            event.currentTarget.setAttribute(
                 "aria-valuenow",
-                String(Math.round(handle.parentElement.getBoundingClientRect().width)),
-            );
-        }}
+                String(Math.round(measure(event.currentTarget))),
+            )}
         title="Drag to resize · double-click to reset"
         onPointerDown=${start}
         onDblClick=${(event) => back(event.currentTarget)}

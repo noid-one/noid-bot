@@ -370,7 +370,7 @@ test("undoing a file from Changes puts it back as committed, and Pi is told", as
     );
     assert.match(
         (await modelTexts(app, id)).join("\n"),
-        /\[note\] Owner undid the uncommitted changes to keep.txt/,
+        new RegExp(`\\[note\\] ${owner(app).name} undid the uncommitted changes to keep.txt`),
     );
 });
 

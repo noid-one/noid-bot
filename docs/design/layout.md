@@ -34,7 +34,8 @@ at hairlines, a header line that runs across the whole width, quiet section head
   chat card floating on the right. noid now ships PiP off (Extensions can turn it back on), so there is no second chat:
   you talk to Noid. Alt+A goes to Noid; the PiP panel, its bubble, its menu tile, and its launcher entry are gone with
   it. Memories stay in the session menu.
-- **Edges to drag.** The sidebar, browser, and files edges use one splitter (`web/splitter.js`) instead of three copies.
+- **Edges to drag.** The sidebar, browser, and files edges, and the line between the bots and the sessions, use one
+  splitter (`web/splitter.js`) instead of separate copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
   (or press Enter) to reset. The edge lights up while you drag or focus it.
 - **Noid first.** The home screen counts bots and sessions apart. Its first button is **Message Noid**, then New bot,

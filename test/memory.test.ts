@@ -275,7 +275,7 @@ test("Pi's list shows what is in force, and what waits only for whom it works fo
     await app.memory.add(
         id,
         repo,
-        { userId: owner(app).id, byPi: false, name: "Owner" },
+        { userId: owner(app).id, byPi: false, name: owner(app).name },
         {
             text: "In-force-lesson.",
             scope: "project",
@@ -318,7 +318,7 @@ test("a call run again saves its lesson once", async () => {
 
 test("a project keeps so many lessons, and says to forget one first", async () => {
     const id = await newSession(app, elsewhere);
-    const writer = { userId: owner(app).id, byPi: false, name: "Owner" };
+    const writer = { userId: owner(app).id, byPi: false, name: owner(app).name };
 
     for (let index = 0; index < MAX_PROJECT_LESSONS; index++) {
         await app.memory.add(id, elsewhere, writer, { text: `p${index}`, scope: "project" });

@@ -724,6 +724,12 @@ kbd {
     user-select: none;
 }
 
+:root.resizing-rows,
+:root.resizing-rows * {
+    cursor: row-resize !important;
+    user-select: none;
+}
+
 .pane {
     flex: 1;
     min-width: 0;
@@ -881,6 +887,25 @@ kbd {
     left: 0;
 }
 
+/* Between rows (the bots over the sessions): the same strip, lying down. */
+.splitter:is(.at-top, .at-bottom) {
+    top: auto;
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: auto;
+    height: 7px;
+    cursor: row-resize;
+}
+
+.splitter.at-bottom {
+    bottom: -4px;
+}
+
+.splitter.at-top {
+    top: -4px;
+}
+
 .splitter::before {
     content: "";
     position: absolute;
@@ -900,10 +925,18 @@ kbd {
     left: 0;
 }
 
-:root.resizing .splitter::before,
+.splitter:is(.at-top, .at-bottom)::before {
+    top: 3px;
+    bottom: auto;
+    left: 0;
+    right: 0;
+    width: auto;
+    height: 1px;
+}
+
+:root:is(.resizing, .resizing-rows) .splitter::before,
 .splitter:focus-visible::before {
     opacity: 1;
-    width: 2px;
 }
 
 @media (hover: hover) {
@@ -15066,6 +15099,7 @@ pre.gallery-code {
 /* ─── noid: bots (sessions.js BotList, app.js top bar, sheets/bot.js) ─────────────────────── */
 
 .bots {
+    position: relative;
     flex: none;
     margin-bottom: 10px;
 }
@@ -15075,7 +15109,9 @@ pre.gallery-code {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    max-height: 40dvh;
+    /* As tall as the owner dragged it (the splitter under it), else as tall as it needs, up to 40% of the screen. */
+    height: var(--bots-h, auto);
+    max-height: var(--bots-h, 40dvh);
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: thin;

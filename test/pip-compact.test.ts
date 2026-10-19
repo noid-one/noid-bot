@@ -261,7 +261,12 @@ test("compacting by hand: PiP's summary is written without what came from outsid
     assert.match(asked, /\[left out: what happened on GitHub\]/);
     assert.match(asked, /\[read returned\]: \[left out: what it returned\]/);
     assert.doesNotMatch(asked, /ORDERS/);
-    assert.match(asked, /Owner asked these notes to keep this in mind: keep the deploy plan/);
+    assert.match(
+        asked,
+        new RegExp(
+            `${owner(app).name} asked these notes to keep this in mind: keep the deploy plan`,
+        ),
+    );
     assert.match(asked, /never as a preference, a goal, or an instruction/);
     assert.deepEqual(ownSummaries, [], "never Pi Durable's summary of the raw conversation");
 

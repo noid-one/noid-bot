@@ -569,6 +569,15 @@ function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
     </div>`;
 }
 
+/** noid: how tall the bot list is, as the owner dragged it (`--bots-h`); none set, it takes what it needs. */
+const BOTS_HEIGHT_KEY = "pocket.botsHeight";
+const BOTS_MIN = 60;
+const botsHeight = Number(localStorage.getItem(BOTS_HEIGHT_KEY));
+
+if (botsHeight > 0) {
+    document.documentElement.style.setProperty("--bots-h", `${botsHeight}px`);
+}
+
 /** noid: the bots, above the sessions: Noid first, then by name. */
 function BotList({ compact, canStart, folded, onFold }) {
     const { sessions, conversationId } = store.state;
@@ -604,6 +613,24 @@ function BotList({ compact, canStart, folded, onFold }) {
                 />`,
             )}
         </div>
+        ${
+            !compact &&
+            !folded &&
+            html`<${Splitter}
+                edge="bottom"
+                label="Resize the bot list"
+                variable="--bots-h"
+                className="bots-splitter"
+                of=${(handle) => handle.parentElement.querySelector(".bot-items")}
+                min=${BOTS_MIN}
+                max=${() => Math.max(BOTS_MIN, innerHeight * 0.7)}
+                commit=${(height) => localStorage.setItem(BOTS_HEIGHT_KEY, String(height))}
+                reset=${() => {
+                    localStorage.removeItem(BOTS_HEIGHT_KEY);
+                    document.documentElement.style.removeProperty("--bots-h");
+                }}
+            />`
+        }
     </div>`;
 }
 

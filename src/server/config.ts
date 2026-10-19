@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -106,6 +106,56 @@ function sameHash(a: string, b: string): boolean {
 export const MAX_INVITES = 50;
 
 /** `config.json` in the data directory, written atomically with mode 0600. */
+/** noid: the owner's name until they choose one, as two words picked at random: "Brisk Otter", not "Owner". */
+const ADJECTIVES = [
+    "Brisk",
+    "Calm",
+    "Clever",
+    "Cosmic",
+    "Dapper",
+    "Fuzzy",
+    "Gentle",
+    "Jolly",
+    "Lucky",
+    "Mellow",
+    "Nimble",
+    "Plucky",
+    "Quiet",
+    "Rusty",
+    "Snappy",
+    "Sunny",
+    "Swift",
+    "Tidy",
+    "Witty",
+    "Zesty",
+];
+const CREATURES = [
+    "Badger",
+    "Beaver",
+    "Falcon",
+    "Ferret",
+    "Gecko",
+    "Heron",
+    "Koala",
+    "Lemur",
+    "Lynx",
+    "Marmot",
+    "Moose",
+    "Narwhal",
+    "Otter",
+    "Owl",
+    "Panda",
+    "Puffin",
+    "Quokka",
+    "Raven",
+    "Walrus",
+    "Yak",
+];
+
+export function funName(pick: (count: number) => number = (count) => randomInt(count)): string {
+    return `${ADJECTIVES[pick(ADJECTIVES.length)]} ${CREATURES[pick(CREATURES.length)]}`;
+}
+
 export class ConfigStore {
     readonly file: string;
     #config: PocketConfig;
@@ -125,7 +175,7 @@ export class ConfigStore {
                 users: [
                     {
                         id: randomUUID(),
-                        name: "Owner",
+                        name: funName(),
                         role: "owner",
                         tokenHash: hashToken(ownerToken),
                         createdAt: Date.now(),
