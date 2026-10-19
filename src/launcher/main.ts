@@ -465,9 +465,14 @@ function startServer(first: boolean): void {
             PI_POCKET_SUPERVISED: "1",
             PI_POCKET_LAUNCHER: "1",
             // Node keeps what it compiled (keyed by each file's content, so an edit is never stale): a start or restart
-            // is about 90 ms (a sixth) quicker.
-            NODE_COMPILE_CACHE:
-                process.env.NODE_COMPILE_CACHE ?? join(options.data, "cache", "compile"),
+            // is about 90 ms (a sixth) quicker. The server lets it go once Node has read it (`NOID_COMPILE_CACHE`), so
+            // what Pi runs does not cache there too.
+            ...(process.env.NODE_COMPILE_CACHE === undefined
+                ? {
+                      NODE_COMPILE_CACHE: join(options.data, "cache", "compile"),
+                      NOID_COMPILE_CACHE: "1",
+                  }
+                : {}),
         },
     });
 

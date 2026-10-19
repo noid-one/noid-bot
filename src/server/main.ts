@@ -24,6 +24,13 @@ const RESTART_CODE = 75;
 const CONFIG_ERROR_CODE = 78;
 const launcher = process.env.PI_POCKET_LAUNCHER === "1" && typeof process.send === "function";
 
+// The launcher's compile cache is the server's own: Node read it at start, and the commands Pi runs (a project's
+// `node`, `npm test`) must not fill the data folder with theirs.
+if (process.env.NOID_COMPILE_CACHE === "1") {
+    delete process.env.NODE_COMPILE_CACHE;
+    delete process.env.NOID_COMPILE_CACHE;
+}
+
 function parseArgs(argv: string[]) {
     const options = {
         host: process.env.PI_POCKET_HOST ?? "127.0.0.1",

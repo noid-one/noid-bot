@@ -361,6 +361,10 @@ function createRenderer() {
         add,
         remove,
         schedule,
+        /** Something moved a face (a tap, which moves no pointer): the full frame rate for a while. */
+        stir: () => {
+            pointer.at = performance.now();
+        },
         reducedMotion: () => reducedMotion.matches,
         onFallback: (callback) => {
             fallbacks.add(callback);
@@ -436,6 +440,7 @@ export function attach(canvas, options, onFallback) {
             }
         },
         boop(strength) {
+            shared.stir();
             face.motion.boop(strength);
             face.dirty = true;
             shared.schedule();

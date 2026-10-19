@@ -66,7 +66,11 @@ const route: FauxResponseStep = (request) => {
     const { role, text: written } = lastText(request as never);
     const text = written.replace(/^\[from: [^\]]+\] /, "");
 
-    if (system.includes(JSON.stringify(SUMMARY_SYSTEM).slice(1, -1))) {
+    // Noid's summaries, or another bot's (`summarySystem` with its name).
+    if (
+        system.includes(JSON.stringify(SUMMARY_SYSTEM).slice(1, -1)) ||
+        /You write the notes \w+, an assistant that looks after/.test(system)
+    ) {
         summaries.push(text);
 
         return failSummary
@@ -453,6 +457,42 @@ test("only the owner sets when Noid compacts, to one of its choices; with its se
             app.commands.compact(id, me, undefined),
             /session tools are turned off/,
         );
+    } finally {
+        await app.setExtensionEnabled(me, "session-tools.ts", true);
+    }
+});
+
+test("another bot's summary leaves outside text out with the session tools off too", async () => {
+    const me = owner(app);
+    const { id } = await app.bots.create(me, { name: "Helper", role: "Helps" });
+
+    await app.commands.configure(id, me, {
+        model: { provider: "faux", modelId: "faux-1" },
+        thinkingLevel: "off",
+    });
+
+    for (const text of [
+        "Remember the launch date.",
+        "And the venue.",
+        "And who comes.",
+        "Thanks.",
+    ]) {
+        await say(app, id, text);
+    }
+
+    await app.setExtensionEnabled(me, "session-tools.ts", false);
+
+    try {
+        const asked = summaries.length;
+        const own = ownSummaries.length;
+
+        await app.commands.compact(id, me, undefined);
+        await until(
+            async () => summaries.length > asked && !(await compacting(id)),
+            "the bot's compaction",
+        );
+        assert.equal(ownSummaries.length, own, "never Pi Durable's");
+        assert.ok((await placed(id)).at(-1)?.endsWith(`<summary>\n${NOTES}\n</summary>`));
     } finally {
         await app.setExtensionEnabled(me, "session-tools.ts", true);
     }

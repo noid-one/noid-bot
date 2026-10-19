@@ -2090,8 +2090,8 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
-        // A bot's summaries are its own (`noid-compact.ts`), written by the session tools' hook with outside text left
-        // out, and one that cannot be written says why.
+        // A bot's summaries are its own (`noid-compact.ts`), written by the approvals' hook with outside text left out,
+        // and one that cannot be written says why.
         const bot =
             app.sessionTools.actsFor(id) === undefined
                 ? undefined
