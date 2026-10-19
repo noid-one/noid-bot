@@ -333,3 +333,38 @@ test(
         await app!.browsers.close(Number(id));
     },
 );
+
+test("the owner's terminal is a shell in a folder on the computer", { skip }, async () => {
+    const terminals = app!.terminals;
+    const { id, cwd } = await terminals.open(owner(app!), {
+        cwd: folder("terminal"),
+        cols: 100,
+        rows: 30,
+    });
+
+    assert.equal(cwd, folder("terminal"));
+    terminals.write(owner(app!), id, "echo hello-$((6*7)) && pwd && tput cols\n");
+
+    let seen = "";
+    let from = 0;
+
+    await until(async () => {
+        const read = await terminals.read(owner(app!), id, from);
+
+        seen += Buffer.from(read.data, "base64").toString();
+        from = read.next;
+
+        return (
+            seen.includes("hello-42") && seen.includes(folder("terminal")) && /\b100\b/.test(seen)
+        );
+    }, "the shell's answer");
+
+    terminals.write(owner(app!), id, "exit 3\n");
+    await until(async () => {
+        const read = await terminals.read(owner(app!), id, from);
+
+        from = read.next;
+
+        return read.ended === "exited with code 3";
+    }, "the shell to exit");
+});

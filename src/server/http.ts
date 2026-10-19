@@ -4,14 +4,14 @@
  * throws into an answer.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { join, normalize, sep } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import { Auth } from "./auth.ts";
 import { describe, HttpError } from "./errors.ts";
 import { createApi } from "./http/api.ts";
 import { artifact } from "./http/artifacts.ts";
 import { extensionFile } from "./http/extension-routes.ts";
 import { hookRoute } from "./http/hook-routes.ts";
-import { serveApp, serveFile, VENDOR, WEB } from "./http/assets.ts";
+import { serveApp, serveFile, TYPES, VENDOR, WEB } from "./http/assets.ts";
 import { type HttpOptions, json } from "./http/io.ts";
 import { join as joinPage, login, sharePage } from "./http/sign-in.ts";
 import { themeFile } from "./http/theme-routes.ts";
@@ -67,7 +67,11 @@ export function createHandler(options: HttpOptions) {
             }
 
             if (parts[0] === "vendor" && parts[1] !== undefined && VENDOR[parts[1]] !== undefined) {
-                return serveFile(response, VENDOR[parts[1]]!, "text/javascript; charset=utf-8");
+                return serveFile(
+                    response,
+                    VENDOR[parts[1]]!,
+                    TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
+                );
             }
 
             if (parts[0] === "login" && (request.method === "GET" || request.method === "POST")) {

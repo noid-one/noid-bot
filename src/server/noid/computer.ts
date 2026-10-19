@@ -410,6 +410,18 @@ export class Computer {
         }
     }
 
+    /**
+     * Make a folder on the computer before something outside its environments (a terminal) works there. Made again
+     * each time, unlike the environments' once: someone may have removed it since.
+     */
+    prepare(cwd: string): Promise<void> {
+        const folder = normalFolder(cwd);
+
+        this.#made.delete(folder);
+
+        return this.#make(folder);
+    }
+
     /** Keep the computer from stopping while something outside a tool call uses it (a browser window being watched). */
     hold(): () => void {
         this.#holds += 1;

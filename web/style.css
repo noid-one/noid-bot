@@ -15075,3 +15075,10 @@ pre.gallery-code {
     cursor: pointer;
     margin-top: 3px;
 }
+
+.terminal-host {
+    height: min(60vh, 560px);
+    padding: 8px;
+    border-radius: var(--r-row);
+    background: var(--bg);
+}

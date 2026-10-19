@@ -489,6 +489,48 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return json(response, 200, { ok: true });
         }
 
+        // noid: the owner's terminals on the shared computer. Output is read by long polling from an offset.
+        if (first === "terminals" && second === undefined) {
+            return method === "POST"
+                ? json(response, 200, await app.terminals.open(user, await readJson(request)))
+                : json(response, 200, { terminals: app.terminals.list(user) });
+        }
+
+        if (first === "terminals" && second !== undefined && third === "read" && method === "GET") {
+            const gone = new AbortController();
+
+            response.on("close", () => gone.abort());
+
+            return json(
+                response,
+                200,
+                await app.terminals.read(
+                    user,
+                    second,
+                    Number(url.searchParams.get("from")) || 0,
+                    gone.signal,
+                ),
+            );
+        }
+
+        if (first === "terminals" && second !== undefined && method === "POST") {
+            const body = await readJson<{ data?: unknown; cols?: unknown; rows?: unknown }>(
+                request,
+            );
+
+            if (third === "input") {
+                app.terminals.write(user, second, body.data);
+            } else if (third === "resize") {
+                app.terminals.resize(user, second, body.cols, body.rows);
+            } else if (third === "close") {
+                app.terminals.close(user, second);
+            } else {
+                throw new HttpError(404, "Unknown API route");
+            }
+
+            return json(response, 200, { ok: true });
+        }
+
         // noid: bots. A bot is a session (its list item carries `bot`), so listing and archiving are the sessions' own.
         if (first === "bots" && second === undefined && method === "POST") {
             return json(

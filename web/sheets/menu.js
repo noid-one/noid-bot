@@ -10,6 +10,7 @@ import { peeksOn, togglePeeks } from "../peeks.js";
 import { modelRefreshAvailable, refreshModels } from "../model-refresh.js";
 import { openPip, pipAvailable, pipUnread } from "../pip.js";
 import { setArchived } from "../sessions.js";
+import { onComputer } from "./terminal.js";
 import { openSubagent } from "../subagents.js";
 import {
     actions,
@@ -414,6 +415,14 @@ export function MenuSheet({ places = true }) {
                           () => openSheet({ type: "cwd", mode: "change" }),
                           shortPath(view.agent?.cwd, server?.home),
                       )
+            }
+            ${
+                me?.role === "owner" &&
+                item(
+                    "Computer terminal",
+                    () => openSheet({ type: "terminal", cwd: view.agent?.cwd }),
+                    onComputer(view.agent?.cwd) ? "in this folder" : "a shell on the computer",
+                )
             }
             ${
                 conversation &&

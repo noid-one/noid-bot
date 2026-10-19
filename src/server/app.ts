@@ -82,6 +82,7 @@ import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.
 import { Bots } from "./noid/bots.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
+import { Terminals } from "./noid/terminal.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { pocketVersion } from "./versions.ts";
 import { configureHttp } from "./net.ts";
@@ -340,6 +341,8 @@ export class PocketApp {
         idleMs: idleMinutes() * 60_000,
         log: (message) => this.#log(`computer: ${message}`),
     });
+    /** The owner's shells on the shared computer. */
+    readonly terminals = new Terminals(this.computer);
     #stopIdleWatch: () => void = () => {};
     readonly #busy = new Set<ConversationId>();
     /** When each conversation's last run ended, since this server started: peek tiles show sessions done since a look. */
@@ -3008,6 +3011,7 @@ export class PocketApp {
 
                 // The container keeps running: the next server finds it (or it stops itself when idle).
                 this.#stopIdleWatch();
+                this.terminals.closeAll();
                 await this.computer.close(context);
             } finally {
                 // After the harness: a browser call cut off by the stop resumes as interrupted, not as failed.

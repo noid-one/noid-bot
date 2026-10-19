@@ -31,6 +31,7 @@ import { SchedulesSheet } from "./sheets/schedules.js";
 import { SessionSheet } from "./sheets/session.js";
 import { ShortcutsSheet } from "./sheets/shortcuts.js";
 import { SpendSheet } from "./sheets/spend.js";
+import { TerminalSheet } from "./sheets/terminal.js";
 import { TextSheet } from "./sheets/text.js";
 import { ArtifactsSheet, ArtifactViewer, ImageViewer } from "./sheets/viewers.js";
 import { PiSessionSheet, PiSessionsSheet, piSessionsAvailable } from "./sheets/pi-sessions.js";
@@ -335,6 +336,9 @@ function sheetBody(sheet) {
             break;
         case "bot":
             body = html`<${BotSheet} id=${sheet.id} />`;
+            break;
+        case "terminal":
+            body = me?.role === "owner" ? html`<${TerminalSheet} cwd=${sheet.cwd} />` : null;
             break;
         case "instructions":
             body = html`<${TextSheet}
