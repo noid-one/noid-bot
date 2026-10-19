@@ -15,6 +15,7 @@ import type { BotProfile } from "./noid/bots.ts";
 import type { Gallery } from "./gallery.ts";
 import type { Role, User } from "./config.ts";
 import type { Goals } from "./goals.ts";
+import { visible } from "./fence.ts";
 import type { LancetGuard } from "./lancet.ts";
 import type { Memory } from "./memory.ts";
 import type { SessionTools } from "./session-tools.ts";
@@ -106,7 +107,9 @@ export class Approvals {
 
     request(asked: ApprovalRequest, context: Context): Promise<ApprovalAnswer> {
         // Who asked is fixed now: someone writing to Pi while the call waits does not become its requester.
-        const { requestedBy: _ignored, ...rest } = asked;
+        const { requestedBy: _ignored, ...asIs } = asked;
+        // The card shows what the owner says yes to: nothing in it may be invisible, or redraw it as something else.
+        const rest = { ...asIs, subject: visible(asIs.subject) };
         const requestedBy = this.#requesterOf(asked.conversationId);
         const request: ApprovalRequest =
             requestedBy === undefined ? rest : { ...rest, requestedBy };

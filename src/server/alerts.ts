@@ -19,8 +19,8 @@ const DONE_DELAY_MS = 3000;
  * longer one could hide its risky part below the fold; it opens the app instead. Denying is always offered.
  */
 const MAX_NOTIFIED_CALL = 120;
-/** Characters that break a line, are invisible, or reorder text: a call with any of them may not read as it runs. */
-const DISGUISING = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/** Characters that break a line, are invisible, or reorder text (or one `visible` wrote out): such a call may not read as it runs. */
+const DISGUISING = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|\\u\{[0-9A-F]+\}/u;
 
 export class Alerts {
     readonly #app: PocketApp;

@@ -440,7 +440,10 @@ function PeekLine({ line }) {
  * whole, it is never clamped; the tile also measures that it fits (`PeekTile`), as wide characters take more room.
  */
 const wholeOnTile = (approval) =>
-    approval.subject.length <= ALLOW_LENGTH && !/[\r\n]/.test(approval.subject);
+    approval.subject.length <= ALLOW_LENGTH &&
+    !/[\r\n]/.test(approval.subject) &&
+    // A character the server wrote out (`fence.ts` visible): one that hid, or redrew the line. Its card says so.
+    !/\\u\{[0-9A-F]+\}/.test(approval.subject);
 
 /** The call a session waits on, in full when it is short, and why the guard asks. */
 function PeekAsk({ approval, compact }) {

