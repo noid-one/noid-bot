@@ -18,6 +18,9 @@ at hairlines, a header line that runs across the whole width, quiet section head
   `--head-h`, so their bottom lines meet across the window.
 - **Sidebar sections.** `BOTS` and `SESSIONS` are small spaced capitals with their count. Each folds, and stays folded
   in this browser. A plus adds a bot or a session, where the blue "+ New" pills were.
+- **One side panel, with tabs.** Files, Changes, and the Browser were separate panels with separate heads. They are now
+  tabs on one panel head (`web/panel-tabs.js`), on the header line, with the folder and close at its end. Each tab's
+  own tools sit under it, such as the browser's address bar. On a phone the head starts with a back button.
 - **Edges to drag.** The sidebar, browser, and files edges use one splitter (`web/splitter.js`) instead of three copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
   (or press Enter) to reset. The edge lights up while you drag or focus it.

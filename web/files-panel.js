@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useBack } from "./back.js";
+import { PanelTabs } from "./panel-tabs.js";
 import { Splitter } from "./splitter.js";
 import { DiffReview, KIND_LETTERS, reloadChanges, useChanges, useWidth } from "./diff.js";
 import { loadFiles, suggestFiles } from "./files.js";
@@ -636,54 +637,14 @@ export function FilesPanel({ leaving = false }) {
         inert=${leaving}
     >
         <${ResizeEdge} />
-        <header class="files-bar">
-            ${
-                !beside &&
-                html`<button
-                    class="icon-button files-back"
-                    type="button"
-                    aria-label="Back to the conversation"
-                    title="Back (Alt+E)"
-                    onClick=${() => setFilesOpen(false)}
-                >
-                    <${Icon} name="back" size=${22} />
-                </button>`
-            }
-            <div class="files-tabs" role="tablist">
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected=${filesTab === "files" ? "true" : "false"}
-                    class=${filesTab === "files" ? "on" : ""}
-                    onClick=${() => setTab("files")}
-                >
-                    Files
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected=${filesTab === "changes" ? "true" : "false"}
-                    class=${filesTab === "changes" ? "on" : ""}
-                    onClick=${() => setTab("changes")}
-                >
-                    Changes
-                    ${count > 0 && html`<span class="files-count">${count}</span>`}
-                </button>
-            </div>
-            <span class="files-root" title=${root}>${shortPath(root, server?.home)}</span>
-            ${
-                beside &&
-                html`<button
-                    class="icon-button"
-                    type="button"
-                    aria-label="Close the files"
-                    title="Close (Alt+E)"
-                    onClick=${() => setFilesOpen(false)}
-                >
-                    <${Icon} name="close" size=${17} />
-                </button>`
-            }
-        </header>
+        <${PanelTabs}
+            active=${filesTab}
+            beside=${beside}
+            count=${count}
+            extra=${html`<span class="files-root" title=${root}>
+                ${shortPath(root, server?.home)}
+            </span>`}
+        />
         <div class="files-body" role="tabpanel" aria-label="Files" hidden=${filesTab !== "files"}>
             <${FilesTab} changes=${changes} covering=${!beside && !leaving} />
         </div>

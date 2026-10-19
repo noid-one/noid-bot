@@ -10507,8 +10507,9 @@ textarea.notes {
     }
 }
 
-/* The bar: Files and Changes as a switch, the folder, and close. */
-.files-bar {
+/* The side panel's head (`PanelTabs`): Files, Changes, and the Browser as a switch, the folder, and close. On the top
+ * bar's line. */
+.panel-tabs {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -10518,14 +10519,19 @@ textarea.notes {
     border-bottom: 1px solid var(--hair);
 }
 
-.files-bar .icon-button {
+/* Close keeps to the end, with or without the folder before it. */
+.panel-tabs .panel-close {
+    margin-left: auto;
+}
+
+.panel-tabs .icon-button {
     width: 34px;
     height: 34px;
     color: var(--muted);
 }
 
 @media (hover: hover) {
-    .files-bar .icon-button:hover {
+    .panel-tabs .icon-button:hover {
         color: var(--text);
     }
 }
@@ -10540,8 +10546,8 @@ textarea.notes {
     font: 11.5px var(--mono);
 }
 
-/* The switch between Files and Changes, and the review's layout: a track with the chosen one raised. */
-.files-tabs,
+/* The switch between the panel's tabs, and the review's layout: a track with the chosen one raised. */
+.panel-tablist,
 .dr-layout {
     display: flex;
     flex: none;
@@ -10550,7 +10556,7 @@ textarea.notes {
     background: var(--card);
 }
 
-.files-tabs button,
+.panel-tablist button,
 .dr-layout button {
     display: inline-flex;
     align-items: center;
@@ -10567,13 +10573,13 @@ textarea.notes {
 }
 
 @media (hover: hover) {
-    .files-tabs button:hover,
+    .panel-tablist button:hover,
     .dr-layout button:hover {
         color: var(--text);
     }
 }
 
-.files-tabs button.on,
+.panel-tablist button.on,
 .dr-layout button.on {
     background: var(--raised);
     color: var(--text);
@@ -10610,7 +10616,7 @@ textarea.notes {
 }
 
 /* As wide as the tile, never as wide as what is inside: a long line or a wide page scrolls within it instead. */
-.files-bar,
+.files-tile > .panel-tabs,
 .files-body {
     width: 100%;
 }
@@ -10882,13 +10888,14 @@ textarea.notes {
     }
 }
 
+/* The Browser's tools, under the panel's head: a toolbar row, as a page's tools sit under an editor's tabs. */
 .browser-bar {
     display: flex;
     align-items: center;
     gap: 4px;
-    min-height: calc(var(--head-h) + env(safe-area-inset-top));
+    min-height: 42px;
     flex: none;
-    padding: env(safe-area-inset-top) 8px 0 10px;
+    padding: 0 8px 0 10px;
     border-bottom: 1px solid var(--hair);
     background: var(--bg);
 }
@@ -12051,8 +12058,8 @@ textarea.notes {
         opacity 0.2s var(--ease-out);
 }
 
-/* The Files tile's way back to the conversation, where the tile covers it. */
-.files-bar .files-back {
+/* The panel's way back to the conversation, where it covers it. */
+.panel-tabs .panel-back {
     width: 44px;
     height: 44px;
     margin-left: -8px;
@@ -12112,7 +12119,7 @@ textarea.notes {
 /* Under a file that covers the whole tile, the tile's bar is out of reach of taps, keys, and screen readers too. */
 @media (max-width: 1099px) {
     .files-tile:has(> .files-body:not([hidden]) > .ft:not(.side) > .ft-view:not(.leaving))
-        > .files-bar {
+        > .panel-tabs {
         visibility: hidden;
     }
 }
@@ -12133,7 +12140,7 @@ textarea.notes {
 
 /* Touch: rows and controls a thumb tall. */
 @media (pointer: coarse) {
-    .files-tabs button {
+    .panel-tablist button {
         height: 40px;
         padding: 0 14px;
         font-size: 14px;
@@ -12183,8 +12190,8 @@ textarea.notes {
 }
 
 /*
- * Phones: the Browser panel's bar as an in-app browser's. Close and the address on the first row, the page's tools
- * spread a thumb apart on the second.
+ * Phones: the Browser's tools as an in-app browser's: the address on a row of its own, the page's tools spread a thumb
+ * apart under it.
  */
 @media (max-width: 700px) {
     .browser-bar {
@@ -12193,12 +12200,9 @@ textarea.notes {
         row-gap: 0.2rem;
         padding-bottom: 0.2rem;
     }
-    .browser-bar > .browser-close {
-        order: -2;
-    }
     .browser-bar > .browser-address {
         order: -1;
-        flex: 1 1 calc(100% - 52px);
+        flex: 1 1 100%;
         margin-right: 0;
     }
 }

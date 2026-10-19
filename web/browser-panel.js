@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useBack } from "./back.js";
+import { PanelTabs } from "./panel-tabs.js";
 import { Splitter } from "./splitter.js";
 import {
     browserApi,
@@ -835,7 +836,7 @@ export function BrowserPanel({ leaving = false }) {
         stage = html`<div class="browser-note">
             <${Icon} name="globe" size=${28} />
             <p>
-                No browser was found on the machine Pi Pocket runs on. Install Chromium or Google Chrome there (or set <code>PI_POCKET_BROWSER</code> to a browser's path), then restart Pi Pocket.
+                No browser was found on the machine noid runs on. Install Chromium or Google Chrome there (or set <code>PI_POCKET_BROWSER</code> to a browser's path), then restart noid.
             </p>
         </div>`;
     } else if (!open && why) {
@@ -885,7 +886,8 @@ export function BrowserPanel({ leaving = false }) {
         inert=${leaving}
     >
         <${ResizeEdge} />
-        <header class="browser-bar">
+        <${PanelTabs} active="browser" beside=${beside} />
+        <div class="browser-bar">
             <button
                 class="icon-button"
                 aria-label="Back"
@@ -995,15 +997,7 @@ export function BrowserPanel({ leaving = false }) {
                     <${Icon} name="keyboard" size=${18} />
                 </button>`
             }
-            <button
-                class="icon-button browser-close"
-                aria-label="Close the browser"
-                title="Close the browser (Alt+B)"
-                onClick=${() => setBrowserOpen(false)}
-            >
-                <${Icon} name="close" size=${18} />
-            </button>
-        </header>
+        </div>
         <div class=${`browser-progress ${state?.loading ? "on" : ""}`}></div>
         <div class="browser-stage" ref=${stageRef}>${stage}</div>
         ${
