@@ -626,3 +626,32 @@ test("bots ask before reaching this machine through a new bot or a session", () 
 
     assert.ok(verdict.ask && verdict.subject === command);
 });
+
+test("a session a bot started is the owner's as the bot is: hidden from guests, and its cards the bot's", async () => {
+    const made = await hostBot("Team Lead");
+
+    await app.commands.submit(made.id, owner(app), { text: "hi", requestId: "builder-hi" });
+    await until(() => app.attribution.requesterOf(made.id) !== undefined, "the bot at work");
+
+    const { session: linked } = await app.linkedSessions.start(
+        made.id,
+        { message: "help me" },
+        "builder-team",
+    );
+    const guest = app.config.addUser("Gus", "guest").user;
+
+    assert.equal(app.bots.of(linked)?.name, "Team Lead");
+    assert.equal(app.canSee(guest, linked), false);
+    assert.ok(!app.sessions(guest).some((each) => each.id === Number(linked)));
+    await assert.rejects(
+        app.commands.submit(linked, guest, { text: "hello", requestId: "gus-1" }),
+        /not shared with you/,
+    );
+
+    // The owner's list says whose it is, so its approval cards name the bot.
+    const listed = app.sessions(owner(app)).find((each) => each.id === Number(linked)) as
+        { bot?: unknown; worksFor?: { name: string } } | undefined;
+
+    assert.equal(listed?.bot, undefined, "not a bot of its own");
+    assert.equal(listed?.worksFor?.name, "Team Lead");
+});

@@ -253,9 +253,10 @@ export class SessionTools {
      * (`Bots.ensureTools`); undefined for every other conversation.
      */
     actsFor(conversationId: ConversationId): string | undefined {
+        // A bot's own, a subagent of it, or a session it started (`Bots.of`): all the owner's, as approvals take them.
         return (
             this.ownerOf(conversationId) ??
-            (this.#app.sessionMeta(conversationId)?.bot === undefined ? undefined : this.#owner())
+            (this.#app.bots.of(conversationId) === undefined ? undefined : this.#owner())
         );
     }
 

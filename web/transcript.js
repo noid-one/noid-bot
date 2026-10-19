@@ -1504,9 +1504,9 @@ function ApprovalCard({ approval }) {
     const [busy, setBusy] = useState(false);
     // noid: a bot's question can be answered for good (its rule), by the owner.
     // Only noid's own questions are the bot's (Lancet Guard asks with ids of its own).
-    const bot = approval.id.startsWith("noid:")
-        ? sessions.find((session) => session.id === conversationId)?.bot
-        : undefined;
+    // A session a bot started (`worksFor`) asks as that bot.
+    const here = sessions.find((session) => session.id === conversationId);
+    const bot = approval.id.startsWith("noid:") ? (here?.bot ?? here?.worksFor) : undefined;
     // One auto review raised is never made a rule: that would turn auto review off for the tool for good.
     // Nor one asked every time: forgetting a memory, archiving a bot, changing another bot, making a bot here.
     const canAlways =

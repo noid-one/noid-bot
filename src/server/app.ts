@@ -1971,11 +1971,17 @@ export class PocketApp {
                         : visibleOrigin
                           ? { linkedFrom }
                           : { linkedOrigin: true };
+                // A session a bot started works for it (`Bots.of`): its approval cards are the bot's.
+                const worksFor =
+                    meta.bot === undefined && linkedFrom !== undefined
+                        ? this.bots.of(Number(id) as unknown as ConversationId)
+                        : undefined;
 
                 return {
                     id: Number(id),
                     ...shown,
                     ...linkage,
+                    ...(worksFor === undefined ? {} : { worksFor }),
                     busy,
                     waiting: waiting.has(id),
                     ...(endedAt === undefined ? {} : { endedAt }),
