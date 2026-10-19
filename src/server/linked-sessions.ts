@@ -18,7 +18,6 @@ import {
     LinkedSessionCallsDoc,
     LinkedSessionPeersDoc,
     LinkedSessionRelayDoc,
-    PlanDoc,
     SessionsDoc,
     TurnsDoc,
 } from "./docs.ts";
@@ -129,10 +128,6 @@ export class LinkedSessions implements LinkedSessionsApi {
 
         await app.requireDriver(source, user);
 
-        if ((await app.harness.snapshot(PlanDoc, source, context))?.on) {
-            throw new HttpError(409, "This session is in plan mode.");
-        }
-
         app.spend.check(user, source);
     }
 
@@ -140,18 +135,11 @@ export class LinkedSessions implements LinkedSessionsApi {
     async #authorize(tx: Tx, source: ConversationId, actor: RequestActor): Promise<User> {
         await actor.authorize(tx, true);
 
-        const plan = await tx.doc(PlanDoc, source);
-
         actor.checkSource(await tx.doc(AgentDoc, source));
 
         const user = actor.current();
 
         this.#app.requireSteer(user);
-
-        if (plan.on) {
-            throw new HttpError(409, "This session is in plan mode.");
-        }
-
         this.#app.spend.check(user, source);
 
         return user;
@@ -167,7 +155,6 @@ export class LinkedSessions implements LinkedSessionsApi {
         await this.#authorize(tx, source, actor);
 
         const turns = await tx.doc(TurnsDoc, this.#app.rootOf(target));
-        const targetPlan = await tx.doc(PlanDoc, target);
         const agent = await tx.doc(AgentDoc, source);
         const child = await tx.doc(AgentDoc, target);
         const user = actor.current();
@@ -181,7 +168,7 @@ export class LinkedSessions implements LinkedSessionsApi {
             throw new HttpError(409, "Take turns is on: take the wheel first.");
         }
 
-        if (targetPlan.on || settingsOf(child) !== settingsOf(approved)) {
+        if (settingsOf(child) !== settingsOf(approved)) {
             throw new HttpError(
                 409,
                 "The linked session settings changed. Review them and try again.",
@@ -210,10 +197,8 @@ export class LinkedSessions implements LinkedSessionsApi {
     ) {
         const app = this.#app;
         const agent = await tx.doc(AgentDoc, source);
-        const plan = await tx.doc(PlanDoc, source);
         const sourceTurns = await tx.doc(TurnsDoc, app.rootOf(source));
         const targetTurns = await tx.doc(TurnsDoc, app.rootOf(target));
-        const targetPlan = await tx.doc(PlanDoc, target);
         const user = await this.#authorizeTarget(tx, source, target, actor, approved);
         const stopped = new AbortController();
         const parent = withAbortSignal(stopped.signal, actor.context);
@@ -230,8 +215,6 @@ export class LinkedSessions implements LinkedSessionsApi {
         const expected = new Map([
             [`${source}:${AgentDoc.definition.kind}`, "unchanged"],
             [`${target}:${AgentDoc.definition.kind}`, "unchanged"],
-            [`${source}:${PlanDoc.definition.kind}`, JSON.stringify(plan.on === true)],
-            [`${target}:${PlanDoc.definition.kind}`, JSON.stringify(targetPlan.on === true)],
             [`${app.rootOf(source)}:${TurnsDoc.definition.kind}`, turnsOf(sourceTurns)],
             [`${app.rootOf(target)}:${TurnsDoc.definition.kind}`, turnsOf(targetTurns)],
         ]);
@@ -260,9 +243,7 @@ export class LinkedSessions implements LinkedSessionsApi {
                         ? "retired"
                         : kind === AgentDoc.definition.kind
                           ? "changed"
-                          : kind === PlanDoc.definition.kind
-                            ? JSON.stringify(change.value.on === true)
-                            : turnsOf(change.value);
+                          : turnsOf(change.value);
 
                 if (before !== after) {
                     stop();

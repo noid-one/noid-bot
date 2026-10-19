@@ -106,7 +106,6 @@ Existing sessions do not change when files or folders change. Imports, forks, su
 
 These are in the app, not in files. Tell the person where they are. Do not change them in another way.
 
-- **Plan mode** (the Plan chip): Pi plans, and asks before it changes anything.
 - **Done when** (`/until npm test`): Pi continues until a check passes.
 - **Scheduled messages** (`/schedule in 2h check the deploy`): a message to Pi later, or again and again. Pi has a `schedule` tool for its own messages.
 - **Extensions** (Menu → Extensions, for the owner): turn on or off the browser, subagents, codemode, Lancet Guard, a drop-in, and the rest, for all sessions.

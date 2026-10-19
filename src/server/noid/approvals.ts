@@ -5,7 +5,7 @@
  *
  * - A computer bot runs its shell, files, browser, and its own memory and schedules without asking: the container is
  *   the boundary. Forgetting a memory asks (rakazo's `forget_memory`).
- * - A host bot asks before anything that changes this machine: bash that is not read-only (plan mode's reader list),
+ * - A host bot asks before anything that changes this machine: bash that is not read-only (by `read-only.ts`),
  *   write, and edit.
  * - Sessions that are not bots are Pi's own: they never ask (Pi's way).
  *
@@ -17,10 +17,10 @@ import type { ToolAnnotations } from "@earendil-works/pi-coding-agent";
 import { defineDoc, defineExtension, hook, ToolTask } from "@earendil-works/pi-durable";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
-import { blockedInPlanMode } from "../extensions/plan.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
 import { AutoReviewDoc, consequential, review } from "./auto-review.ts";
+import { onlyReads } from "./read-only.ts";
 import { snippet } from "../projection.ts";
 import type { BotProfile } from "./bots.ts";
 
@@ -57,7 +57,7 @@ export function alwaysAsks(tool: string, args: Record<string, unknown> = {}): bo
 export type Place = "host" | "computer";
 
 /**
- * Tools a host bot uses without asking although plan mode would block them: they change the bot's own state, not this
+ * Tools a host bot uses without asking although they do not only read: they change the bot's own state, not this
  * machine (rakazo exempts remember, schedules, and subagents too). A subagent's own calls are checked as the bot's.
  */
 const BOT_STATE_TOOLS = new Set([
@@ -74,7 +74,7 @@ const BOT_STATE_TOOLS = new Set([
 
 /**
  * Whether a bot's call asks the owner first, by rakazo's classes. On this machine a bot asks before anything that is
- * not read-only, by plan mode's list of what only looks (so a tool nobody listed asks); on the shared computer the
+ * not read-only, by `read-only.ts`'s list of what only looks (so a tool nobody listed asks); on the shared computer the
  * container is the boundary. Pure, so the rules are easy to read and test.
  */
 export function classify(
@@ -120,7 +120,7 @@ export function classify(
         return { ask: false };
     }
 
-    if (blockedInPlanMode(tool, args, readOnly) === undefined) {
+    if (onlyReads(tool, args, readOnly)) {
         return { ask: false };
     }
 
@@ -166,7 +166,7 @@ export function createApprovals(app: PocketApp) {
                         return undefined;
                     }
 
-                    // A tool's own read-only mark counts, as in plan mode; a built-in's can only come from a wrap.
+                    // A tool's own read-only mark counts; a built-in's can only come from a wrap.
                     const runtime = api as typeof api & Partial<Pick<ToolExecutionApi, "agent">>;
                     const declared = (await runtime.agent?.(context))?.tools.find(
                         (tool) => tool.name === call.name,

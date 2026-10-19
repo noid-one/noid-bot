@@ -23,7 +23,7 @@ import { Browsers } from "../src/server/browser.ts";
 import { findBrowser } from "../src/server/browser/discovery.ts";
 import { SHOT_MAX } from "../src/server/browser/page.ts";
 import { normalizeUrl } from "../src/server/browser/urls.ts";
-import { blockedInPlanMode } from "../src/server/extensions/plan.ts";
+import { onlyReads } from "../src/server/noid/read-only.ts";
 
 /** A JPEG's size in pixels, from its first frame header. */
 function jpegSize(data: string): { width: number; height: number } {
@@ -66,26 +66,22 @@ test("addresses as people type them become URLs the browser may open", () => {
     assert.equal(normalizeUrl("javascript:alert(1)", { trusted: true }), undefined);
 });
 
-test("plan mode lets Pi look at pages but not act on them", () => {
+test("looking at pages only reads, and acting on them does not", () => {
     for (const action of ["navigate", "snapshot"]) {
-        assert.equal(blockedInPlanMode("browser", { action }), undefined, action);
+        assert.equal(onlyReads("browser", { action }), true, action);
     }
 
     for (const action of ["click", "type", "press", "select", "evaluate"]) {
-        assert.match(
-            blockedInPlanMode("browser", { action }) ?? "",
-            /Plan mode is on: The browser's \w+ can change things/,
-            action,
-        );
+        assert.equal(onlyReads("browser", { action }), false, action);
     }
 
     // A data: page is one Pi writes, scripts and all.
-    assert.match(
-        blockedInPlanMode("browser", {
+    assert.equal(
+        onlyReads("browser", {
             action: "navigate",
             url: "data:text/html,<script>fetch('/x')</script>",
-        }) ?? "",
-        /Plan mode is on/,
+        }),
+        false,
     );
 });
 

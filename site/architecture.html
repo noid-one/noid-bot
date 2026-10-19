@@ -2473,7 +2473,6 @@
                             "subagents",
                             "schedules",
                             "goals",
-                            "plan",
                             "guard",
                             "codemode",
                             "memory",
@@ -2570,7 +2569,6 @@
                     ["forks", "Forks", "commands.ts"],
                     ["sched", "Scheduled messages", "schedules.ts"],
                     ["goals", "Goals (done when)", "goals.ts"],
-                    ["plan", "Plan mode", "plan.ts"],
                     ["guard", "Lancet Guard", "guard.ts"],
                     ["prompt", "System prompt", "prompt.ts"],
                     ["reload", "Live-reload extensions", "reload.ts"],
@@ -2665,11 +2663,6 @@
                     ],
                     [
                         "hooks",
-                        "plan",
-                        "When plan mode is on, beforeTool blocks each call that can change data.",
-                    ],
-                    [
-                        "hooks",
                         "guard",
                         "beforeTool sends dangerous bash, write, and edit calls to a person for approval.",
                     ],
@@ -2682,11 +2675,6 @@
                         "section",
                         "prompt",
                         "The prompt contains guidelines for a phone screen, the location of the Pi Pocket docs, the AGENTS.md files of the project, the Pi skills, and the working directory. The harness renders it before each request.",
-                    ],
-                    [
-                        "section",
-                        "plan",
-                        "Plan mode adds a section. The section tells Pi to read files and propose a plan, and to make no changes.",
                     ],
                     ["section", "goals", "A section tells Pi about the check of the goal."],
                     [
@@ -2867,8 +2855,8 @@
                     {
                         file: "pi-durable",
                         name: "Run as durable tasks",
-                        text: "The model request and each tool call are tasks. Each task commits its progress. Plan mode, Lancet Guard, and goals use hooks on these tasks.",
-                        code: "pi.generation → pi.assistant (tool calls)\n  pi.tool (bash)  beforeTool: plan? guard?\npi.generation → pi.assistant (answer)\n  onYield: goal check",
+                        text: "The model request and each tool call are tasks. Each task commits its progress. Lancet Guard and goals use hooks on these tasks.",
+                        code: "pi.generation → pi.assistant (tool calls)\n  pi.tool (bash)  beforeTool: guard?\npi.generation → pi.assistant (answer)\n  onYield: goal check",
                     },
                     {
                         file: "app.ts",
@@ -3277,7 +3265,6 @@
                     ["pocket.pins", "pinned messages", "cut"],
                     ["pocket.reactions", "emoji reactions", "copy"],
                     ["pocket.notes", "the shared notes page", "copy"],
-                    ["pocket.plan", "plan mode", "copy"],
                     ["pocket.decisions", "who allowed or denied each guarded call", "copy"],
                     ["pocket.artifacts", "artifacts, bodies in pocket.artifact-body", "copy"],
                     ["pocket.codemode-store", "values scripts keep between runs", "copy"],
@@ -3352,7 +3339,7 @@
                     ],
                     [
                         "browser.ts",
-                        "A real Chromium browser that Pi and the people in a session use together. In plan mode, Pi can only read pages.",
+                        "A real Chromium browser that Pi and the people in a session use together.",
                         ["tool", "section"],
                     ],
                     [
@@ -3368,11 +3355,6 @@
                     [
                         "goals.ts",
                         "After each final answer, it runs the check of the session. While the check fails, Pi continues. Maximum of five checks.",
-                        ["hook", "section"],
-                    ],
-                    [
-                        "plan.ts",
-                        "Plan mode. It blocks each call that can change data before the call runs.",
                         ["hook", "section"],
                     ],
                     [

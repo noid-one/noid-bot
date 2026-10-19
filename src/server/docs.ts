@@ -329,16 +329,6 @@ export const REPORT_PREFIX = "[subagent ";
 /** Why a subagent that was stopped did not answer, in its report and its record. */
 export const STOPPED = "stopped before it answered";
 
-/** Plan mode: while on, Pi reads and proposes, and anything that would change something is blocked. */
-export const PlanDoc = defineDoc<{ on: boolean; by?: string; at?: number }>({
-    kind: "pocket.plan",
-    version: 1,
-    scope: "conversation",
-    history: "latest",
-    fork: "current",
-    initial: () => ({ on: false }),
-});
-
 export type Schedule = {
     /** Short and stable: what people and Pi use to cancel it. */
     id: string;

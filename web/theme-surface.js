@@ -198,7 +198,6 @@ export const PARTS = [
     "message-box",
     "composer-tools",
     "composer-button",
-    "plan-chip",
     "mode-switch",
     "stop-button",
     "send-button",

@@ -319,7 +319,6 @@ export interface PocketHost {
         | "updatePreview"
         | "update"
         | "uninstall"
-        | "review"
         | "share"
         | "shareTheme"
     >;

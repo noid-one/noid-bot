@@ -22,9 +22,7 @@ import { copyText, formatTokens, formatWhen, modelLabel, replyText, shortPath } 
 const agent = () => store.state.view.agent;
 const isSession = () => store.state.view.conversation?.kind === "session";
 
-/** Plan mode needs its extension, which the owner can turn off. */
-export const planAvailable = () => store.state.server?.extensions?.includes("pocket-plan") === true;
-/** Scheduled messages need theirs, and a session; so do goals. */
+/** Scheduled messages need their extension, which the owner can turn off, and a session; so do goals. */
 export const schedulesAvailable = () =>
     isSession() && store.state.server?.extensions?.includes("pocket-schedules") === true;
 const goalsAvailable = () =>
@@ -277,22 +275,6 @@ const COMMANDS = [
             arg === ""
                 ? openSheet({ type: "cwd", mode: "change" })
                 : actions.configure({ cwd: pathFrom(arg) }),
-    },
-    {
-        name: "plan",
-        description: "Plan mode on or off: Pi reads and proposes, and changes nothing",
-        available: () => planAvailable() && isSession(),
-        run: async () => {
-            const on = !store.state.view.plan?.on;
-
-            await actions.setPlan(on);
-            notify(
-                "info",
-                on
-                    ? "Plan mode is on: Pi proposes a plan and changes nothing until you approve it."
-                    : "Plan mode is off.",
-            );
-        },
     },
     {
         name: "schedule",

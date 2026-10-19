@@ -98,8 +98,8 @@ Untrusted text includes route parameters, queries, and bodies; command `args`; t
   _Reason:_ a session that read something hostile can pass it to every session of its team.
 - **S5.5. A tool that acts on the model's word must be safe when the model was misled.** Do not delete, send, pay, or publish only because the model asked. Leave that action to a person (with a command or a page), or keep it inside the session's folder.\
   _Reason:_ the model's word can be an attacker's word.
-- **S5.6. Set `readOnlyHint` only on a tool that changes nothing.** Plan mode lets those tools run. It ignores the hint on a built-in tool, also when a wrap adds it.\
-  _Reason:_ plan mode trusts this hint. Nothing checks it.
+- **S5.6. Set `readOnlyHint` only on a tool that changes nothing.** A bot on this machine runs those tools without asking. The hint counts for no built-in tool, also when a wrap adds it.\
+  _Reason:_ approvals trust this hint. Nothing checks it.
 
 ## S6. Secrets
 

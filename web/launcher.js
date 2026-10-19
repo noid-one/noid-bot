@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { browserAvailable, toggleBrowser } from "./browser.js";
 import { folderColor } from "./avatar.js";
-import { planAvailable, schedulesAvailable } from "./commands.js";
+import { schedulesAvailable } from "./commands.js";
 import { extensionLauncherItems } from "./extension-ui.js";
 import { filesAvailable, toggleFiles } from "./files-panel.js";
 import { togglePeeks } from "./peeks.js";
@@ -244,14 +244,6 @@ function actionItems() {
                 label: "Rename session",
                 icon: "sparkle",
                 run: () => openSheet({ type: "rename" }),
-            },
-        session &&
-            steer &&
-            planAvailable() && {
-                label: view.plan?.on ? "Turn plan mode off" : "Turn plan mode on",
-                detail: "Pi proposes, changes nothing",
-                icon: "shield",
-                run: () => attempt(() => actions.setPlan(!view.plan?.on)),
             },
         schedulesAvailable() && {
             label: "Scheduled messages",
@@ -565,7 +557,6 @@ export function Launcher({ leaving, returnTo }) {
         sessions,
         view.conversation,
         view.agent?.cwd,
-        view.plan?.on,
         view.branch,
         conversationId,
         store.state.pinned,

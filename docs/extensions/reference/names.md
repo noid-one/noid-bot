@@ -16,7 +16,7 @@ Give each extension and tool a name of your own, with a prefix: `example-clock`,
 
 - A module is a `.ts` file in the drop-in folder.
 - Files that start with `_`, or that end in `.test.ts`, are not modules. Use them for helpers and tests.
-- A drop-in with the name of a built-in module does not load. The built-in modules are `prompt`, `artifacts`, `browser`, `subagents`, `agent-teams`, `schedules`, `goals`, `plan`, `guard`, `codemode`, `memory`, `session-tools`, `triggers`, and `gallery`.
+- A drop-in with the name of a built-in module does not load. The built-in modules are `prompt`, `artifacts`, `browser`, `subagents`, `agent-teams`, `schedules`, `goals`, `guard`, `codemode`, `memory`, `session-tools`, `triggers`, and `gallery`.
 - `_pocket.d.ts` in the drop-in folder is Pi Pocket's link to its types. Do not use this name. See [Types for your editor](types.md).
 
 What a module adds to the app uses the name of its file without `.ts`: `server-status.ts` is `server-status`, at `/api/x/server-status/` and `/x/server-status/`. File names are unique across the two folders of modules, so these addresses never collide. A module that adds to the app needs a name of letters, digits, `-`, and `_` that starts with a letter or digit.

@@ -304,7 +304,7 @@
                             <h3>Run as durable tasks</h3>
                             <p>
                                 The model request and each tool call are tasks that commit as they
-                                go. Plan mode, Lancet Guard, and goals hook into those tasks.
+                                go. Lancet Guard and goals hook into those tasks.
                             </p>
                         </li>
                         <li>
@@ -470,11 +470,6 @@
                                     <td>copies</td>
                                 </tr>
                                 <tr>
-                                    <td><code>pocket.plan</code></td>
-                                    <td>Plan mode</td>
-                                    <td>copies</td>
-                                </tr>
-                                <tr>
                                     <td><code>pocket.decisions</code></td>
                                     <td>Who allowed or denied each guarded call</td>
                                     <td>copies</td>
@@ -634,8 +629,7 @@
                             <code>browser.ts</code><span class="kinds">tool · section</span>
                             <p>
                                 A real browser Pi shares with the people in a session: snapshots
-                                with element refs, clicks, typing, screenshots, the console. In plan
-                                mode it may only look.
+                                with element refs, clicks, typing, screenshots, the console.
                             </p>
                         </li>
                         <li>
@@ -656,13 +650,6 @@
                             <p>
                                 After each final answer, runs the session's check and keeps Pi going
                                 while it fails.
-                            </p>
-                        </li>
-                        <li>
-                            <code>plan.ts</code><span class="kinds">hook · section</span>
-                            <p>
-                                Plan mode: calls that would change something are blocked before they
-                                run.
                             </p>
                         </li>
                         <li>

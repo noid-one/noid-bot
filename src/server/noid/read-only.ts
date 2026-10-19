@@ -1,28 +1,13 @@
 /**
- * Plan mode lets Pi read and explore but change nothing, so it proposes a plan for people to approve first. While a
- * session is in plan mode, Pi may read files, run read-only shell commands, publish artifacts, look at pages in the
- * browser, run codemode scripts (whose calls get the same checks), and call tools their extension marks read-only;
- * everything else is blocked with a note saying why. This keeps Pi to planning; it is not a security boundary: Lancet
- * Guard is. Programs that people configured to run on their own, such as a git diff driver or file system monitor, run
- * as they would for anyone.
+ * Which tool calls only read: reading files, simple read-only shell commands, publishing artifacts, looking at pages
+ * in the browser, codemode scripts (whose calls get their own checks), and tools their extension marks read-only.
+ * Approvals and auto review use it to tell calls that change something from calls that only look. Programs that people
+ * configured to run on their own, such as a git diff driver or file system monitor, run as they would for anyone.
  */
-import type { ToolAnnotations } from "@earendil-works/pi-coding-agent";
-import {
-    defineExtension,
-    hook,
-    section,
-    type ToolExecutionApi,
-    ToolTask,
-} from "@earendil-works/pi-durable";
-import { PlanDoc } from "../docs.ts";
-import type { PocketHost } from "../host.ts";
-import { BUILT_IN_TOOLS } from "../reload.ts";
-
-const PLANNING = `Plan mode is on. Read and explore, then propose a plan; change nothing yet. You can use read, artifact, the browser to look at pages (not to click, type, or run scripts in them), and bash for simple read-only commands such as ls, cat, grep, find, and git status/log/diff/show, without redirects, globs, variables, or command substitution, and tools marked read-only. Writing, editing, other commands, and subagents are blocked until a person approves the plan. End your answer with the plan as a short numbered list.`;
 
 /** Tools that change nothing, or whose own calls are checked one by one (codemode). */
 const ALWAYS_ALLOWED = new Set(["read", "artifact", "codemode"]);
-/** What the browser may do in plan mode: look at pages, not act on them. */
+/** What the browser does when it only looks at pages, without acting on them. */
 const BROWSER_LOOKS = new Set([
     "navigate",
     "snapshot",
@@ -259,21 +244,17 @@ export function readOnlyCommand(command: string): boolean {
 }
 
 /**
- * Why a call may not run in plan mode, or undefined when it may. `readOnly`: the tool's extension marks it read-only
- * (`annotations: { readOnlyHint: true }`, as in Pi's tool definitions).
+ * Whether a call only reads. `readOnly`: the tool's extension marks it read-only (`annotations: { readOnlyHint: true }`,
+ * as in Pi's tool definitions).
  */
-export function blockedInPlanMode(
-    tool: string,
-    args: Record<string, unknown>,
-    readOnly = false,
-): string | undefined {
+export function onlyReads(tool: string, args: Record<string, unknown>, readOnly = false): boolean {
     if (ALWAYS_ALLOWED.has(tool) || readOnly) {
-        return undefined;
+        return true;
     }
 
     // Asking how a subagent does, or stopping it, changes nothing.
     if (tool === "subagent" && (args.action === "status" || args.action === "stop")) {
-        return undefined;
+        return true;
     }
 
     // A data: page is a page Pi writes, scripts and all: looking at pages means pages that exist.
@@ -283,56 +264,8 @@ export function blockedInPlanMode(
         /^\s*data:/i.test(String(args.url ?? ""));
 
     if (tool === "browser" && BROWSER_LOOKS.has(String(args.action)) && !scripted) {
-        return undefined;
+        return true;
     }
 
-    if (tool === "bash" && typeof args.command === "string" && readOnlyCommand(args.command)) {
-        return undefined;
-    }
-
-    const what =
-        tool === "bash"
-            ? "This command is not a simple read-only one"
-            : tool === "browser"
-              ? `The browser's ${String(args.action)} can change things on the page`
-              : `The ${tool} tool can change things`;
-
-    return `Plan mode is on: ${what}, so it is blocked. Keep exploring with read and read-only commands, then propose your plan; a person approves it before anything changes.`;
-}
-
-export default function createPlan(_host: PocketHost) {
-    return defineExtension({
-        name: "pocket-plan",
-        sections: [
-            section("plan_mode", async (input, context) =>
-                (await input.read.snapshot(PlanDoc, input.conversationId, context))?.on
-                    ? PLANNING
-                    : undefined,
-            ),
-        ],
-        hooks: [
-            hook(ToolTask, {
-                beforeTool: async (call, api, context) => {
-                    if ((await api.snapshot(PlanDoc, api.conversationId, context))?.on !== true) {
-                        return undefined;
-                    }
-
-                    // HookApi omits agent, but ToolTask supplies its phase runtime and codemode preserves it.
-                    // Use that same resolved snapshot, not the live registry: wrappers and reloads can differ.
-                    const runtime = api as typeof api & Partial<Pick<ToolExecutionApi, "agent">>;
-                    const tool = (await runtime.agent?.(context))?.tools.find(
-                        (tool) => tool.name === call.name,
-                    ) as { annotations?: ToolAnnotations } | undefined;
-                    // A built-in tool's hint can only come from a wrap, which the owner never sees as read-only.
-                    const reason = blockedInPlanMode(
-                        call.name,
-                        call.arguments as Record<string, unknown>,
-                        !BUILT_IN_TOOLS.has(call.name) && tool?.annotations?.readOnlyHint === true,
-                    );
-
-                    return reason === undefined ? undefined : { block: reason };
-                },
-            }),
-        ],
-    });
+    return tool === "bash" && typeof args.command === "string" && readOnlyCommand(args.command);
 }

@@ -48,7 +48,7 @@ export interface Declares {
     /** The extensions' names. */
     extensions: string[];
     tools: string[];
-    /** The tools that say they only read (`readOnlyHint`): plan mode lets them run. */
+    /** The tools that say they only read (`readOnlyHint`): a bot on this machine runs them without asking. */
     readOnlyTools: string[];
     /** The hooks' handlers: `beforeTool`, `onYield`, … */
     hooks: string[];

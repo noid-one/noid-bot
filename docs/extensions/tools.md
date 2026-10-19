@@ -42,9 +42,9 @@ A restart of the server can stop a tool call while it runs. Then the call is rep
 - `api.memo(name, context)` reads a value that is kept with this call. `api.memo(name, value, context)` stores it. A replay after a restart finds the value. Use a memo for work that must not occur two times, for example a message that you send.
 - `api.conversationId`, `api.taskId`, and `api.callId` identify the call. The key `${api.taskId}:${api.callId}` stays the same when the call runs again.
 
-## Plan mode
+## Read-only tools
 
-`annotations: { readOnlyHint: true }`, as in Pi's tool definitions, says that the tool does not change files or other state. Plan mode lets such a tool run. Pi Pocket does not check this: it is your promise. A tool that only changes the conversation, such as context management, can also use it. Plan mode ignores the hint on a built-in tool, so a wrap cannot let a built-in tool run in plan mode.
+`annotations: { readOnlyHint: true }`, as in Pi's tool definitions, says that the tool does not change files or other state. A bot that works on this machine runs such a tool without asking the owner first. Pi Pocket does not check this: it is your promise. A tool that only changes the conversation, such as context management, can also use it. The hint counts for no built-in tool, so a wrap cannot make a built-in tool read-only.
 
 Pi Durable's type for `defineTool` does not have `annotations` yet. TypeScript reports it as an unknown property, but the module loads and works, because Node does not check types. To keep the type checker quiet, add it after `defineTool`:
 

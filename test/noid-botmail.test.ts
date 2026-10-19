@@ -196,7 +196,7 @@ test("bots made before their tools get them, and keep the rest of their selectio
     const id = await bot("Older");
 
     await app.harness.commit(async (tx) => {
-        (await tx.doc(AgentDoc, id)).extensions = { remove: ["pocket-plan"] };
+        (await tx.doc(AgentDoc, id)).extensions = { remove: ["pocket-goals"] };
     }, context);
     await app.bots.ensureTools();
 
@@ -205,7 +205,7 @@ test("bots made before their tools get them, and keep the rest of their selectio
         remove?: string[];
     };
 
-    assert.deepEqual(selection.remove, ["pocket-plan"], "what was turned off stays off");
+    assert.deepEqual(selection.remove, ["pocket-goals"], "what was turned off stays off");
     assert.ok(selection.add?.includes("noid-bot-mail"));
 });
 

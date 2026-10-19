@@ -36,15 +36,6 @@ Pi Pocket trusts nothing in an entry. So it:
 
 Read the module. The gallery shows each file, and what its entry declares.
 
-**Ask Pi to review** starts a session in the drop-in folder, in plan mode, that asks Pi to audit the code:
-
-- what it reads and writes (`config.json`, Pi's sign-ins, other secrets),
-- its network calls, and the processes that it starts,
-- what its browser module does,
-- and whether it does what it declares.
-
-The button does not send while Plan mode is off in Menu → Extensions. The review is a session like any other: people who see all sessions see it too.
-
 The index's checks are not a security review. They check the entry, and that the module loads. A maintainer reads the code before an entry goes in.
 
 ## Sharing yours

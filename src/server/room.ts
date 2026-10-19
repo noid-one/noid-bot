@@ -32,7 +32,6 @@ import {
     NotesDoc,
     type Pin,
     PinsDoc,
-    PlanDoc,
     type PrWatch,
     ReactionsDoc,
     type Schedule,
@@ -71,7 +70,6 @@ export const ROOM_DOCS = new Set(
         NotesDoc,
         TurnsDoc,
         DecisionsDoc,
-        PlanDoc,
         ScheduleDoc,
         GoalDoc,
         WatchDoc,
@@ -297,7 +295,6 @@ export class Room {
     notes: Notes = { text: "", rev: 0 };
     turns: Turns = { on: false, asks: [] };
     decisions: Record<string, Decision> = {};
-    plan: { on: boolean; by?: string; at?: number } = { on: false };
     schedules: Record<string, Schedule> = {};
     goal: Goal | undefined;
     watch: PrWatch | undefined;
@@ -349,7 +346,6 @@ export class Room {
         this.decisions = {
             ...((await harness.snapshot(DecisionsDoc, this.id, context))?.calls ?? {}),
         };
-        this.plan = { ...((await harness.snapshot(PlanDoc, this.id, context)) ?? { on: false }) };
         this.schedules = {
             ...((await harness.snapshot(ScheduleDoc, this.id, context))?.items ?? {}),
         };
@@ -418,8 +414,6 @@ export class Room {
             this.turns = { on: false, asks: [], ...((value as Turns | null) ?? {}) };
         } else if (kind === DecisionsDoc.definition.kind) {
             this.decisions = { ...((value?.calls as Record<string, Decision>) ?? {}) };
-        } else if (kind === PlanDoc.definition.kind) {
-            this.plan = { on: false, ...((value as Room["plan"] | null) ?? {}) };
         } else if (kind === ScheduleDoc.definition.kind) {
             this.schedules = { ...((value?.items as Record<string, Schedule>) ?? {}) };
         } else if (kind === GoalDoc.definition.kind) {
@@ -555,7 +549,6 @@ export class Room {
             pins: this.pins,
             turns: this.turns,
             decisions: this.decisions,
-            plan: this.plan,
             schedules: Object.values(this.schedules)
                 .sort((a, b) => a.next - b.next)
                 .map(({ id, text, next, every, by, runs }) => ({

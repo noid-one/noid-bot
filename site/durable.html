@@ -4662,7 +4662,7 @@
                         ],
                         beforeTool: [
                             "Runs after validation and before the harness commits the intent. It can block the call or change its arguments. The harness validates changed arguments again.",
-                            "A plan mode, or a guard that blocks rm -rf.",
+                            "A guard that blocks rm -rf.",
                             'hook(ToolTask, { beforeTool: (call) => call.name === "bash" ? { block: "bash is disabled here" } : undefined })',
                         ],
                         afterTool: [

@@ -56,7 +56,6 @@ const emptyView = () => ({
     pins: [],
     turns: { on: false, asks: [] },
     decisions: {},
-    plan: { on: false },
     schedules: [],
     goal: null,
     watch: null,
@@ -512,7 +511,6 @@ function mergeView(current, data) {
         pins: data.pins ?? base.pins,
         turns: data.turns ?? base.turns,
         decisions: data.decisions ?? base.decisions,
-        plan: data.plan ?? base.plan,
         schedules: data.schedules ?? base.schedules,
         // No goal is null, which the server sends too: only a missing field keeps the last value.
         goal: data.goal === undefined ? base.goal : data.goal,
@@ -1047,8 +1045,6 @@ export const actions = {
         api(`c/${current()}/fork`, { entryId, ...(worktree ? { worktree } : {}) }),
     /** Send a message to Pi again in a fork that ends just before it: `{ text }` edits it, `{ model }` picks another model. */
     resend: (entryId, change = {}) => api(`c/${current()}/resend`, { entryId, ...change }),
-    setPlan: (on) => api(`c/${current()}/plan`, { on }),
-    approvePlan: () => api(`c/${current()}/plan`, { approve: true }),
     prompts: () => api(`c/${current()}/prompts`),
     trust: () => api(`c/${current()}/trust`),
     /** `trust`, `trust-parent`, or `distrust`, as Pi's `/trust` offers them. */

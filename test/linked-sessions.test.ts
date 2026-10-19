@@ -106,7 +106,7 @@ test("someone who cannot see the origin learns nothing of it and cannot reach it
     await assert.rejects(send(target, origin.address), /not linked/);
 });
 
-test("a start or send is refused in plan mode, past a spend limit, or without the turn", async () => {
+test("a start or send is refused past a spend limit or without the turn", async () => {
     const id = await source();
     const { session: target, address } = await start(id);
     const count = app.sessions().length;
@@ -120,10 +120,6 @@ test("a start or send is refused in plan mode, past a spend limit, or without th
         assert.equal(app.sessions().length, count);
         assert.equal(await sent(target), 1);
     };
-
-    await app.commands.setPlan(id, owner(app), true);
-    await refused(/plan mode/);
-    await app.commands.setPlan(id, owner(app), false);
 
     // What the linked session spent counts against the budget of the session that started it.
     await recordCost(app, target, 0.02);

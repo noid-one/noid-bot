@@ -222,7 +222,7 @@ readOnlyTools: string[];
 
 Since 0.14.0 · Stable
 
-The tools in `tools` that have `readOnlyHint`. Plan mode lets them run.
+The tools in `tools` that have `readOnlyHint`. A bot on this machine runs them without asking.
 
 ### `hooks`
 

@@ -78,10 +78,6 @@ A limit on what Pi can spend: for a session, or for a person. Code: `host.heldBa
 
 The spend limit of a session. A team uses the budget of the session that started it.
 
-### plan mode
-
-A mode of a session where Pi makes a plan and does not change files. Only tools that only read can run.
-
 ## Modules
 
 ### module

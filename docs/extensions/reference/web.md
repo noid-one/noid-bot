@@ -175,7 +175,7 @@ What a handler gets.
 - `signal`: it aborts when the browser stops waiting for the answer, not on normal handler return. Give it to the work that the handler waits for.
 - Since 0.16.0, `snapshot` reads fresh committed documents with `context`. Its `context.abortSignal` is cancelled on disconnect or handler return, independently of the older `signal`. `commit` changes the module's own documents atomically and returns the callback's answer. Follow the `x.<module>.…` naming rule. Viewers cannot commit, even through a GET open to `view`.
 - Document operations recheck the current person. Retaining a request, its context, or a callback does not extend its lifetime: commits after disconnect or handler return are refused, and an unfinished callback rolls back. Await all writes before returning. These APIs are for module documents, not core's internal documents or a way to start model work.
-- An unbound catalog save has no source plan, turn, or spend checks. A bound commit also requires the source's current steering and turn rights.
+- An unbound catalog save has no source turn or spend checks. A bound commit also requires the source's current steering and turn rights.
 
 ### `ConversationWebRequest`
 
@@ -210,7 +210,7 @@ interface HumanLinkedSessions {
 
 Since 0.16.0 · Stable
 
-- `start` acts as the authenticated person and bound source, never the source's last requester. There is no actor override. Current seeing, steering, turn, plan, spend, team, model allow-list, and provider checks apply. The person must see all sessions to start one.
+- `start` acts as the authenticated person and bound source, never the source's last requester. There is no actor override. Current seeing, steering, turn, spend, team, model allow-list, and provider checks apply. The person must see all sessions to start one.
 - Explicit `thinking` must be supported and no higher than the source's level; it is never silently lowered. Omission inherits with the existing model cap policy. Use `host.modelInfo` for effective choices.
 - Use a stable, module-namespaced key. A receipt belongs to the same clicking person; a key recorded for someone else is a 409. Starts and their initial message reuse the existing linked-session receipt and request ids. No source message or source attribution is changed.
 - `list` returns only linked sessions the clicking person can see. GET needs seeing, not driving. It exposes ids for human navigation, not for a model transcript. Other metadata keeps the shared-audience rule.

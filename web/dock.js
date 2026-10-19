@@ -8,7 +8,7 @@
 // - Unfolded, the list takes it, one whole row at least: the queue keeps two rows if it can, else one, else it folds
 //   away to how many wait.
 // - The count of waiting messages shows whenever the queue does not show them all.
-// - When the bars would leave the conversation too little (a short screen with several of them), the plan, goal, and
+// - When the bars would leave the conversation too little (a short screen with several of them), the goal, watch, and
 //   trust bars keep one line each: their words cut short, their buttons whole. Who drives keeps its own, for the people
 //   to hand over to. Bars that still need more than the share show whole: the dock grows past it.
 // - Only where even that leaves the conversation less than a quarter of the room (a phone on its side with every bar

@@ -28,11 +28,6 @@ async function inPage<T>(script: string): Promise<T> {
     return JSON.parse(await page.evaluate(script)) as T;
 }
 
-const boxFocused = () =>
-    inPage<boolean>(
-        `return JSON.stringify(document.activeElement?.matches(${JSON.stringify(BOX)}) ?? false)`,
-    );
-
 /** The session `id` open with its message box, a few frames on: by then the box has the focus if it takes it. */
 async function opened(id: ConversationId): Promise<void> {
     await until(
@@ -107,23 +102,6 @@ after(async () => {
     server?.close();
     await app?.close();
     cleanUp();
-});
-
-// Issue #83, reported by @vitalNohj: Enter after a click on Plan pressed it again, and plan mode went back off.
-test("a click on Plan leaves the focus in the message box", real, async () => {
-    await home(VIEWPORTS.desktop);
-    await page.click({ selector: `.sidebar .session-row[data-id="${Number(one)}"] > .session` });
-    await opened(one);
-    await until(boxFocused, "the box");
-    await page.click({ selector: ".composer .plan-chip" });
-    await until(
-        async () =>
-            await inPage<boolean>(
-                `return JSON.stringify((await import("/store.js")).store.state.view.plan?.on === true)`,
-            ),
-        "plan mode on",
-    );
-    assert.equal(await boxFocused(), true, "Enter goes on to send, not to the chip");
 });
 
 test(

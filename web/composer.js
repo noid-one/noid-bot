@@ -3,13 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Avatar } from "./avatar.js";
 import { chatUnread, TypingLine } from "./chat.js";
-import {
-    loadTemplates,
-    parseCommand,
-    parseTemplate,
-    planAvailable,
-    suggestCommands,
-} from "./commands.js";
+import { loadTemplates, parseCommand, parseTemplate, suggestCommands } from "./commands.js";
 import { loadFiles, mentionAt, mentionText, suggestFiles } from "./files.js";
 import { remember, searchHistory, sentHistory } from "./history.js";
 import {
@@ -30,7 +24,6 @@ import { useDock } from "./dock.js";
 import { SubagentsBar } from "./subagents.js";
 import { TrustBar } from "./trust.js";
 import { prefs } from "./theme.js";
-import { says } from "./turns.js";
 import { MicButton, useDictation } from "./voice.js";
 import {
     APPLE,
@@ -215,49 +208,6 @@ function DriverBar() {
             canTake &&
             html`<button class="button small primary" onClick=${() => run("claim")}>
                 Take the wheel
-            </button>`
-        }
-    </div>`;
-}
-
-/** Plan mode: Pi proposes and changes nothing until someone here approves its plan. */
-function PlanBar({ blocked }) {
-    const { view } = store.state;
-
-    if (!view.plan?.on || !planAvailable()) {
-        return null;
-    }
-
-    // A subagent follows its session's plan mode; it is approved there.
-    const subagent = view.conversation?.kind === "subagent";
-    // There is a plan to approve once Pi has answered since plan mode went on.
-    const proposed =
-        view.plan.at === undefined ||
-        [...view.entries.values()].some(
-            (entry) =>
-                entry.kind === "assistant" &&
-                entry.at > view.plan.at &&
-                entry.stopReason !== "toolUse" &&
-                entry.blocks.some(says),
-        );
-
-    return html`<div class="plan-bar">
-        <span class="grow">
-            <strong>Plan mode.</strong> ${subagent ? "This subagent follows its session: it reads, and changes nothing." : "Pi reads and proposes; nothing changes until you approve."}
-        </span>
-        ${
-            !blocked &&
-            !subagent &&
-            html`<button class="link small" onClick=${() => attempt(() => actions.setPlan(false))}>
-                Turn off
-            </button>
-            <button
-                class="button small primary"
-                disabled=${view.live.busy || !proposed}
-                title=${proposed ? undefined : "Pi has not proposed a plan yet."}
-                onClick=${() => attempt(actions.approvePlan)}
-            >
-                Approve plan
             </button>`
         }
     </div>`;
@@ -1101,7 +1051,6 @@ export function Composer() {
                 </div>`
             }
             ${collab() && html`<${DriverBar} />`}
-            <${PlanBar} blocked=${blocked} />
             <${GoalBar} />
             <${WatchBar} />
             <${SubagentsBar} />
@@ -1369,20 +1318,6 @@ export function Composer() {
                             ${level && html`<span class="model-level">${level}</span>`}
                             <${Icon} name="chevron" size=${12} stroke=${2.2} class="model-caret" />
                         </button>
-                        ${
-                            planAvailable() &&
-                            view.conversation?.kind !== "subagent" &&
-                            html`<button
-                                class=${`plan-chip ${view.plan?.on ? "on" : ""}`}
-                                data-part="composer-button plan-chip"
-                                aria-pressed=${view.plan?.on === true}
-                                title="Plan mode: Pi reads and proposes, and changes nothing until you approve"
-                                onMouseDown=${(event) => event.preventDefault()}
-                                onClick=${() => attempt(() => actions.setPlan(!view.plan?.on))}
-                            >
-                                Plan
-                            </button>`
-                        }
                         <span class="grow"></span>
                         ${
                             busy &&

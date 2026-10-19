@@ -1,8 +1,8 @@
 /**
  * What people ask of Pi: start and rename sessions, send messages (steer or queue), stop, withdraw, and change the
  * model, thinking level, or folder of a conversation; compact or reset its context and set its instructions; fork it,
- * or send a message again; set plan mode, a goal, or scheduled messages; and remove a session's worktree. Every
- * command checks who may do it, and changes others should know about become activity lines in the session's chat.
+ * or send a message again; set a goal or scheduled messages; and remove a session's worktree. Every command checks
+ * who may do it, and changes others should know about become activity lines in the session's chat.
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
@@ -36,7 +36,6 @@ import {
     ChatDoc,
     NotesDoc,
     PinsDoc,
-    PlanDoc,
     type Schedule,
     SessionsDoc,
     STOPPED,
@@ -133,10 +132,6 @@ export const dealtWith = (name: string): string => {
 
 /** What dismissing a subagent's failure came to: `newer` when it failed again since the failure seen. */
 type Dismissal = { dismissed: boolean; newer?: true };
-/** The extension that makes plan mode block changes; without it, plan mode would do nothing. */
-const PLAN_EXTENSION = "pocket-plan";
-/** What Pi is told when someone approves its plan. */
-const PLAN_APPROVED = "The plan is approved. Go ahead and carry it out.";
 /** Longest handoff note for a new context, and longest instructions for Pi. */
 const MAX_HANDOFF = 20_000;
 
@@ -1510,87 +1505,6 @@ export class Commands {
         );
     }
 
-    /** Turn plan mode on or off: while it is on, Pi reads and proposes a plan, and anything that changes something is blocked. */
-    async setPlan(id: ConversationId, user: User, on: unknown): Promise<void> {
-        const app = this.#app;
-
-        app.requireSee(user, id);
-        await app.requireDriver(id, user);
-
-        if (typeof on !== "boolean") {
-            throw new HttpError(400, "on must be true or false");
-        }
-
-        this.#requireSession(id);
-
-        if (on && !app.loader.extensionNames().includes(PLAN_EXTENSION)) {
-            throw new HttpError(409, "Plan mode is turned off in Extensions.");
-        }
-
-        if (await this.#switchPlan(id, user, on)) {
-            await app.collab.activity(
-                id,
-                user,
-                on ? "turned on plan mode" : "turned off plan mode",
-            );
-        }
-    }
-
-    /** Approve Pi's plan: plan mode goes off, and Pi is told to carry the plan out. */
-    async approvePlan(id: ConversationId, user: User): Promise<{ submissionId: SubmissionId }> {
-        const app = this.#app;
-
-        app.requireSee(user, id);
-        await app.requireDriver(id, user);
-        this.#requireSession(id);
-
-        if (!(await this.#switchPlan(id, user, false))) {
-            throw new HttpError(409, "Plan mode is not on.");
-        }
-
-        await app.collab.activity(id, user, "approved the plan");
-
-        return this.submit(id, user, { text: PLAN_APPROVED, requestId: randomUUID() });
-    }
-
-    /** Plan mode is set for a whole session, not for one of its subagents. */
-    #requireSession(id: ConversationId): void {
-        if (this.#app.parentOf(id) !== undefined) {
-            throw new HttpError(
-                400,
-                "Plan mode is set for the whole session, in its main conversation.",
-            );
-        }
-    }
-
-    /** Set plan mode for a session and the subagents under it; true when that changed it. */
-    #switchPlan(id: ConversationId, user: User, on: boolean): Promise<boolean> {
-        return this.#app.harness.commit(async (tx) => {
-            if ((await tx.doc(PlanDoc, id)).on === on) {
-                return false;
-            }
-
-            // Subagents follow their session: one already at work stops changing things too.
-            const conversations = [id];
-
-            for (let index = 0; index < conversations.length; index++) {
-                for (const agent of Object.values(
-                    (await tx.doc(SubagentsDoc, conversations[index]!)).agents,
-                )) {
-                    conversations.push(agent.conversationId);
-                }
-            }
-
-            const at = Date.now();
-
-            for (const each of conversations) {
-                Object.assign(await tx.doc(PlanDoc, each), { on, by: user.id, at });
-            }
-
-            return true;
-        }, context);
-    }
-
     /** Set up a message to Pi for later, or on repeat: `when` is when, then what it says (`in 2h check the deploy`). */
     async schedule(
         id: ConversationId,
@@ -2044,9 +1958,7 @@ export class Commands {
             ...(place.worktree === undefined ? {} : { cwd: place.cwd }),
         };
         const now = Date.now();
-        // A new session rather than a fork gets plan mode and the notes by hand.
-        const plan =
-            at === undefined ? await app.harness.snapshot(PlanDoc, id, context) : undefined;
+        // A new session rather than a fork gets the notes by hand.
         const notes =
             at === undefined ? await app.harness.snapshot(NotesDoc, id, context) : undefined;
 
@@ -2072,10 +1984,6 @@ export class Commands {
             }
 
             if (at === undefined) {
-                if (plan !== undefined) {
-                    Object.assign(await tx.doc(PlanDoc, forked), structuredClone(plan));
-                }
-
                 if (notes !== undefined) {
                     Object.assign(await tx.doc(NotesDoc, forked), structuredClone(notes));
                 }

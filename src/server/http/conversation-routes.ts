@@ -181,18 +181,6 @@ export async function conversationRoutes(
         return json(response, 200, { ok: true });
     }
 
-    if (third === "plan" && method === "POST") {
-        const body = await readJson<{ on?: unknown; approve?: unknown }>(request);
-
-        if (body.approve === true) {
-            return json(response, 200, await app.commands.approvePlan(id, user));
-        }
-
-        await app.commands.setPlan(id, user, body.on);
-
-        return json(response, 200, { ok: true });
-    }
-
     if (third === "schedules" && fourth === undefined && method === "POST") {
         return json(response, 200, await app.commands.schedule(id, user, await readJson(request)));
     }

@@ -2970,11 +2970,11 @@ pre.diff .del {
 }
 
 /* Little room for the conversation: each bar keeps one line, its words cut short, its buttons whole. */
-.dock[data-compact] > :is(.plan-bar, .goal-bar, .watch-bar, .trust-bar) {
+.dock[data-compact] > :is(.goal-bar, .watch-bar, .trust-bar) {
     flex-wrap: nowrap;
 }
 
-.dock[data-compact] > :is(.plan-bar, .goal-bar, .watch-bar, .trust-bar) > .grow {
+.dock[data-compact] > :is(.goal-bar, .watch-bar, .trust-bar) > .grow {
     flex: 1 1 0;
     min-width: 0;
     white-space: nowrap;
@@ -2982,7 +2982,7 @@ pre.diff .del {
     text-overflow: ellipsis;
 }
 
-.dock[data-compact] > :is(.plan-bar, .goal-bar, .watch-bar, .trust-bar) > :not(.grow) {
+.dock[data-compact] > :is(.goal-bar, .watch-bar, .trust-bar) > :not(.grow) {
     flex: none;
     white-space: nowrap;
 }
@@ -3296,7 +3296,7 @@ pre.diff .del {
 }
 
 /* A narrow message box (a narrow pane, or a phone) gives up the level first, then, while Pi works and Steer and Queue
- * take room, Plan and the sparkle: the model's name stays. */
+ * take room, the caret and the sparkle: the model's name stays. */
 @container composer (max-width: 340px) {
     .model-chip .model-level {
         display: none;
@@ -3310,7 +3310,7 @@ pre.diff .del {
 }
 
 @container composer (max-width: 400px) {
-    .composer.busy :is(.plan-chip, .model-caret) {
+    .composer.busy .model-caret {
         display: none;
     }
 }
@@ -3363,34 +3363,6 @@ pre.diff .del {
     color: var(--accent);
     border-color: var(--accent-line);
     background: var(--accent-soft);
-}
-
-/* Plan mode: an outlined pill, filled softly in the accent while it is on. */
-.composer-row .plan-chip {
-    flex: none;
-    height: 30px;
-    padding: 0 12px;
-    border: 1px solid var(--hair-2);
-    border-radius: var(--r-pill);
-    font-size: 13px;
-    color: var(--muted);
-    white-space: nowrap;
-    transition:
-        background-color var(--t-hover) var(--ease-out),
-        border-color var(--t-hover) var(--ease-out),
-        color var(--t-hover) var(--ease-out);
-}
-
-@media (hover: hover) {
-    .composer-row .plan-chip:hover {
-        color: var(--text);
-    }
-}
-
-.composer-row .plan-chip.on {
-    border-color: var(--accent-line);
-    background: var(--accent-soft);
-    color: var(--accent);
 }
 
 /* While Pi works: whether a message steers the run or waits for its end. */
@@ -7877,11 +7849,10 @@ textarea.notes {
     line-height: 1.5;
 }
 
-/* Bars above the message box: who drives (take turns), plan mode, a goal, a PR watch, and project trust. The dot says
-   which: the accent for plan mode, a goal, and a watch, the warning color for a question (who drives, whether to
-   trust) and for a watch that had to stop. */
+/* Bars above the message box: who drives (take turns), a goal, a PR watch, and project trust. The dot says which: the
+   accent for a goal and a watch, the warning color for a question (who drives, whether to trust) and for a watch that
+   had to stop. */
 .driver-bar,
-.plan-bar,
 .goal-bar,
 .watch-bar,
 .trust-bar,
@@ -7901,7 +7872,6 @@ textarea.notes {
 }
 
 .driver-bar::before,
-.plan-bar::before,
 .goal-bar::before,
 .watch-bar::before,
 .trust-bar::before,
@@ -7914,7 +7884,6 @@ textarea.notes {
     background: var(--tone);
 }
 
-.plan-bar,
 .goal-bar,
 .watch-bar:is(.watching, .merged, .closed) {
     --tone: var(--accent);
@@ -7927,15 +7896,6 @@ textarea.notes {
 /* The trust question keeps its words a readable width: on a phone its answers go under them, together, to the right. */
 .trust-bar > .grow {
     flex: 1 1 15rem;
-}
-
-/* The plan bar's words keep a readable width too: its buttons go under them when they would squeeze them. */
-.plan-bar > .grow {
-    flex: 1 1 18rem;
-}
-
-.plan-bar > .link {
-    margin-left: auto;
 }
 
 /* Trust choices keep the three existing decisions, with a selected radio and soft accent card. */
@@ -12189,8 +12149,7 @@ textarea.notes {
         flex: 0 1 auto;
         padding-inline: 6px;
     }
-    /* While Pi works, Steer and Queue take the plan chip's place (`/plan` still turns plan mode on or off). */
-    .composer.busy .plan-chip,
+    /* While Pi works, Steer and Queue take the caret's place. */
     .composer.busy .model-caret {
         display: none;
     }
@@ -12500,7 +12459,6 @@ textarea.notes {
             .places-button,
             .attach-button,
             .model-chip,
-            .plan-chip,
             .composer-mic,
             .stop-button,
             .send-button
@@ -12512,7 +12470,6 @@ textarea.notes {
             .places-button,
             .attach-button,
             .model-chip,
-            .plan-chip,
             .composer-mic,
             .stop-button,
             .send-button
@@ -12521,8 +12478,8 @@ textarea.notes {
         position: absolute;
         inset: -4px -2px;
     }
-    /* The chips are shorter: their layers reach further up and down. */
-    .composer-row :is(.model-chip, .plan-chip)::before {
+    /* The model chip is shorter: its layer reaches further up and down. */
+    .composer-row .model-chip::before {
         inset: -5px -2px;
     }
     /* Where the row has room, the icon buttons are as wide as a thumb's tap (their look is the icon alone). */

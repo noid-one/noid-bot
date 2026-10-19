@@ -72,7 +72,7 @@ before(async () => {
     writeFileSync(join(dropIns, "shout.ts"), shout("!"));
     // The name of a built-in module: never loaded in its place.
     writeFileSync(
-        join(dropIns, "plan.ts"),
+        join(dropIns, "goals.ts"),
         "export default () => { throw new Error('a drop-in must not replace a built-in'); };",
     );
     app = await openApp(model, dataDir);
@@ -91,7 +91,7 @@ test("drop-ins are off until the owner turns them on, and cannot replace a built
     assert.equal(listed?.source, "drop-in");
     assert.equal(listed?.enabled, false);
     assert.deepEqual(
-        module("plan.ts").map((each) => each.source),
+        module("goals.ts").map((each) => each.source),
         ["built-in"],
     );
     // Where the server keeps files is the owner's to know.

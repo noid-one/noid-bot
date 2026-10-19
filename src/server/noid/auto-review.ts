@@ -10,11 +10,11 @@ import { type ConversationId, defineDoc, ProviderDoc } from "@earendil-works/pi-
 import { AuthorsDoc } from "../docs.ts";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
-import { blockedInPlanMode } from "../extensions/plan.ts";
 import { snippet } from "../projection.ts";
 import { recordUsage } from "../titles.ts";
 import type { BotProfile } from "./bots.ts";
 import { ownerOf, requireOwner } from "./owner.ts";
+import { onlyReads } from "./read-only.ts";
 
 /** Whether the owner turned auto review on. */
 export const AutoReviewDoc = defineDoc<{ on: boolean }>({
@@ -67,7 +67,7 @@ const NOT_CHECKED = new Set([
 ]);
 
 /**
- * Whether a bot's call is one auto review looks at: it changes something (plan mode would stop it), or it opens a web
+ * Whether a bot's call is one auto review looks at: it changes something (it does not only read), or it opens a web
  * address, the way a page's injected text sends what a bot read out (`navigate` to a URL carrying it).
  */
 export function consequential(tool: string, args: Record<string, unknown>, readOnly: boolean) {
@@ -80,7 +80,7 @@ export function consequential(tool: string, args: Record<string, unknown>, readO
     }
 
     return (
-        blockedInPlanMode(tool, args, readOnly) !== undefined ||
+        !onlyReads(tool, args, readOnly) ||
         (tool === "browser" && typeof args.url === "string" && args.url !== "")
     );
 }

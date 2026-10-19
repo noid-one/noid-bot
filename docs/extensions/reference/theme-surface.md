@@ -146,18 +146,18 @@ Each is a `data-part` attribute. Some elements have two (`data-part="composer-bu
 
 ### The composer
 
-| Part                                      | What                                                                          |
-| ----------------------------------------- | ----------------------------------------------------------------------------- |
-| `composer`                                | All of it, under the conversation                                             |
-| `dock`                                    | What sits above the message box: the queue and the bars                       |
-| `subagents-bar`                           | The subagents' bar                                                            |
-| `message-box`                             | The box you type in, with its buttons                                         |
-| `composer-tools`                          | The row of buttons in it                                                      |
-| `composer-button`                         | Each of its own buttons: Places, Attach, Plan, the mic, Steer and Queue, Stop |
-| `plan-chip`, `mode-switch`, `stop-button` | Plan, Steer and Queue, and Stop, each also a `composer-button`                |
-| `model-chip`                              | The model's button                                                            |
-| `send-button`                             | Send                                                                          |
-| `status-line`                             | The line under the box: who is here, context, cost                            |
+| Part                         | What                                                                    |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `composer`                   | All of it, under the conversation                                       |
+| `dock`                       | What sits above the message box: the queue and the bars                 |
+| `subagents-bar`              | The subagents' bar                                                      |
+| `message-box`                | The box you type in, with its buttons                                   |
+| `composer-tools`             | The row of buttons in it                                                |
+| `composer-button`            | Each of its own buttons: Places, Attach, the mic, Steer and Queue, Stop |
+| `mode-switch`, `stop-button` | Steer and Queue, and Stop, each also a `composer-button`                |
+| `model-chip`                 | The model's button                                                      |
+| `send-button`                | Send                                                                    |
+| `status-line`                | The line under the box: who is here, context, cost                      |
 
 ### Layers over the app
 

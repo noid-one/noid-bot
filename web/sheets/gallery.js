@@ -1,24 +1,12 @@
 // The extension gallery: drop-ins and themes other people wrote, from a reviewed index. Browse and search them, read
-// one's code before it is installed, install it (a drop-in off; a theme into Appearance's list, not applied), ask Pi to
-// review a drop-in, turn it on, update it with a diff, remove it; and share your own as a draft index entry. The
+// one's code before it is installed, install it (a drop-in off; a theme into Appearance's list, not applied), turn it on, update it with a diff, remove it; and share your own as a draft index entry. The
 // owner's alone; the server side is src/server/gallery.ts.
 //
 // Everything the index says is untrusted: it shows as text only, and links go only to addresses the server built.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { planAvailable } from "../commands.js";
 import { DiffBlock } from "../diff.js";
 import { Highlighted } from "../rich.js";
-import {
-    actions,
-    api,
-    attempt,
-    closeSheet,
-    navigate,
-    notify,
-    openSheet,
-    store,
-    uid,
-} from "../store.js";
+import { api, attempt, closeSheet, notify, openSheet, store } from "../store.js";
 import { BASE_LOOK, prefs, setPrefs } from "../theme.js";
 import { copyText, formatBytes, html, Icon, Loader, Sheet, timeAgo } from "../ui.js";
 
@@ -59,7 +47,7 @@ export const ACCESS_WORDS = {
     view: "everyone who sees every session",
 };
 
-/** What a module declares, by group, in the order the entry and the review list them. */
+/** What a module declares, by group, in the order the entry lists them. */
 const GROUPS = [
     ["extensions", "Extensions"],
     ["tools", "Tools"],
@@ -302,7 +290,7 @@ export function GallerySheet() {
 
     return html`<${Sheet} title="Find extensions" onClose=${closeSheet} wide=${true} className="gallery">
         <p class="muted small">
-            Drop-ins and themes other people wrote, from a reviewed index. Drop-ins install turned off: read their code, or ask Pi to review it, before you turn one on. A theme installs into the list in Appearance, where each person can choose it.
+            Drop-ins and themes other people wrote, from a reviewed index. Drop-ins install turned off: read their code before you turn one on. A theme installs into the list in Appearance, where each person can choose it.
         </p>
         ${problem && html`<div class="error-box small">${problem}</div>`}
         ${data?.error && html`<div class="error-box small">${data.error}</div>`}
@@ -467,46 +455,12 @@ function Declares({ declares }) {
     </dl>`;
 }
 
-/**
- * Ask Pi to review an installed extension: a new session in the drop-in folder, in plan mode, with the review prompt.
- * Pi reads code that may hold instructions to it: without plan mode, which blocks its edits and commands that change
- * things, the review is not sent.
- */
-async function askForReview(name) {
-    if (!planAvailable()) {
-        throw new Error(
-            "The review runs in plan mode, which is off: turn Plan mode on in Extensions first.",
-        );
-    }
-
-    const { cwd, prompt } = await galleryApi(`review/${encodeURIComponent(name)}`);
-    const { id } = await actions.createSession(cwd);
-
-    try {
-        await api(`c/${id}/plan`, { on: true });
-    } catch (error) {
-        navigate(id);
-
-        throw new Error(
-            `Plan mode did not turn on (${error.message}), so the review was not sent.`,
-        );
-    }
-
-    await api(`c/${id}/submit`, { text: prompt, requestId: uid() });
-    closeSheet();
-    navigate(id);
-    notify(
-        "info",
-        "Pi reviews it in plan mode: it reads the files, and plan mode keeps it from changing them.",
-    );
-}
-
 /** Turn an installed extension on (after the owner confirms the risk) or off. */
 async function setEnabled(installed, title, enabled) {
     if (
         enabled &&
         !confirm(
-            `Turn on ${title}?\n\n${RISK}\n\nTurn it on only if you read its source, or Pi's review of it, and trust it.`,
+            `Turn on ${title}?\n\n${RISK}\n\nTurn it on only if you read its source and trust it.`,
         )
     ) {
         return false;
@@ -589,8 +543,6 @@ export function GalleryEntrySheet({ name }) {
             run(() => galleryApi(`uninstall/${encodeURIComponent(name)}`, {}));
         }
     };
-
-    const review = () => run(() => askForReview(name), false);
 
     return html`<${Sheet} title=${title} onClose=${closeSheet} className="gallery">
         ${problem && html`<div class="error-box small">${problem}</div>`}
@@ -695,12 +647,6 @@ export function GalleryEntrySheet({ name }) {
             >
                 View source
             </button>
-            ${
-                installed &&
-                html`<button class="button" disabled=${busy} onClick=${review}>
-                    <${Icon} name="sparkle" size=${14} /> Ask Pi to review
-                </button>`
-            }
             ${
                 installed &&
                 installed.enabled &&

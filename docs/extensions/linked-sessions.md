@@ -9,7 +9,7 @@ A tool can start a session from the session that it runs in, and send messages b
 A linked session is an ordinary session. The session list shows it under the session that started it (the source).
 
 - It works in the source's folder. It does not get a worktree of its own.
-- It starts with a copy of the source's agent settings. It does not get the source's history, plan mode, or budget. The source's budget covers it (see [Limits of a team](#limits-of-a-team)).
+- It starts with a copy of the source's agent settings. It does not get the source's history or budget. The source's budget covers it (see [Limits of a team](#limits-of-a-team)).
 - The link (`linkedFrom` in its session entry) gives no access, and owns nothing.
 
 ## Start a session
@@ -25,7 +25,7 @@ A linked session is an ordinary session. The session list shows it under the ses
 
 Since 0.16.0, a [conversation-bound route](routes.md#bind-a-source-conversation) gets `request.linkedSessions.start({ title?, message, model?, thinking? }, key)` and `list()`. These methods act as the authenticated person and bound source, not `host.requesterOf(source)`. They have no source-id or actor parameter. They end with the request, so await each start in the handler.
 
-- The same team, source plan, turn, spend, allowed-model, and provider checks apply. No message is added to the source, and its requester is unchanged.
+- The same team, source turn, spend, allowed-model, and provider checks apply. No message is added to the source, and its requester is unchanged.
 - Explicit thinking must be supported by the chosen model and no higher than the source's level. It is rejected rather than silently lowered. Omitted thinking inherits with the existing model cap policy. Read `request.conversation.model` and `thinkingLevel`, with `host.modelInfo("provider/modelId")`, to show the effective choices.
 - Source folder/model/thinking changes while a start waits cause a 409. Other inherited agent settings are read fresh in the creation transaction. The target cannot be reconfigured to substitute another model, level, or folder before its first message is admitted.
 - Keys share the existing receipt store. Prefix them with the module's name and keep one stable key per logical role start. A receipt made for another clicking person is a 409, never permission to act as that person.
@@ -55,7 +55,7 @@ Addresses belong to the session that has them. A fork starts with none, so it le
 
 `start` and `send` act for the person whom Pi works for in the source. They need that person's access and right to steer. To start a session, that person must also have access to all sessions.
 
-Pi Pocket refuses them while the source is in plan mode, past a spend limit, or while another person has the turn. `send` also needs the turn, and room under the spend limit, in the target session.
+Pi Pocket refuses them while the source is past a spend limit, or while another person has the turn. `send` also needs the turn, and room under the spend limit, in the target session.
 
 ## Limits of a team
 

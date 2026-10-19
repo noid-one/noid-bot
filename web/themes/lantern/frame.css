@@ -192,11 +192,6 @@
     }
 }
 
-[data-part~="plan-chip"] {
-    border-color: var(--hair-2);
-    color: var(--muted);
-}
-
 [data-part~="status-line"] {
     color: var(--faint);
 }

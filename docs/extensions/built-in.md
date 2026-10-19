@@ -16,7 +16,7 @@ In `src/server/reload.ts`:
 
 1. Give the module its place in `ORDER`, and its title in `TITLES`.
 2. If it must start off, add it to `OFF_BY_DEFAULT`.
-3. Add the names of its tools to `BUILT_IN_TOOLS`, so that no drop-in takes them, and plan mode trusts no read-only hint a drop-in's wrap puts on them. No test checks this list: keep it in step by hand.
+3. Add the names of its tools to `BUILT_IN_TOOLS`, so that no drop-in takes them, and approvals trust no read-only hint a drop-in's wrap puts on them. No test checks this list: keep it in step by hand.
 
 Name the extension `pocket-…`.
 

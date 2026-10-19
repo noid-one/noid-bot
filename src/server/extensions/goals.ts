@@ -4,7 +4,7 @@
  * and goes on. While this is off, goals do nothing.
  */
 import { defineExtension, GenerationTask, hook, section } from "@earendil-works/pi-durable";
-import { GoalDoc, PlanDoc } from "../docs.ts";
+import { GoalDoc } from "../docs.ts";
 import { GOAL_PREFIX, GOALS_EXTENSION } from "../goals.ts";
 import type { PocketHost } from "../host.ts";
 
@@ -43,11 +43,6 @@ export default function createGoals(host: PocketHost) {
                     const goal = (await api.snapshot(GoalDoc, api.conversationId, context))?.goal;
 
                     if (goal?.status !== "working") {
-                        return undefined;
-                    }
-
-                    // In plan mode Pi only proposes: the check waits until the plan is approved and Pi gets to work.
-                    if ((await api.snapshot(PlanDoc, api.conversationId, context))?.on === true) {
                         return undefined;
                     }
 

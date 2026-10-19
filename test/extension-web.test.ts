@@ -36,7 +36,7 @@ import type {
 import { AgentDoc, defineDoc, type ConversationId } from "@earendil-works/pi-durable";
 import { pocketVersion } from "../src/server/versions.ts";
 import { ExtensionWebs } from "../src/server/extension-web.ts";
-import { PlanDoc, TurnsDoc } from "../src/server/docs.ts";
+import { TurnsDoc } from "../src/server/docs.ts";
 import { createHandler } from "../src/server/http.ts";
 import { opened } from "../src/server/http/io.ts";
 
@@ -625,7 +625,7 @@ test("bound routes use the clicking actor, keep receipts private, and expose aut
         (seen.workspaceRequest as ConversationWebRequest).linkedSessions.list(),
         /ended/,
     );
-    // An owner catalog save has no source turn, plan, or spend admission policy.
+    // An owner catalog save has no source turn or spend admission policy.
     assert.equal(
         (await call("owner", "/api/x/workspace/catalog", { method: "POST", body: {} })).status,
         200,
@@ -711,7 +711,7 @@ test("a policy change queued between final authorization and admission cancels o
                         const accepted = await admission.beforeSubmit();
 
                         await app.harness.commit(async (tx) => {
-                            (await tx.doc(PlanDoc, source)).on = true;
+                            (await tx.doc(TurnsDoc, source)).on = true;
                         }, context);
                         assert.equal(
                             seen.workspaceRequest!.context.abortSignal?.aborted,

@@ -62,9 +62,9 @@ web.conversationRoute(
 
 `conversation` names a path parameter that must exist at registration. Before the handler runs, the server resolves the actual session and checks seeing; a mutation also needs steering and the turn. Ordinary route `access` still applies. GET can show a preview without taking the turn. `request.conversation` gives `{ id, title, cwd, model?, thinkingLevel }`. Do not take source settings from a browser body as authority; compare expected preview values with this metadata.
 
-`request.linkedSessions.start(request, key)` and `list()` act as the signed-in clicking person and bound source, not whoever last wrote to Pi there. There is no actor override. Starts check current plan, turn, spend, team and model policy; they reject a source folder/model/thinking change while they wait. Explicit thinking is never silently lowered. Give each logical role start a stable, module-namespaced key; another person cannot replay its receipt. The route waits for starts, not model answers. See [Starting and messaging sessions](linked-sessions.md#starts-from-a-human-page) and the [request reference](reference/web.md#conversationwebrequest).
+`request.linkedSessions.start(request, key)` and `list()` act as the signed-in clicking person and bound source, not whoever last wrote to Pi there. There is no actor override. Starts check current turn, spend, team and model policy; they reject a source folder/model/thinking change while they wait. Explicit thinking is never silently lowered. Give each logical role start a stable, module-namespaced key; another person cannot replay its receipt. The route waits for starts, not model answers. See [Starting and messaging sessions](linked-sessions.md#starts-from-a-human-page) and the [request reference](reference/web.md#conversationwebrequest).
 
-Use an ordinary owner-only `web.route` for an app-wide catalog save. Its document commit has no source plan, turn, or spend checks.
+Use an ordinary owner-only `web.route` for an app-wide catalog save. Its document commit has no source turn or spend checks.
 
 ## Errors
 
