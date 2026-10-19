@@ -1,5 +1,5 @@
 // Memory: lessons Pi saves with its tool for the owner apply at once (noid auto-saves) and reach later sessions of the
-// same project (its worktrees too) in their system prompt, and everywhere's reach every session and PiP; a guest's,
+// same project (its worktrees too) in their system prompt, and everywhere's reach every session and Noid; a guest's,
 // and Pi's for a guest, wait for the owner; a call run again saves once; caps; and who may change what through the routes.
 import {
     type App,
@@ -35,7 +35,7 @@ const tool = (args: Parameters<typeof fauxToolCall>[1]) =>
  */
 const route: FauxResponseStep = (request) => {
     const { role, text: written } = lastText(request as never);
-    // Sent for someone by PiP, a PR watch, or a webhook: the message after its mark.
+    // Sent for someone by Noid, a PR watch, or a webhook: the message after its mark.
     const text = written.replace(/^\[from: [^\]]+\] /, "").replace(/^\[via [^\]]+\] /, "");
 
     if (role === "toolResult") {
@@ -88,7 +88,9 @@ before(async () => {
     gitIn(repo, "add", "-A");
     gitIn(repo, "commit", "-qm", "init");
     gitIn(repo, "worktree", "add", "-q", worktree, "-b", "side");
-    app = await openApp(scriptedModel(route), join(root, "memory-data"));
+    app = await openApp(scriptedModel(route), join(root, "memory-data"), undefined, {
+        mainBot: true,
+    });
 });
 
 after(async () => {
@@ -175,16 +177,16 @@ test("a lesson Pi saves reaches later sessions in the repository and its worktre
     assert.ok(!(await given(repo, "check-zebra")));
 });
 
-test("lessons for everywhere reach every folder, and PiP, which has no project", async () => {
+test("lessons for everywhere reach every folder, and Noid", async () => {
     const id = await newSession(app, elsewhere);
 
-    // Pi's lesson for everywhere, saved for the owner, reaches every session and PiP at once.
+    // Pi's lesson for everywhere, saved for the owner, reaches every session and Noid at once.
     await say(app, id, "remember-everywhere Answer in British-spelling-yak.");
     assert.doesNotMatch(await answer(id), /waits for the owner's approval/);
     assert.ok(await given(repo, "British-spelling-yak"));
     assert.ok(await given(elsewhere, "British-spelling-yak"));
 
-    const pip = await app.pip.ensure(owner(app));
+    const pip = app.pip.noid()!;
 
     await app.commands.configure(pip, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -192,10 +194,6 @@ test("lessons for everywhere reach every folder, and PiP, which has no project",
     });
     await say(app, pip, "check British-spelling-yak");
     assert.equal(await answer(pip), "has British-spelling-yak: true");
-    // PiP's own lessons are for everywhere, whatever it asks for.
-    await say(app, pip, "remember PiP-prefers-llamas");
-    assert.match(await answer(pip), /for everywhere/);
-    assert.equal((await app.memory.view(pip, owner(app))).project, null);
 
     await clear();
 });
@@ -455,7 +453,8 @@ test("the owner's pending queue includes all projects and everywhere, and review
 
     await app.memory.change(otherId, elsewhere, pi, revised.id, { text: "New text." });
     await app.memory.change(otherId, elsewhere, pi, forgotten.id, "remove");
-    const pip = await app.pip.ensure(person);
+    // Reviewed from Noid's conversation, the owner's own.
+    const pip = app.pip.noid()!;
     const view = await app.memory.view(pip, person, true);
 
     assert.deepEqual(

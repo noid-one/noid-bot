@@ -1,9 +1,10 @@
-// noid: Noid does PiP's work. Where there is a main bot, the owner's "PiP" is Noid's conversation: it has PiP's tools
-// beside its own (bash included), its prompt says that work in Noid's words, it stays in the list, no separate PiP is
-// made, and nobody but the owner may see it (its tools act as the owner).
+// noid: Noid, the owner's own assistant, has the session tools beside its own (bash included), its prompt says that
+// work in Noid's words, it stays in the list, and nobody but the owner may see it (its tools act as the owner). Every
+// other bot has the session tools too; a conversation pi-pocket's assistant left behind is kept out of the way.
 import {
     type App,
     cleanUp,
+    context,
     lastText,
     openApp,
     owner,
@@ -18,6 +19,7 @@ import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
+import { SessionsDoc } from "../src/server/docs.ts";
 import { PIP_EXTENSION } from "../src/server/pip.ts";
 
 /** "show" answers with what Noid was given: its prompt's sections and its tools' names (from the system messages). */
@@ -79,24 +81,31 @@ after(async () => {
     cleanUp();
 });
 
-test("the owner's PiP is Noid: no other is made, and Noid stays in the list", async () => {
+test("Noid is the owner's own assistant, and stays in the list", () => {
     assert.notEqual(noid, undefined);
-    assert.equal(app.pip.idOf(owner(app).id), noid);
     assert.equal(app.pip.ownerOf(noid), owner(app).id);
-    assert.equal(await app.pip.ensure(owner(app)), noid, "PiP's conversation is Noid's");
-    assert.equal(
-        Object.values(app.sessionCatalogue()).filter((meta) => meta.pip !== undefined).length,
-        0,
-        "no separate PiP",
-    );
     assert.ok(app.sessions().some((session) => Number(session.id) === Number(noid)));
 });
 
-test("Noid has PiP's tools beside its own, and its prompt says that work as Noid's", async () => {
+test("a conversation stored with pi-pocket's assistant mark loads, out of the list, its person's alone", async () => {
+    const { id } = await app.commands.createSession(owner(app), {});
+
+    // `pip`: what pi-pocket stored on its assistant's conversation.
+    await app.harness.commit(async (tx) => {
+        (await tx.doc(SessionsDoc)).items[String(id)]!.pip = owner(app).id;
+    }, context);
+    await until(() => app.sessionMeta(id)?.pip !== undefined, "the mark");
+
+    assert.ok(!app.sessions().some((session) => Number(session.id) === Number(id)));
+    assert.equal(app.canSee(app.config.addUser("Old guest", "guest").user, id), false);
+    assert.equal(app.pip.actsFor(id), undefined, "no session tools act for it");
+});
+
+test("Noid has the session tools beside its own, and its prompt says that work as Noid's", async () => {
     const extensions = (await app.agentState(noid))?.extensions;
     const names = Array.isArray(extensions) ? extensions : (extensions?.add ?? []);
 
-    assert.ok(names.includes(PIP_EXTENSION), "PiP's extension, selected");
+    assert.ok(names.includes(PIP_EXTENSION), "the session tools, selected");
 
     await say(app, noid, "show");
     const shown = JSON.parse(await answer(noid)) as {
@@ -108,9 +117,9 @@ test("Noid has PiP's tools beside its own, and its prompt says that work as Noid
         assert.ok(shown.tools.includes(tool), `${tool}, offered`);
     }
 
-    assert.ok(shown.tools.includes("bash"), "Noid keeps its own tools: PiP's limits are not its");
+    assert.ok(shown.tools.includes("bash"), "Noid keeps its own tools");
     assert.match(shown.systemPrompt, /Besides your bots, you look after/);
-    assert.doesNotMatch(shown.systemPrompt, /You are PiP/);
+    assert.doesNotMatch(shown.systemPrompt, /PiP|Pi in Pocket/);
 });
 
 test("Noid acts as the owner, so only the owner sees it", () => {
@@ -125,7 +134,7 @@ test("every bot has the session tools, acting as the owner; bots are not session
     const extensions = (await app.agentState(bot))?.extensions;
     const names = Array.isArray(extensions) ? extensions : (extensions?.add ?? []);
 
-    assert.ok(names.includes(PIP_EXTENSION), "PiP's extension, selected");
+    assert.ok(names.includes(PIP_EXTENSION), "the session tools, selected");
     await app.commands.configure(bot, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
         thinkingLevel: "off",
@@ -139,10 +148,10 @@ test("every bot has the session tools, acting as the owner; bots are not session
 
     assert.ok(!shown.tools.includes("bot_create"), "making bots stays Noid's");
     assert.match(shown.systemPrompt, /You can also work through sessions/);
-    assert.doesNotMatch(shown.systemPrompt, /You are PiP|Besides your bots/);
+    assert.doesNotMatch(shown.systemPrompt, /PiP|Besides your bots/);
 
     assert.equal(app.pip.actsFor(bot), owner(app).id);
-    assert.equal(app.pip.ownerOf(bot), undefined, "a bot is no PiP");
+    assert.equal(app.pip.ownerOf(bot), undefined, "a bot is not the owner's own");
     assert.equal(app.canSee(app.config.addUser("Visitor", "guest").user, bot), false);
 
     const { sessions } = app.pip.sessions(bot);

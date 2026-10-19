@@ -1,7 +1,7 @@
 // Webhooks and watches: addresses other services post to, each turning every post into a message to Pi in a session or
 // to Noid; and the repository watches Noid set up, which need no address.
 import { useEffect, useRef, useState } from "preact/hooks";
-import { noidWatches } from "../noid.js";
+import { mainBot, noidWatches } from "../noid.js";
 import { api, attempt, closeSheet, navigate, notify, store } from "../store.js";
 import { copyText, formatWhen, html, Sheet } from "../ui.js";
 
@@ -35,7 +35,7 @@ function HookRow({ hook, base, fresh, onRemove, onRotate }) {
         <div class="hook-head">
             <strong class="grow">${hook.name}</strong>
             <span class="muted small">
-                to ${hook.pip ? "Noid" : html`<a href=${`/s/${hook.target}`} onClick=${open}>${hook.targetTitle}</a>`}
+                to <a href=${`/s/${hook.target}`} onClick=${open}>${hook.targetTitle}</a>
             </span>
         </div>
         ${hook.instructions && html`<div class="hook-text">${hook.instructions}</div>`}
@@ -88,7 +88,7 @@ function WatchRow({ watch, onRemove, onAnyone }) {
         <div class="hook-head">
             <strong class="grow">${watch.repo}</strong>
             <span class="muted small">
-                to ${watch.pip ? "Noid" : html`<a href=${`/s/${watch.target}`} onClick=${open}>${watch.targetTitle}</a>`}
+                to <a href=${`/s/${watch.target}`} onClick=${open}>${watch.targetTitle}</a>
             </span>
         </div>
         <div class="muted small">${watch.events.join(", ")}${narrowed.length > 0 ? ` · ${narrowed.join(", ")}` : ""}</div>
@@ -109,8 +109,7 @@ function WatchRow({ watch, onRemove, onAnyone }) {
 /** The person's webhooks (every one, for the owner), and a form to make one for this session or for Noid. */
 export function HooksSheet() {
     const { view, me } = store.state;
-    const here =
-        view.conversation?.kind === "session" && !view.conversation.pip ? view.conversation : null;
+    const here = view.conversation?.kind === "session" ? view.conversation : null;
     const [list, setList] = useState(null);
     const [name, setName] = useState("");
     const [instructions, setInstructions] = useState("");
@@ -205,7 +204,7 @@ export function HooksSheet() {
             if (
                 on &&
                 !confirm(
-                    `Let anyone's issues and PRs on ${watch.repo} reach ${watch.pip ? "Noid" : "Pi"}? Strangers' words then come with your instructions.`,
+                    `Let anyone's issues and PRs on ${watch.repo} reach ${watch.target === mainBot()?.id ? "Noid" : "Pi"}? Strangers' words then come with your instructions.`,
                 )
             ) {
                 return;

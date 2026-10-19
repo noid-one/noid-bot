@@ -89,7 +89,7 @@ The buttons, rows, and actions of modules show in the order that the server list
 **`page({ id, title, component, escape, swipe })`** shows in the place of the conversation, as the subagents board does, with its title and a close button. On a phone, it fills the screen.
 
 - Esc and back close it. Esc never closes it while an input method composes a character.
-- `escape: false` keeps Esc for the page. Esc still closes a sheet, the launcher, or PiP over it, and the close button and back still close the page.
+- `escape: false` keeps Esc for the page. Esc still closes a sheet or the launcher over it, and the close button and back still close the page.
 - On a narrow touch screen ([limits](reference/limits.md#browser-modules)), a swipe to the right on the page goes back. A swipe in a field or in a sideways scroller does not. In an app on an iPhone's or iPad's home screen, a swipe in from the left edge also goes back.
 - `swipe: false` starts no back swipe on the page, at the edge too. A `data-no-swipe` attribute on an element starts no swipe on it or in it: use it on a slider, or a canvas that people draw on.
 

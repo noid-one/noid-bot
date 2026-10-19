@@ -30,11 +30,10 @@ export const schedulesAvailable = () =>
 const goalsAvailable = () =>
     isSession() && store.state.server?.extensions?.includes("pocket-goals") === true;
 
-/** Webhooks need the triggers extension; so does watching a PR, which is for sessions other than PiP. */
+/** Webhooks need the triggers extension; so does watching a PR. */
 export const triggersOn = () =>
     store.state.server?.extensions?.includes("pocket-triggers") === true;
-export const watchAvailable = () =>
-    isSession() && !store.state.view.conversation?.pip && triggersOn();
+export const watchAvailable = () => isSession() && triggersOn();
 
 /** Watch this session's pull request (its branch's, or `pr`), and say what that means. */
 export async function watchPr(pr) {

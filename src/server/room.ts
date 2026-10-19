@@ -144,15 +144,6 @@ export interface Client {
     boardSeq?: number;
     /** The JSON of the subagents this tab's board last got, so an unchanged list is not sent again. */
     boardSent?: string;
-    /**
-     * This tab's PiP panel, while open: a view of PiP's conversation beside the one the tab shows, which reaches the tab
-     * as `pipview` events (`PocketApp.setPip`).
-     */
-    pip?: Client;
-    /** The number of the last PiP panel request taken, so one that arrives late does not undo a newer one. */
-    pipSeq?: number;
-    /** The JSON of the PiP state this tab last got (`pip` events), so an unchanged one is not sent again. */
-    pipSent?: string;
 }
 
 export type TypingPlace = "chat" | "pi";

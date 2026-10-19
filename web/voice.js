@@ -25,15 +25,15 @@ const ERRORS = {
 /** The dictation that listens now: one at a time, in the whole app. */
 let current = null;
 /**
- * The boxes that can dictate, newest last. The shortcut (Alt+V) dictates into PiP's while it shows (its box is `top`),
- * else into the newest in the page: one gone for now (view only, someone else's turn) is passed over.
+ * The boxes that can dictate, newest last. The shortcut (Alt+V) dictates into the newest in the page: one gone for now
+ * (view only, someone else's turn) is passed over.
  */
 const boxes = [];
 
 /** Alt+V: start or stop dictation in the newest message box; false when no box can. */
 export function toggleDictation() {
     const shown = (each) => each.box.current?.isConnected === true;
-    const box = boxes.findLast((each) => each.top && shown(each)) ?? boxes.findLast(shown);
+    const box = boxes.findLast(shown);
 
     if (!box || !voiceAvailable()) {
         return false;
@@ -88,9 +88,8 @@ function join(before, words, after) {
  * Dictation into a textarea (`box`, a ref). `onText(value, caret)` hears each change, as typing does, so the box's own
  * draft saving keeps it. Words go in at the caret while the box has the focus, and after its text when it does not.
  * Returns whether it listens, and `toggle` and `stop` (`stop(true)` drops words not yet settled: for sending, leaving).
- * `top` marks PiP's box, which takes Alt+V while it shows.
  */
-export function useDictation(box, onText, { top = false } = {}) {
+export function useDictation(box, onText) {
     const [listening, setListening] = useState(false);
     const hear = useRef(onText);
     const self = useRef(null);
@@ -100,7 +99,6 @@ export function useDictation(box, onText, { top = false } = {}) {
     if (self.current === null) {
         self.current = {
             box,
-            top,
             recognition: null,
             /** Stop listening: `drop` throws away what is not settled yet, and anything heard after. */
             stop(drop = false) {

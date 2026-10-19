@@ -576,7 +576,6 @@ const handlers = {
     // Every subagent in every session, while this tab shows the subagents board (`subagents-board.js`).
     subagents: (agents) => store.state.board && store.set({ boardAgents: agents }),
     view: applyView,
-    // PiP's conversation, while this tab's PiP panel is open.
     chat: applyChat,
     presence: (data) =>
         data.conversationId === store.state.conversationId && store.set({ presence: data.people }),

@@ -200,7 +200,7 @@ export async function requireHost(gh: Gh, host: string | undefined): Promise<voi
     if (user === "") {
         throw new HttpError(
             403,
-            `This machine's gh is not signed in to ${host}: Pi and PiP reach only GitHub hosts it is signed in to (gh auth login --hostname ${host}).`,
+            `This machine's gh is not signed in to ${host}: Pi and Noid reach only GitHub hosts it is signed in to (gh auth login --hostname ${host}).`,
         );
     }
 
@@ -268,7 +268,7 @@ export async function requirePush(gh: Gh, repo: string): Promise<RepoInfo> {
     if (!info.push) {
         throw new HttpError(
             403,
-            `This machine's gh account cannot push to ${info.repo}: Pi and PiP work only in repositories it can push to.`,
+            `This machine's gh account cannot push to ${info.repo}: Pi and Noid work only in repositories it can push to.`,
         );
     }
 

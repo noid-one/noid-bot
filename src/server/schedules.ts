@@ -220,10 +220,10 @@ export class Schedules {
         }, context);
     }
 
-    /** Whether a conversation is a PiP whose person cannot have it now (its extension is off). */
+    /** Whether a conversation is Noid's while its person cannot have it (the session tools are off). */
     #waitsForPip(conversationId: ConversationId): boolean {
         const app = this.#app;
-        const userId = app.sessionMeta(conversationId)?.pip;
+        const userId = app.pip.ownerOf(conversationId);
 
         if (userId === undefined) {
             return false;
@@ -420,7 +420,10 @@ export class Schedules {
         }
 
         if (this.#waitsForPip(conversationId)) {
-            throw new HttpError(409, "PiP is off: its schedules wait until it is back.");
+            throw new HttpError(
+                409,
+                "Noid's session tools are off: its schedules wait until they are back.",
+            );
         }
 
         const stopped = this.#stopped(conversationId, schedule);

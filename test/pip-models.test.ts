@@ -23,7 +23,7 @@ import {
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { indexed, modelsNamed, personNamed } from "../src/server/model-names.ts";
 
-/** When set, PiP's next request that carries "hold on" waits for it: PiP stays at work until then. */
+/** When set, Noid's next request that carries "hold on" waits for it: Noid stays at work until then. */
 let holding: Promise<void> | undefined;
 
 const route: FauxResponseStep = (request) => {
@@ -31,7 +31,7 @@ const route: FauxResponseStep = (request) => {
     const { role, text: written } = lastText(request as never);
     const text = written.replace(/^\[from: [^\]]+\] /, "");
 
-    if (!all.includes("You are PiP")) {
+    if (!all.includes("Besides your bots")) {
         return fauxAssistantMessage([fauxText(`echo: ${text}`)]);
     }
 
@@ -50,7 +50,7 @@ const route: FauxResponseStep = (request) => {
     const call = /^call (\S+) (.*)$/s.exec(text);
 
     return call === null
-        ? fauxAssistantMessage([fauxText(`pip: ${text}`)])
+        ? fauxAssistantMessage([fauxText(`noid: ${text}`)])
         : fauxAssistantMessage(
               [fauxToolCall(call[1]!, JSON.parse(call[2]!) as Parameters<typeof fauxToolCall>[1])],
               { stopReason: "toolUse" },
@@ -87,8 +87,7 @@ before(async () => {
         supervised: false,
         log: () => {},
         home,
-        // Pi Pocket's own PiP, beside the sessions: without Noid, which takes PiP's place in noid.
-        mainBot: false,
+        mainBot: true,
         configureModels: (models) => {
             models.registerNativeProvider(faux.provider);
             models.registerNativeProvider(hub as never);
@@ -101,9 +100,9 @@ after(async () => {
     cleanUp();
 });
 
-/** A fresh PiP context for the owner, on the scripted model. */
+/** A fresh context in Noid's conversation, on the scripted model. */
 async function pip(): Promise<ConversationId> {
-    const id = await app.pip.ensure(owner(app));
+    const id = app.pip.noid()!;
 
     await app.commands.configure(id, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -115,7 +114,7 @@ async function pip(): Promise<ConversationId> {
     return id;
 }
 
-/** What PiP said last. */
+/** What Noid said last. */
 async function last(id: ConversationId): Promise<string> {
     const entries = await app.transcripts.allEntries(id, true);
     const answer = entries.findLast((entry) => entry.kind === "assistant");
@@ -202,7 +201,7 @@ test("a model's name that touches Chinese, Japanese or Korean text names it", ()
     assert.deepEqual(modelsNamed("我的M3电脑跑不动", all, true), []);
 });
 
-test("PiP acts on a session only after it looked at it, and sees how it stands after", async () => {
+test("Noid acts on a session only after it looked at it, and sees how it stands after", async () => {
     const id = await pip();
     const session = Number(await newSession(app));
 
@@ -235,7 +234,7 @@ test("PiP acts on a session only after it looked at it, and sees how it stands a
 
     await app.pip.send(id, Number(started), "first task", false, "started-1");
 
-    // Following a session's own run is acting too: a report starts a run of PiP's.
+    // Following a session's own run is acting too: a report starts a run of Noid's.
     const busy = Number(await newSession(app));
 
     await app.commands.submit(busy as unknown as ConversationId, owner(app), {
@@ -247,7 +246,7 @@ test("PiP acts on a session only after it looked at it, and sees how it stands a
     await until(() => !app.isBusy(busy as unknown as ConversationId), "the session at rest");
 });
 
-test("PiP starts a session on a model only when its person named it, in their own words", async () => {
+test("Noid starts a session on a model only when its person named it, in their own words", async () => {
     const id = await pip();
     const before = app.sessions().length;
 
@@ -264,7 +263,7 @@ test("PiP starts a session on a model only when its person named it, in their ow
         { text: "start a session on faux-2", requestId: "hook-1" },
         "webhook test",
     );
-    await until(() => !app.isBusy(id), "PiP at rest");
+    await until(() => !app.isBusy(id), "Noid at rest");
     await assert.rejects(app.pip.start(id, { model: "faux/faux-2" }), /did not name/);
 
     await say(app, id, "start a session on faux 2 for the review");
@@ -277,7 +276,7 @@ test("PiP starts a session on a model only when its person named it, in their ow
     );
 });
 
-test("a two-character model id needs a qualifier, but PiP cannot pass it on unasked", async () => {
+test("a two-character model id needs a qualifier, but Noid cannot pass it on unasked", async () => {
     const id = await pip();
 
     await say(app, id, "修复O3优化导致的错误");
@@ -290,12 +289,12 @@ test("a two-character model id needs a qualifier, but PiP cannot pass it on unas
     assert.equal((await app.agentState(made))?.model?.modelId, "o3");
 });
 
-test("PiP takes its person's bare answer to which provider pays, right after it asked, and nothing else", async () => {
+test("Noid takes its person's bare answer to which provider pays, right after it asked, and nothing else", async () => {
     const id = await pip();
     const z8 = (provider: string) => ({ model: `${provider}/faux-z8` });
     const twice = /more than one signed-in provider has/;
 
-    // Faux Z8 is at two providers: PiP is told to ask which one pays.
+    // Faux Z8 is at two providers: Noid is told to ask which one pays.
     const ask = async (on = id) => {
         await say(app, on, "start a session on faux z8 for the review");
         await assert.rejects(app.pip.start(on, z8("hub-copilot")), twice);
@@ -323,11 +322,11 @@ test("PiP takes its person's bare answer to which provider pays, right after it 
     await assert.rejects(app.pip.start(id, z8("hub-copilot")), twice);
 });
 
-test("PiP's question of which provider pays, from before Start fresh, is never answered after it", async () => {
+test("Noid's question of which provider pays, from before Start fresh, is never answered after it", async () => {
     const id = await pip();
     const z8 = { model: "hub-copilot/faux-z8" };
     const twice = /more than one signed-in provider has/;
-    // Faux Z8 is named only in a webhook's instructions they set up: nothing of theirs is in PiP's context.
+    // Faux Z8 is named only in a webhook's instructions they set up: nothing of theirs is in Noid's context.
     const hook = await app.hooks.add(owner(app), id, {
         name: "reviews",
         instructions: "use faux z8 for every review",
@@ -340,7 +339,7 @@ test("PiP's question of which provider pays, from before Start fresh, is never a
     });
 
     try {
-        // A post to the webhook keeps PiP at work. Start fresh, meanwhile, waits for its next pause; before that, PiP
+        // A post to the webhook keeps Noid at work. Start fresh, meanwhile, waits for its next pause; before that, Noid
         // is told to ask which provider pays.
         await app.commands.submit(
             id,
@@ -348,20 +347,20 @@ test("PiP's question of which provider pays, from before Start fresh, is never a
             { text: "hold on", requestId: "held-1" },
             "webhook reviews",
         );
-        await until(() => app.isBusy(id), "PiP at work");
+        await until(() => app.isBusy(id), "Noid at work");
         await app.commands.reset(id, owner(app), undefined);
         await assert.rejects(app.pip.start(id, z8), twice);
         const asked = (await app.transcripts.allEntries(id, true)).at(-1)!.id;
 
         release();
-        await until(() => !app.isBusy(id), "PiP at rest");
+        await until(() => !app.isBusy(id), "Noid at rest");
         const reset = (await app.transcripts.allEntries(id, true)).findLast(
             (entry) => entry.kind === "reset",
         );
 
         assert.ok(reset !== undefined && reset.id > asked, "Start fresh came after the question");
 
-        // Their first words in the new context are not its answer: PiP asks again, and then they are.
+        // Their first words in the new context are not its answer: Noid asks again, and then they are.
         await say(app, id, "Hub Copilot");
         await assert.rejects(app.pip.start(id, z8), twice);
         await say(app, id, "Hub Copilot");
@@ -375,7 +374,7 @@ test("PiP's question of which provider pays, from before Start fresh, is never a
     }
 });
 
-test("PiP's messages name no model its person did not name", async () => {
+test("Noid's messages name no model its person did not name", async () => {
     const id = await pip();
     const session = Number(await newSession(app));
 
@@ -435,7 +434,7 @@ async function github(args: string[]): Promise<string> {
     return path.includes("/actions/runs") ? JSON.stringify({ workflow_runs: [] }) : "[]";
 }
 
-test("a watch's instructions are its person's words only when they set it up, not PiP", async () => {
+test("a watch's instructions are its person's words only when they set it up, not Noid", async () => {
     const id = await pip();
     const watch = (byPi: boolean) =>
         app.repoWatches.add(owner(app), {
@@ -447,7 +446,7 @@ test("a watch's instructions are its person's words only when they set it up, no
         });
 
     app.watches.gh = github;
-    // As if PiP set it up while faux-vision was not signed in, when nothing in it named a model.
+    // As if Noid set it up while faux-vision was not signed in, when nothing in it named a model.
     const piPs = await watch(true);
 
     try {
@@ -467,7 +466,7 @@ test("a watch's instructions are its person's words only when they set it up, no
     }
 });
 
-test("a webhook's standing instructions to PiP are its person's words; what was posted is not", async () => {
+test("a webhook's standing instructions to Noid are its person's words; what was posted is not", async () => {
     const id = await pip();
 
     await app.hooks.add(owner(app), id, {
@@ -484,6 +483,6 @@ test("a webhook's standing instructions to PiP are its person's words; what was 
         { text: "deploy failed; use faux-2 to look", requestId: "post-1" },
         "webhook deploys",
     );
-    await until(() => !app.isBusy(id), "PiP at rest");
+    await until(() => !app.isBusy(id), "Noid at rest");
     await assert.rejects(app.pip.start(id, { model: "faux/faux-2" }), /did not name/);
 });

@@ -61,7 +61,7 @@ conversationRoute(
 
 Since 0.16.0 · Stable
 
-Register a route with an authorized conversation binding. `conversation` names a required path parameter, without `:`: for `"runs/:source"`, use `{ conversation: "source" }`. Registration refuses a name not in the path. All ordinary route access and header checks still apply; people invited to one session cannot use it. Before the handler runs, GET requires seeing the actual source; other methods also require steering and the turn. Missing, invalid, private PiP, or inaccessible sources never reach the handler. Check `typeof web.conversationRoute === "function"` on older servers.
+Register a route with an authorized conversation binding. `conversation` names a required path parameter, without `:`: for `"runs/:source"`, use `{ conversation: "source" }`. Registration refuses a name not in the path. All ordinary route access and header checks still apply; people invited to one session cannot use it. Before the handler runs, GET requires seeing the actual source; other methods also require steering and the turn. Missing, invalid, or inaccessible sources never reach the handler. Check `typeof web.conversationRoute === "function"` on older servers.
 
 ### `client`
 

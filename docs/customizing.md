@@ -59,7 +59,7 @@ People sign in to providers in Menu → **Providers**, and pick a model for each
 Models are the person's choice, never Pi's:
 
 - A subagent runs on its session's model, unless the owner allows other models under **Models for subagents**, at the top of the Providers sheet. By default, there are none.
-- PiP gives a model only when its person named it.
+- Noid and the other bots give a session a model only when their person named it.
 
 Instructions, skills, and `AGENTS.md` cannot change this. Tell the person where the setting is instead.
 
@@ -95,10 +95,10 @@ Without an owner default, the order is: a pin from a trusted project, the last p
 - A known model without a sign-in stays selected, and its next request shows the sign-in failure.
 - When Pi Pocket cannot read Pi's global settings, it also stops a new session without an owner default, with a safe error: it must not guess the trust policy.
 
-Existing sessions do not change when files or folders change. Imports, forks, subagents, models that a person chose, and PiP's own conversation work as before.
+Existing sessions do not change when files or folders change. Imports, forks, subagents, and models that a person chose work as before.
 
-- A model that the person named to PiP overrides project settings.
-- A session that PiP starts without a named model uses the same order as each new session, with trusted projects, also when the owner trusts all projects.
+- A model that the person named to a bot overrides project settings.
+- A session that a bot starts without a named model uses the same order as each new session, with trusted projects, also when the owner trusts all projects.
 
 **Pi Pocket does not support these yet:** extra skill and prompt paths from each session folder's settings, and run policy per project (compaction, retries, stream timeouts, steering, and follow-up mode). The usual project folders for skills and prompts still work.
 

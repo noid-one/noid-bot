@@ -67,17 +67,7 @@ import {
 } from "./store.js";
 import { prefs, setPrefs, startTheme } from "./theme.js";
 import { Transcript } from "./transcript.js";
-import {
-    APPLE,
-    Boot,
-    BOTTOM_SHEETS,
-    html,
-    Icon,
-    iconPath,
-    shortPath,
-    useEdge,
-    usePresence,
-} from "./ui.js";
+import { APPLE, Boot, BOTTOM_SHEETS, html, Icon, iconPath, shortPath, usePresence } from "./ui.js";
 import { toggleDictation } from "./voice.js";
 
 /** What changed in the session's folder: lines added and removed, and how many files. It opens Changes. */
@@ -129,8 +119,6 @@ function Topbar() {
         (session) =>
             session.waiting && !session.archived && session.id !== store.state.conversationId,
     ).length;
-    // How far down it reaches: PiP's window on a short wide screen stops below its buttons.
-    const edge = useEdge("--topbar-h", (rect) => rect.bottom);
     // noid: a bot's session shows its face, which opens the bot to edit.
     const botSession = store.state.sessions.find(
         (session) => session.id === conversationId && session.bot !== undefined,
@@ -141,7 +129,7 @@ function Topbar() {
             ? (botDoing(botSession) ?? "")
             : undefined;
 
-    return html`<header class="topbar" data-part="topbar" ref=${edge}>
+    return html`<header class="topbar" data-part="topbar">
         <button
             class="icon-button badge-host topbar-back"
             aria-label=${waiting > 0 ? `Back to sessions, ${waiting} waiting for you` : "Back to sessions"}
@@ -876,7 +864,7 @@ if (new URLSearchParams(location.search).has("chat")) {
     openSheet({ type: "chat" });
 }
 
-// Notifications from what PiP did (`/?pip=1`) open Noid, which does it now, once the sessions are known.
+// Notifications sent by pi-pocket for its assistant (`/?pip=1`) open Noid, once the sessions are known.
 if (new URLSearchParams(location.search).has("pip")) {
     replaceAddress(location.pathname);
     const stop = store.subscribe(() => {

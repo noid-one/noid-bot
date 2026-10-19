@@ -1,15 +1,14 @@
 /**
- * PiP, "Pi in Pocket": the owner's assistant, which looks after their other sessions. In Pi Pocket PiP is a conversation
- * of its own, kept out of the session list; in noid, Noid's conversation is it (`idOf`), and there is no PiP panel. Its
- * extension (`extensions/pip.ts`) is selected there only, and gives it tools to list, read, start, message, stop, archive, and
- * schedule sessions, to see the calls waiting for approval and deny them (never allow: that stays a person's), and to
- * follow a session until its run ends. Every tool acts as PiP's person, with exactly their rights: the checks are the
- * ones their own requests meet.
+ * The session tools: what Noid, and every other bot, does with the owner's sessions. Their extension
+ * (`extensions/pip.ts`) is selected in bots' conversations only, and gives tools to list, read, start, message, stop,
+ * archive, and schedule sessions, to see the calls waiting for approval and deny them (never allow: that stays a
+ * person's), and to follow a session until its run ends. Every tool acts as the owner, with exactly their rights: the
+ * checks are the ones their own requests meet.
  *
- * A follow is a durable task in PiP's conversation: it waits for the message PiP sent (or for the session to go idle),
- * then sends PiP a report. Request ids keep a restart from sending a message or a report twice.
+ * A follow is a durable task in the bot's conversation: it waits for the message the bot sent (or for the session to go
+ * idle), then sends the bot a report. Request ids keep a restart from sending a message or a report twice.
  *
- * PiP checks before it acts: it messages, stops, archives, schedules in, or watches a PR from a session only after it
+ * A bot checks before it acts: it messages, stops, archives, schedules in, or watches a PR from a session only after it
  * looked at that session lately (read it, started it, or had a report from it). And it never chooses a model: it passes
  * one, or names one in what it sends, only when its person named that model in their own words to it.
  */
@@ -20,7 +19,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
-    AgentDoc,
     AssistantEntry,
     CompactionEntry,
     type ConversationId,
@@ -35,9 +33,9 @@ import {
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
 import type { User } from "./config.ts";
-import { AuthorsDoc, FollowsDoc, PipAskedDoc, SessionsDoc } from "./docs.ts";
+import { AuthorsDoc, FollowsDoc, PipAskedDoc } from "./docs.ts";
 import { NOTE_ENTRY } from "./entry-format.ts";
-import { describe, HttpError } from "./errors.ts";
+import { describe } from "./errors.ts";
 import { clip, defang, quoted } from "./fence.ts";
 import { git } from "./git.ts";
 import { originRepo, parseRepo, requirePush, sameRepo } from "./github.ts";
@@ -51,32 +49,17 @@ import { describeMoment, describeRepeat } from "./when.ts";
 
 const context = BACKGROUND_CONTEXT;
 
-/** PiP's extension: its tools, its prompt, and the follow task. Selected in PiP's conversation only. */
+/** The session tools' extension: the tools, their prompt, and the follow task. Bots' conversations select it. */
 export const PIP_EXTENSION = "pocket-pip";
-/** What PiP is called, in the app and in what it sends. */
-export const PIP_NAME = "PiP";
-/**
- * The extensions PiP runs with, in order. Not the system prompt (PiP's extension has its own) nor anything that works
- * on files and commands beyond reading: PiP hands hands-on work to sessions.
- */
-export const PIP_EXTENSIONS = [
-    "coding-tools",
-    PIP_EXTENSION,
-    "pocket-artifacts",
-    "pocket-schedules",
-    "pocket-guard",
-    "pocket-codemode",
-    "pocket-memory",
-];
-/** Pi Durable's coding tools PiP goes without: it reads files, and changes nothing itself. */
-export const PIP_WITHOUT = ["bash", "write", "edit"];
-/** How reports from followed sessions start, so PiP knows what they are. */
+/** How reports from followed sessions start, so the bot knows what they are. */
 export const REPORT_HEAD = "[report] ";
-/** Sessions PiP may start in an hour, so a confused loop cannot fill the list. */
+/** What sends for the owner when a conversation is no bot's: Noid, the main bot. */
+const NOID_NAME = "Noid";
+/** Sessions a bot may start in an hour, so a confused loop cannot fill the list. */
 const STARTS_PER_HOUR = 20;
 /**
- * Messages, follows, and schedules PiP may make in an hour. Reports start PiP's runs with nobody watching: this keeps
- * a loop (follow, report, follow; or PiP and a session messaging each other) from spending without end.
+ * Messages, follows, and schedules a bot may make in an hour. Reports start its runs with nobody watching: this keeps
+ * a loop (follow, report, follow; or a bot and a session messaging each other) from spending without end.
  */
 const ACTIONS_PER_HOUR = 60;
 /** How long a clone may take, and how long a folder's repository is kept before git is asked again. */
@@ -84,10 +67,10 @@ const CLONE_TIMEOUT_MS = 15 * 60_000;
 const ORIGIN_FOR_MS = 5 * 60_000;
 /** How long a follow that reported is remembered, so a replayed call that made it does not make another. */
 const FOLLOW_MEMORY_MS = 24 * 3_600_000;
-/** How long PiP's look at a session (a read, its start, a report from it) counts as knowing what it is doing. */
+/** How long a bot's look at a session (a read, its start, a report from it) counts as knowing what it is doing. */
 const CHECKED_FOR_MS = 15 * 60_000;
 /**
- * How many of PiP's newest entries are searched for the models its person named, at most, and how many at a time: its
+ * How many of a bot's newest entries are searched for the models its person named, at most, and how many at a time: its
  * context (since its last compaction or new context) is searched whole, up to this many.
  */
 const NAMED_IN_ENTRIES = 2_000;
@@ -98,7 +81,7 @@ const NAMED_IN_PAGE = 200;
  */
 const REPORTED_JUST_NOW_MS = 60_000;
 
-/** How what a session said reaches PiP: fenced, so it reads as data, not as instructions. */
+/** How what a session said reaches a bot: fenced, so it reads as data, not as instructions. */
 export const SESSION_OPEN = "<session-output>";
 export const SESSION_CLOSE = "</session-output>";
 /** Follows waiting at once, at most. */
@@ -109,16 +92,16 @@ const LINE_CHARS = 600;
 
 type FollowInput = {
     sessionId: ConversationId;
-    /** PiP's person: the report is sent for them. */
+    /** The person the bot acts for: the report is sent for them. */
     userId: string;
     title: string;
-    /** The message PiP sent, whose answer the report carries; absent: report when the session is next idle. */
+    /** The message the bot sent, whose answer the report carries; absent: report when the session is next idle. */
     requestId?: string;
 };
 type FollowState = { phase: "wait" } | { phase: "report"; text: string };
 type FollowRuntime = TaskRuntime<FollowInput, FollowState, null, object>;
 
-/** One session as PiP lists it. */
+/** One session as the sessions tool lists it. */
 export type PipSession = {
     id: number;
     title: string;
@@ -131,12 +114,9 @@ export type PipSession = {
     subagents?: string;
 };
 
-/** What a tab's PiP button shows: whether PiP works, and when it last answered. */
-export type PipState = { id: number; busy: boolean; endedAt?: number };
-
 const finished = { status: "terminal", outcome: { status: "completed", result: null } } as const;
 
-/** A session's words, fenced for PiP; a fence inside them cannot end the fence early. */
+/** A session's words, fenced for a bot; a fence inside them cannot end the fence early. */
 export function fenced(text: string): string {
     return `${SESSION_OPEN}\n${defang(text)}\n${SESSION_CLOSE}`;
 }
@@ -181,21 +161,19 @@ export function ago(moment: number, now: number): string {
 
 export class Pip {
     readonly #app: PocketApp;
-    /** A PiP being made, by person, so two tabs opening it at once make one. */
-    readonly #creating = new Map<string, Promise<ConversationId>>();
-    /** When each PiP started its recent sessions, and made its recent messages and follows: for the hourly limits. */
+    /** When each person's bots started their recent sessions, and made their messages and follows: for hourly limits. */
     readonly #recent = new Map<string, number[]>();
     /** Clones under way, by repository, so two asks clone once; and folders' repositories, kept a few minutes. */
     readonly #cloning = new Map<string, Promise<string>>();
     readonly #origins = new Map<string, { repo: string | undefined; at: number }>();
     /**
-     * When each PiP last looked at each session (`pip:session`): read it, started it, or had a report from it. In
-     * memory: after a restart PiP looks again before it acts.
+     * When each bot last looked at each session (`bot:session`): read it, started it, or had a report from it. In
+     * memory: after a restart a bot looks again before it acts.
      */
     readonly #checked = new Map<string, number>();
-    /** The durable task behind each follow; PiP's extension installs it. */
+    /** The durable task behind each follow; the session tools' extension installs it. */
     readonly task: Task<FollowInput, FollowState, null, object>;
-    /** How long a report waits before it looks again whether PiP is back on (tests shorten it). */
+    /** How long a report waits before it looks again whether the session tools are back on (tests shorten it). */
     holdMs = 60_000;
 
     constructor(app: PocketApp) {
@@ -218,93 +196,72 @@ export class Pip {
         });
     }
 
-    // ─── Whose PiP ──────────────────────────────────────────────────────────
+    // ─── Whose tools ────────────────────────────────────────────────────────
 
-    /** Whether this person may have a PiP: the owner, while its extension is on. */
+    /** Whether this person's bots have the session tools: the owner's do, while their extension is on. */
     available(user: User): boolean {
         return user.role === "owner" && this.#app.loader.extensionNames().includes(PIP_EXTENSION);
     }
 
-    /**
-     * noid: Noid's conversation, where the server has a main bot. Noid does PiP's work for the owner, in its own
-     * conversation: there is no PiP beside it.
-     */
+    /** Noid's conversation: the main bot's, the owner's own assistant. */
     noid(): ConversationId | undefined {
         return this.#app.bots.list().find((each) => each.bot.main === true)?.conversationId;
     }
 
-    /** Whether a conversation is Noid's, doing PiP's work. */
+    /** Whether a conversation is Noid's. */
     isNoid(conversationId: ConversationId): boolean {
         const noid = this.noid();
 
         return noid !== undefined && Number(noid) === Number(conversationId);
     }
 
-    /** The conversation of this person's PiP, once they have one: Noid's, for the owner, where there is a Noid. */
-    idOf(userId: string): ConversationId | undefined {
-        const noid = this.noid();
-
-        if (noid !== undefined) {
-            return this.#app.config.userById(userId)?.role === "owner" ? noid : undefined;
-        }
-
-        for (const [id, meta] of Object.entries(this.#app.sessionCatalogue())) {
-            if (meta.pip === userId) {
-                return Number(id) as unknown as ConversationId;
-            }
-        }
-
-        return undefined;
-    }
-
     /**
-     * PiP turned off: each one's run stops, and any compaction of its context, which would go on without PiP's own
-     * summary (`pip-compact.ts`) and read what came from outside as it is. Nothing new reaches it until it is back.
+     * The session tools turned off: Noid's run stops, and any compaction of its context, which would go on without its
+     * own summary (`pip-compact.ts`) and read what came from outside as it is. Nothing new reaches it until they are back.
      */
     async stopAll(): Promise<void> {
         const app = this.#app;
+        const id = this.noid();
 
-        for (const user of app.config.users) {
-            const id = this.idOf(user.id);
+        if (id === undefined) {
+            return;
+        }
 
-            if (id === undefined) {
-                continue;
+        try {
+            await (await app.conversation(id)).abort(context);
+
+            for (const compaction of (await app.harness.snapshot(LiveDoc, id, context))
+                ?.compactions ?? []) {
+                await app.harness.abortTask(compaction.taskId, context);
             }
-
-            try {
-                await (await app.conversation(id)).abort(context);
-
-                for (const compaction of (await app.harness.snapshot(LiveDoc, id, context))
-                    ?.compactions ?? []) {
-                    await app.harness.abortTask(compaction.taskId, context);
-                }
-            } catch (error) {
-                app.log(`PiP ${String(id)} was not stopped: ${describe(error)}`);
-            }
+        } catch (error) {
+            app.log(`Noid ${String(id)} was not stopped: ${describe(error)}`);
         }
     }
 
-    /** The person whose PiP a conversation is (Noid's is the owner's); undefined for every other conversation. */
+    /** The person whose own assistant a conversation is: the owner, for Noid's; undefined for every other conversation. */
     ownerOf(conversationId: ConversationId): string | undefined {
-        return (
-            this.#app.sessionMeta(conversationId)?.pip ??
-            (this.isNoid(conversationId)
-                ? this.#app.config.users.find((user) => user.role === "owner")?.id
-                : undefined)
-        );
+        return this.isNoid(conversationId) ? this.#owner() : undefined;
     }
 
     /**
-     * noid: the person a conversation's session tools act for: its PiP's person, or the owner for every bot, which has
-     * PiP's tools too (`Bots.ensureTools`); undefined for every other conversation.
+     * The person a conversation's session tools act for: the owner, for every bot, which has the session tools
+     * (`Bots.ensureTools`); undefined for every other conversation.
      */
     actsFor(conversationId: ConversationId): string | undefined {
         return (
             this.ownerOf(conversationId) ??
-            (this.#app.sessionMeta(conversationId)?.bot === undefined
-                ? undefined
-                : this.#app.config.users.find((user) => user.role === "owner")?.id)
+            (this.#app.sessionMeta(conversationId)?.bot === undefined ? undefined : this.#owner())
         );
+    }
+
+    #owner(): string | undefined {
+        return this.#app.config.users.find((user) => user.role === "owner")?.id;
+    }
+
+    /** What a bot's messages say they were sent through: its name. */
+    #via(conversationId: ConversationId): string {
+        return this.#app.bots.of(conversationId)?.name ?? NOID_NAME;
     }
 
     /** The name of the person a conversation's session tools act for; undefined for every other conversation. */
@@ -314,109 +271,6 @@ export class Pip {
         return userId === undefined
             ? undefined
             : (this.#app.config.userById(userId)?.name ?? "the owner");
-    }
-
-    /** What this person's PiP button shows; null when they have no PiP. */
-    state(user: User): PipState | null {
-        const id = this.available(user) ? this.idOf(user.id) : undefined;
-
-        if (id === undefined) {
-            return null;
-        }
-
-        const endedAt = this.#app.endedAt(id);
-
-        return {
-            id: Number(id),
-            busy: this.#app.isBusy(id),
-            ...(endedAt === undefined ? {} : { endedAt }),
-        };
-    }
-
-    /** This person's PiP, made the first time they open it. Its agent is set to what PiP runs with each time. */
-    async ensure(user: User): Promise<ConversationId> {
-        if (user.role !== "owner") {
-            throw new HttpError(403, "PiP is the owner's for now.");
-        }
-
-        if (!this.available(user)) {
-            throw new HttpError(409, "PiP is turned off in Extensions.");
-        }
-
-        const existing = this.idOf(user.id);
-
-        // Noid keeps its own tools and extensions (`Bots.ensureTools` gives it PiP's): it is not tuned to PiP's.
-        if (existing !== undefined && this.isNoid(existing)) {
-            return existing;
-        }
-
-        if (existing !== undefined) {
-            await this.#tune(existing);
-
-            return existing;
-        }
-
-        let pending = this.#creating.get(user.id);
-
-        if (pending === undefined) {
-            pending = this.#create(user).finally(() => this.#creating.delete(user.id));
-            this.#creating.set(user.id, pending);
-        }
-
-        return pending;
-    }
-
-    async #create(user: User): Promise<ConversationId> {
-        const app = this.#app;
-        const initial = app.commands.defaultModel();
-        const now = Date.now();
-        const cwd = app.defaultCwd;
-        const conversation = await app.harness.createConversation(
-            {
-                ownership: { kind: "ownerless" },
-                agent: {
-                    cwd,
-                    ...(initial.model === undefined ? {} : { model: initial.model }),
-                    ...(initial.thinkingLevel === undefined
-                        ? {}
-                        : { thinkingLevel: initial.thinkingLevel }),
-                },
-                init: async (tx, id) => {
-                    const agent = await tx.doc(AgentDoc, id);
-
-                    agent.extensions = [...PIP_EXTENSIONS];
-                    agent.tools = { remove: [...PIP_WITHOUT] };
-                    (await tx.doc(SessionsDoc)).items[String(id)] = {
-                        title: PIP_NAME,
-                        cwd,
-                        createdAt: now,
-                        updatedAt: now,
-                        createdBy: user.id,
-                        pip: user.id,
-                    };
-                },
-            },
-            context,
-        );
-
-        return conversation.id;
-    }
-
-    /** Give PiP the extensions and tools this version runs it with, when it has others (made by an older one). */
-    async #tune(id: ConversationId): Promise<void> {
-        const agent = await this.#app.agentState(id);
-        const want = JSON.stringify({ extensions: PIP_EXTENSIONS, tools: { remove: PIP_WITHOUT } });
-
-        if (JSON.stringify({ extensions: agent?.extensions, tools: agent?.tools }) === want) {
-            return;
-        }
-
-        await this.#app.harness.commit(async (tx) => {
-            const state = await tx.doc(AgentDoc, id);
-
-            state.extensions = [...PIP_EXTENSIONS];
-            state.tools = { remove: [...PIP_WITHOUT] };
-        }, context);
     }
 
     /** Count one more of PiP's actions of a kind, or refuse when it made `max` in the last hour. */
@@ -480,6 +334,7 @@ export class Pip {
      * found, not sent again (nor checked again: a limit reached since does not undo it).
      */
     async #submit(
+        pipId: ConversationId,
         id: ConversationId,
         user: User,
         text: string,
@@ -509,7 +364,7 @@ export class Pip {
                 id,
                 user,
                 { text, requestId: asked, ...(steer ? { mode: "steer" as const } : {}) },
-                PIP_NAME,
+                this.#via(pipId),
             )
         ).requestId;
     }
@@ -520,7 +375,7 @@ export class Pip {
         const user = userId === undefined ? undefined : this.#app.config.userById(userId);
 
         if (user === undefined) {
-            throw new Error("Only PiP has these tools.");
+            throw new Error("Only bots have these tools.");
         }
 
         return user;
@@ -532,10 +387,6 @@ export class Pip {
 
         if (id === pipId) {
             throw new Error("That is your own conversation.");
-        }
-
-        if (this.#app.sessionMeta(id)?.pip !== undefined) {
-            throw new Error(`There is no session ${String(sessionId)}.`);
         }
 
         if (this.#app.sessionMeta(id) === undefined) {
@@ -1064,7 +915,7 @@ export class Pip {
         const id = this.#session(pipId, user, sessionId);
 
         return {
-            requestId: await this.#submit(id, user, message, key, steer, async () => {
+            requestId: await this.#submit(pipId, id, user, message, key, steer, async () => {
                 // The first message of a session the same call started (`started`) needs no look, there being nothing to
                 // see, and was checked for model names as the session started.
                 if (options.started !== true) {
@@ -1104,7 +955,7 @@ export class Pip {
         const folders = new Set<string>();
 
         for (const meta of Object.values(app.sessionCatalogue())) {
-            if (meta.pip === undefined && meta.createdBy === user.id) {
+            if (meta.createdBy === user.id) {
                 folders.add(meta.worktree?.source ?? meta.cwd);
             }
         }
@@ -1284,7 +1135,7 @@ export class Pip {
         this.#requireLooked(pipId, sessionId, "stop");
         const busy = this.#app.isBusy(id);
 
-        await this.#app.commands.abort(id, this.#through(user));
+        await this.#app.commands.abort(id, this.#through(user, pipId));
 
         return busy;
     }
@@ -1299,7 +1150,7 @@ export class Pip {
             this.#requireLooked(pipId, sessionId, "archive");
         }
 
-        await this.#app.commands.updateSession(id, this.#through(user), { archived });
+        await this.#app.commands.updateSession(id, this.#through(user, pipId), { archived });
     }
 
     /** The calls waiting for approval in the sessions PiP's person can see. */
@@ -1330,7 +1181,7 @@ export class Pip {
     async deny(pipId: ConversationId, approvalId: string): Promise<boolean> {
         const user = this.#person(pipId);
 
-        return this.#app.answerApproval(approvalId, false, this.#through(user));
+        return this.#app.answerApproval(approvalId, false, this.#through(user, pipId));
     }
 
     /** A session's scheduled messages; or one set up there, for PiP's person, marked as sent through PiP. */
@@ -1367,7 +1218,7 @@ export class Pip {
             () =>
                 app.schedules.add(id, {
                     when,
-                    text: `[via ${PIP_NAME}] ${message}`,
+                    text: `[via ${this.#via(pipId)}] ${message}`,
                     requestedBy: user.id,
                     key,
                 }),
@@ -1487,7 +1338,7 @@ export class Pip {
     async reportsOn(sessionId: ConversationId, userId: string): Promise<boolean> {
         const app = this.#app;
         const user = app.config.userById(userId);
-        const pip = this.idOf(userId);
+        const pip = user?.role === "owner" ? this.noid() : undefined;
 
         if (
             user === undefined ||
@@ -1530,8 +1381,8 @@ export class Pip {
     }
 
     /** What PiP's person does through PiP, so activity lines and decisions say so. */
-    #through(user: User): User {
-        return { ...user, name: `${user.name} via ${PIP_NAME}` };
+    #through(user: User, pipId: ConversationId): User {
+        return { ...user, name: `${user.name} via ${this.#via(pipId)}` };
     }
 
     // ─── Follows ────────────────────────────────────────────────────────────
@@ -1733,7 +1584,8 @@ export class Pip {
                             type: "write",
                             entry: {
                                 kind: NOTE_ENTRY,
-                                data: { text, by: "pip", name: PIP_NAME },
+                                // "pip": stored in the note, as pi-pocket marked it.
+                                data: { text, by: "pip", name: this.#via(pipId) },
                                 model: [
                                     {
                                         role: "user",
@@ -1748,7 +1600,7 @@ export class Pip {
                     );
                 }
             } catch (error) {
-                runtime.report(new Error(`PiP's report was not delivered: ${describe(error)}`));
+                runtime.report(new Error(`The report was not delivered: ${describe(error)}`));
             }
         }
 

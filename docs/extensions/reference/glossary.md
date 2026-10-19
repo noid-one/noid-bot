@@ -298,9 +298,9 @@ The agent: the AI that works in sessions.
 
 This app, which runs Pi in a browser, for one or more people.
 
-### PiP
+### Noid
 
-The owner's assistant in Pi Pocket, which runs the owner's other sessions.
+The main bot: the owner's assistant, which runs the owner's other sessions with its session tools.
 
 ### Lancet Guard
 

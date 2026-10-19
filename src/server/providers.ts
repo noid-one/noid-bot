@@ -207,7 +207,7 @@ export class Providers {
             // The owner's to fix: only they sign in.
             this.#app.ownerNotice(
                 "warning",
-                `The sign-in to ${name} expired and could not be renewed. Sign in again in Providers; until then sessions on its models fail, and PiP and subagents on other models do not use them.`,
+                `The sign-in to ${name} expired and could not be renewed. Sign in again in Providers; until then sessions on its models fail, and bots and subagents on other models do not use them.`,
             );
             this.#changed();
         }

@@ -18,7 +18,6 @@ import {
 import { resizeImage } from "@earendil-works/pi-coding-agent";
 import {
     type AgentChange,
-    AgentDoc,
     type ConversationCreateOptions,
     type ConversationId,
     defineTask,
@@ -762,10 +761,11 @@ export class Commands {
         app.requireSee(user, id);
         await app.requireDriver(id, user);
 
-        // PiP turned off takes nothing, from its person either: it would run without its rules, and be compacted without
-        // its own summary (`pip-compact.ts`). What else goes to it (reports, schedules, watches) waits meanwhile.
+        // Noid with its session tools off takes nothing, from its person either: it would run without its rules, and
+        // be compacted without its own summary (`pip-compact.ts`). What else goes to it (reports, schedules, watches)
+        // waits meanwhile.
         if (app.pip.ownerOf(id) !== undefined && !app.pip.available(user)) {
-            throw new HttpError(409, "PiP is turned off in Extensions.");
+            throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
         }
 
         const conversation = await app.conversation(id);
@@ -1352,17 +1352,12 @@ export class Commands {
             model?: { provider: string; modelId: string };
             thinkingLevel?: string;
             cwd?: string;
-            pipPanel?: boolean;
         },
     ): Promise<void> {
         const app = this.#app;
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
-
-        if (request.pipPanel === true && app.pip.ownerOf(id) !== user.id) {
-            throw new HttpError(403, "Only your own PiP can use this control.");
-        }
 
         const asked = request.model as { provider?: unknown; modelId?: unknown } | undefined;
 
@@ -1413,20 +1408,7 @@ export class Commands {
             ...(cwd === undefined ? {} : { cwd }),
         };
 
-        if (request.pipPanel === true) {
-            // Check and save together: a turn may have started while the picker was open.
-            await app.harness.commit(async (tx) => {
-                const live = await tx.doc(LiveDoc, id);
-
-                if (live.run !== undefined || (live.compactions?.length ?? 0) > 0) {
-                    throw new HttpError(409, "PiP is working. Change its model when it is idle.");
-                }
-
-                Object.assign(await tx.doc(AgentDoc, id), change);
-            }, context);
-        } else {
-            await conversation.configure(change, context);
-        }
+        await conversation.configure(change, context);
 
         if (cwd !== undefined && app.sessionMeta(id) !== undefined) {
             await app.harness.commit(async (tx) => {
@@ -1438,7 +1420,7 @@ export class Commands {
             }, context);
         }
 
-        if (ref !== undefined && request.pipPanel !== true) {
+        if (ref !== undefined) {
             app.config.lastModel = { provider: ref.provider, modelId: ref.modelId, thinkingLevel };
         }
 
@@ -1723,8 +1705,8 @@ export class Commands {
     }
 
     /**
-     * The webhooks a person may manage, each with where it sends (a session's title, or PiP), and the address other
-     * services reach this server at, when it has a public one.
+     * The webhooks a person may manage, each with where it sends (a session's title), and the address other services
+     * reach this server at, when it has a public one.
      */
     async hooks(user: User) {
         const app = this.#app;
@@ -1735,37 +1717,29 @@ export class Commands {
             return {
                 ...hook,
                 // A session the person can no longer open keeps its title to itself.
-                targetTitle:
-                    meta?.pip !== undefined
-                        ? "PiP"
-                        : app.canSee(user, target)
-                          ? (meta?.title ?? "New session")
-                          : "a session you cannot open",
-                pip: meta?.pip !== undefined,
+                targetTitle: app.canSee(user, target)
+                    ? (meta?.title ?? "New session")
+                    : "a session you cannot open",
             };
         });
 
-        // Repository watches (`repo-watches.ts`), which PiP sets up: shown with the hooks, to see and remove.
+        // Repository watches (`repo-watches.ts`), which bots set up: shown with the hooks, to see and remove.
         const repoWatches = (await app.repoWatches.list(user)).map((watch) => {
             const target = watch.target as unknown as ConversationId;
             const meta = app.sessionMeta(target);
 
             return {
                 ...watch,
-                targetTitle:
-                    meta?.pip !== undefined
-                        ? "PiP"
-                        : app.canSee(user, target)
-                          ? (meta?.title ?? "New session")
-                          : "a session you cannot open",
-                pip: meta?.pip !== undefined,
+                targetTitle: app.canSee(user, target)
+                    ? (meta?.title ?? "New session")
+                    : "a session you cannot open",
             };
         });
 
         return { hooks, repoWatches, base: app.access?.url ?? null };
     }
 
-    /** Make a webhook that messages a session (or PiP) for this person. */
+    /** Make a webhook that messages a session (or Noid) for this person. */
     async addHook(
         user: User,
         body: {
@@ -1777,11 +1751,9 @@ export class Commands {
         },
     ) {
         const app = this.#app;
-        // "pip": this person's PiP, made now if they have none yet.
-        const target =
-            body.target === "pip" && app.pip.available(user)
-                ? Number(await app.pip.ensure(user))
-                : Number(body.target);
+        // "pip": Noid, which takes webhooks while its session tools are on.
+        const noid = body.target === "pip" && app.pip.available(user) ? app.pip.noid() : undefined;
+        const target = noid === undefined ? Number(body.target) : Number(noid);
 
         if (!Number.isSafeInteger(target) || target < 0) {
             throw new HttpError(400, "Say which session the webhook messages.");
@@ -1790,9 +1762,7 @@ export class Commands {
         const id = target as unknown as ConversationId;
         const hook = await app.hooks.add(user, id, body);
 
-        if (app.sessionMeta(id)?.pip === undefined) {
-            await app.collab.activity(id, user, `made the webhook “${snippet(hook.name, 60)}”`);
-        }
+        await app.collab.activity(id, user, `made the webhook “${snippet(hook.name, 60)}”`);
 
         return hook;
     }
@@ -1803,11 +1773,7 @@ export class Commands {
         const target = hook.target as unknown as ConversationId;
 
         // No line where the remover can no longer go.
-        if (
-            app.sessionMeta(target) !== undefined &&
-            app.sessionMeta(target)?.pip === undefined &&
-            app.canSee(user, target)
-        ) {
+        if (app.sessionMeta(target) !== undefined && app.canSee(user, target)) {
             await app.collab.activity(
                 target,
                 user,
@@ -2023,11 +1989,6 @@ export class Commands {
         if (app.sessionMeta(id) === undefined) {
             throw new HttpError(400, "Only sessions can be forked");
         }
-
-        // A fork would carry PiP's tools and none of PiP: they act as PiP's person, which a fork is not.
-        if (app.sessionMeta(id)?.pip !== undefined) {
-            throw new HttpError(400, "PiP's conversation cannot be forked. Start fresh instead.");
-        }
     }
 
     /**
@@ -2189,21 +2150,21 @@ export class Commands {
 
         app.requireSee(user, id);
         await app.requireDriver(id, user);
-        // PiP's summaries are its own, written by its extension's hook with outside text left out: while PiP is off,
-        // there is no hook, and Pi Durable's summary would read what came from outside as it is.
+        // Noid's summaries are its own, written by the session tools' hook with outside text left out: while they are
+        // off, there is no hook, and Pi Durable's summary would read what came from outside as it is.
         const pip = app.pip.ownerOf(id) !== undefined;
 
         if (pip && !app.pip.available(user)) {
-            throw new HttpError(409, "PiP is turned off in Extensions.");
+            throw new HttpError(409, "Noid's session tools are turned off in Extensions.");
         }
 
         // Compacting asks the model for a summary, which costs like any other request.
         app.spend.check(user, id);
         const conversation = await app.conversation(id);
         const taskId = await conversation.compact(instructions, context);
-        const done = pip ? "PiP's context compacted." : "Compacted.";
+        const done = pip ? "Noid's context compacted." : "Compacted.";
 
-        app.notice("info", pip ? "Compacting PiP's context…" : "Compacting…", id);
+        app.notice("info", pip ? "Compacting Noid's context…" : "Compacting…", id);
         await app.collab.activity(id, user, "started compacting the context", false);
         void app.harness.waitForTask(taskId, context).then(
             (receipt) => {
@@ -2211,11 +2172,11 @@ export class Commands {
 
                 if (outcome.status === "completed") {
                     const { entryId, submissionId } = outcome.result;
-                    // PiP's own summary could not be written: it declined, rather than let Pi Durable write one.
+                    // Noid's own summary could not be written: it declined, rather than let Pi Durable write one.
                     const failed = pip ? app.pipCompaction.failure(Number(taskId)) : undefined;
 
                     if (failed !== undefined) {
-                        app.notice("error", `PiP's context was not compacted: ${failed}`, id);
+                        app.notice("error", `Noid's context was not compacted: ${failed}`, id);
                     } else {
                         app.notice(
                             "info",

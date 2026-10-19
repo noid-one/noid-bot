@@ -54,7 +54,7 @@ export class ExtensionRequest implements RequestActor {
         if (this.#source !== undefined) {
             const meta = this.#app.sessionMeta(this.#source);
 
-            if (meta === undefined || meta.pip !== undefined) {
+            if (meta === undefined) {
                 throw new HttpError(404, "No such source conversation.");
             }
 

@@ -117,25 +117,19 @@ export class Alerts {
 
         const title = await app.conversationTitle(id);
         const failed = last.stopReason === "error";
-        // PiP's answers open its panel, over whatever the app shows, rather than a session.
-        const pip = app.sessionMeta(id)?.pip !== undefined;
         const message: PushMessage = {
-            title: pip
-                ? title
-                : failed
-                  ? `Pi stopped with an error · ${title}`
-                  : `Pi finished · ${title}`,
+            title: failed ? `Pi stopped with an error · ${title}` : `Pi finished · ${title}`,
             body: snippet(
                 failed ? (last.error ?? "The model request failed.") : entryText(last) || "Done.",
                 400,
             ),
-            url: pip ? "/?pip=1" : `/s/${String(id)}`,
+            url: `/s/${String(id)}`,
             tag: `done-${String(id)}`,
         };
 
         for (const userId of await this.participants(id)) {
-            // Their PiP follows this run and tells them what came of it: one notification, not two.
-            if (!pip && (await app.pip.reportsOn(id, userId).catch(() => false))) {
+            // Noid follows this run and tells them what came of it: one notification, not two.
+            if (await app.pip.reportsOn(id, userId).catch(() => false)) {
                 continue;
             }
 
@@ -157,7 +151,7 @@ export class Alerts {
         const message: PushMessage = {
             title: `Routine failed · ${title}`,
             body: snippet(`${what}: ${routine.error}`, 400),
-            url: app.sessionMeta(id)?.pip !== undefined ? "/?pip=1" : `/s/${String(id)}`,
+            url: `/s/${String(id)}`,
             tag: `done-${String(id)}`,
         };
 

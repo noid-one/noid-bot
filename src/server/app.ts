@@ -1133,13 +1133,11 @@ export class PocketApp {
         this.#log(`[${level}] ${message}`);
 
         for (const client of this.#clients) {
-            // Server-wide notices can name other sessions' folders: people invited to one session do not get them. One
-            // about PiP reaches the tabs with its panel open too: the panel has no notices of its own.
+            // Server-wide notices can name other sessions' folders: people invited to one session do not get them.
             const reaches =
                 conversationId === undefined
                     ? client.user.sessions === undefined
-                    : (client.conversationId === conversationId ||
-                          client.pip?.conversationId === conversationId) &&
+                    : client.conversationId === conversationId &&
                       this.canSee(client.user, conversationId);
 
             if (reaches) {
@@ -1197,7 +1195,6 @@ export class PocketApp {
 
         client.send("hello", this.#helloFor(client, hello));
         client.send("sessions", this.sessions(client.user));
-        this.#sendPip(client);
 
         if (client.user.role === "owner" && this.themes.failure !== undefined) {
             client.send("notice", { level: "warning", message: this.themes.failure });
@@ -1269,7 +1266,6 @@ export class PocketApp {
         }
 
         client.peeks = undefined;
-        this.#closePip(client);
 
         if (!this.#online(client.user.id)) {
             this.#peopleChanged(client.user.id);
@@ -1390,109 +1386,6 @@ export class PocketApp {
         );
     }
 
-    /**
-     * A tab opened or closed its PiP panel. While it is open, the tab gets PiP's conversation as `pipview` events, from a
-     * view of its own beside the one the tab shows, and counts as looking at PiP, so its answers push nothing. Opening
-     * makes this person's PiP the first time. A request numbered `seq` below one already taken arrived late, and is
-     * dropped.
-     */
-    async setPip(user: User, connection: string, on: boolean, seq?: number): Promise<void> {
-        const id = on ? await this.pip.ensure(user) : undefined;
-
-        for (const client of this.#clients) {
-            if (client.user.id !== user.id || client.connection !== connection) {
-                continue;
-            }
-
-            if (seq !== undefined) {
-                if (seq <= (client.pipSeq ?? -Infinity)) {
-                    continue;
-                }
-
-                client.pipSeq = seq;
-            }
-
-            if (client.pip !== undefined && client.pip.conversationId !== id) {
-                this.#closePip(client);
-            }
-
-            if (id !== undefined && client.pip === undefined) {
-                void this.#openPip(client, id);
-            }
-        }
-
-        // Made just now: the tab learns its id from the PiP state.
-        this.#scheduleSessions();
-    }
-
-    async #openPip(tab: Client, id: ConversationId): Promise<void> {
-        const panel: Client = {
-            id: tab.id,
-            user: tab.user,
-            connection: tab.connection,
-            conversationId: id,
-            get visible() {
-                return tab.visible;
-            },
-            // The same code shows it: what the tab understands, the panel does.
-            ...(tab.protocol === undefined ? {} : { protocol: tab.protocol }),
-            sentEntries: new Set<number>(),
-            orderKey: "",
-            // Only the view: the panel has no chat, notes, or browser of its own.
-            send: (event, data) => {
-                if (event === "view") {
-                    tab.send("pipview", data);
-                }
-            },
-        };
-
-        tab.pip = panel;
-        let room: Room;
-
-        try {
-            room = await this.room(id);
-        } catch (error) {
-            if (tab.pip === panel) {
-                tab.pip = undefined;
-            }
-
-            this.#log(`PiP's view did not open: ${describe(error)}`);
-
-            return;
-        }
-
-        // The tab left, or closed the panel, while the view opened.
-        if (!this.#clients.has(tab) || tab.pip !== panel) {
-            this.releaseRoom(room);
-
-            return;
-        }
-
-        room.keepOpen();
-        room.clients.add(panel);
-        room.push(panel, true);
-    }
-
-    #closePip(tab: Client): void {
-        const panel = tab.pip;
-
-        tab.pip = undefined;
-
-        if (panel?.conversationId !== undefined) {
-            this.#leaveRoom(panel, panel.conversationId);
-        }
-    }
-
-    /** Send a tab its person's PiP state, unless it is what the tab last got. */
-    #sendPip(client: Client): void {
-        const json = JSON.stringify(this.pip.state(client.user));
-
-        if (json !== client.pipSent) {
-            client.pipSent = json;
-            client.send("pip", JSON.parse(json) as unknown);
-        }
-    }
-
     /** A tab was hidden or shown: hidden tabs show their person as away, and let push notifications through. */
     setVisible(user: User, tab: string, visible: boolean): void {
         for (const client of this.#clients) {
@@ -1527,7 +1420,7 @@ export class PocketApp {
         for (const client of this.#clients) {
             if (
                 client.user.id === userId &&
-                (client.conversationId === id || client.pip?.conversationId === id) &&
+                client.conversationId === id &&
                 client.visible !== false
             ) {
                 return true;
@@ -1622,15 +1515,15 @@ export class PocketApp {
     }
 
     /**
-     * People invited to one session see only that session and its subagents. A PiP is its own person's alone: its tools
-     * act as them, so anyone else who could write to it would act as them too.
+     * People invited to one session see only that session and its subagents. A bot is the owner's alone: its session
+     * tools act as them, so anyone else who could write to it would act as them too.
      */
     canSee(user: User, id: ConversationId): boolean {
         const root = this.rootOf(id);
-        // noid: every bot does PiP's work, acting as the owner, so it is the owner's alone too.
-        const pip = this.#sessions[String(root)]?.pip ?? this.pip.actsFor(root);
+        // `pip`: stored by pi-pocket on its assistant's conversation, which stays its person's alone.
+        const theirs = this.#sessions[String(root)]?.pip ?? this.pip.actsFor(root);
 
-        if (pip !== undefined && pip !== user.id) {
+        if (theirs !== undefined && theirs !== user.id) {
             return false;
         }
 
@@ -1968,7 +1861,6 @@ export class PocketApp {
                     // Scoped lists need their own metadata projection, not just a filter over the global list.
                     scope === undefined ? all : this.sessions(client.user),
                 );
-                this.#sendPip(client);
 
                 if (client.board === true) {
                     board ??= this.subagents();
@@ -2022,7 +1914,7 @@ export class PocketApp {
         return Object.entries(this.#sessions)
             .filter(
                 ([id, meta]) =>
-                    // PiP is not a session people pick: it shows in its own panel (`pip.ts`).
+                    // `pip`: stored by pi-pocket on its assistant's conversation, which is no session to pick.
                     meta.pip === undefined &&
                     (user?.sessions === undefined || user.sessions.includes(id)),
             )
@@ -2048,7 +1940,6 @@ export class PocketApp {
                     linkedFrom === undefined ? undefined : this.#sessions[String(linkedFrom.id)];
                 const visibleOrigin =
                     origin !== undefined &&
-                    origin.pip === undefined &&
                     (user === undefined ||
                         this.canSee(user, linkedFrom!.id as unknown as ConversationId));
 
@@ -2093,7 +1984,7 @@ export class PocketApp {
         return this.#sessions[String(id)];
     }
 
-    /** Every session's catalogue entry, PiP's included, by id. */
+    /** Every session's catalogue entry, by id. */
     sessionCatalogue(): Readonly<Record<string, SessionMeta>> {
         return this.#sessions;
     }
@@ -2134,8 +2025,6 @@ export class PocketApp {
                 (meta === undefined ? `Conversation ${String(room.id)}` : "New session"),
             cwd: agent.cwd ?? meta?.cwd ?? this.defaultCwd,
             archived: meta?.archived === true,
-            // PiP's own conversation, opened as a page: some session things (a PR to watch) are not for it.
-            ...(meta?.pip === undefined ? {} : { pip: true }),
             ...(room.parent === undefined ? {} : { parent: room.parent }),
             ...(room.subagentName === undefined ? {} : { subagentName: room.subagentName }),
             // Each browser finds the source's title in its own session list, so only people who can open it get a link.

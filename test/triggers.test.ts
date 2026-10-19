@@ -2,7 +2,7 @@
 // write to the repository, never about strangers' or its own account's (unless they say @pi), and ends when the PR is
 // merged, when it has more to tell than it may send, or after looks that fail; Pi's tool sets one up for whom it works
 // for. Webhooks turn posts let in by their secret (or GitHub's signature) into one message each, trimmed and fenced,
-// to a session or PiP, and turn away everything else.
+// to a session or Noid, and turn away everything else.
 import {
     type App,
     cleanUp,
@@ -207,7 +207,7 @@ function failedCheck(name: string, job: string, log: string): object {
 }
 
 before(async () => {
-    app = await openApp(model, join(root, "triggers-data"));
+    app = await openApp(model, join(root, "triggers-data"), undefined, { mainBot: true });
     app.watches.gh = fakeGh;
     app.watches.timing = { soon: 40, quiet: 40, retry: 40 };
     server = createServer(
@@ -718,14 +718,9 @@ test("Pi names a PR off github.com only on its folder's host, and only where gh 
     assert.equal(await watchOf(id), undefined);
 });
 
-test("starting a watch says what is wrong: no PR, one merged already, PiP, a viewer", async () => {
+test("starting a watch says what is wrong: no PR, one merged already, a viewer", async () => {
     github = freshGithub();
     const id = await newSession(app);
-
-    await assert.rejects(
-        app.watches.start(await app.pip.ensure(owner(app)), owner(app).id),
-        /Only sessions can watch/,
-    );
 
     const viewer = app.config.addUser("Vic", "viewer").user;
 
@@ -881,16 +876,22 @@ test("a GitHub hook is signed: its address alone lets nothing in, and a new secr
     await app.commands.removeHook(owner(app), plain.id);
 });
 
-test("webhooks to PiP, and who may make, see, and remove them", async () => {
+test("webhooks to Noid, and who may make, see, and remove them", async () => {
     const hook = await app.commands.addHook(owner(app), { target: "pip", name: "Alerts" });
-    const pip = await app.pip.ensure(owner(app));
+    const pip = app.pip.noid()!;
+
+    // Noid was made as the app opened, before any model was picked.
+    await app.commands.configure(pip, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+        thinkingLevel: "off",
+    });
 
     assert.equal(hook.target, Number(pip));
     assert.equal(
         (await fetch(`${base}${hook.path}`, { method: "POST", body: "disk full on web-1" })).status,
         202,
     );
-    await until(async () => (await messages(pip)).length >= 1, "PiP to get it");
+    await until(async () => (await messages(pip)).length >= 1, "Noid to get it");
     assert.match(
         (await messages(pip)).at(-1)!,
         /^\[via webhook Alerts\] Something happened[^\n]*\n\n<webhook-payload>\ndisk full on web-1\n<\/webhook-payload>/,
@@ -905,7 +906,7 @@ test("webhooks to PiP, and who may make, see, and remove them", async () => {
     await assert.rejects(app.commands.addHook(viewer, { target: Number(session), name: "x" }));
     await assert.rejects(
         app.commands.addHook(guest, { target: Number(pip), name: "mine now" }),
-        "nobody else reaches the owner's PiP",
+        "nobody else reaches Noid",
     );
     await assert.rejects(
         app.commands.addHook(owner(app), { target: Number(session), name: " " }),

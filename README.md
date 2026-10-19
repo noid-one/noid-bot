@@ -37,10 +37,10 @@ While it runs: **q** quit · **r** restart server · **a** change access · **o*
 - **Durable.** Every model call, tool call, and subagent is stored as it happens. Restart the server mid-run and the work continues; a cut-off tool call reruns only if that is safe.
 - **Multiplayer.** Share a live session: presence, a side chat Pi does not see, @mentions, pins, reactions, shared notes, and take turns.
 - **Steer or queue.** Redirect Pi while it works, queue follow-ups, or stop it.
-- **PiP, your assistant.** Alt+A opens "Pi in Pocket" over any screen: it lists, reads, starts, and messages your other sessions, follows their runs, and tells you what came of them. What sessions and GitHub say reaches it as data, never as instructions.
-- **Watches and webhooks.** Tell PiP to watch a GitHub repository ("when CI fails on main, fix it and tell me"), or watch a pull request from a session until it merges; webhooks bring other services' posts to Pi. Only the repository's own people count, unless you say anyone.
+- **Noid, your assistant.** Alt+A opens Noid, the main bot: with its session tools it lists, reads, starts, and messages your other sessions, follows their runs, and tells you what came of them. What sessions and GitHub say reaches it as data, never as instructions.
+- **Watches and webhooks.** Tell Noid to watch a GitHub repository ("when CI fails on main, fix it and tell me"), or watch a pull request from a session until it merges; webhooks bring other services' posts to Pi. Only the repository's own people count, unless you say anyone.
 - **Memory.** Lessons Pi keeps across sessions, per project or everywhere. Pi saves them as it learns, and they apply at once; you edit or forget them in Menu → Memory.
-- **Dictation.** Speak into the message box, or PiP's, with the browser's own speech recognition.
+- **Dictation.** Speak into the message box with the browser's own speech recognition.
 - **Forks.** Fork from any reply, edit a message and send it again, or retry it with another model. Each fork is a session of its own, optionally in a git worktree of its own.
 - **Works while you're away.** Schedule messages to Pi (`/schedule every weekday 8:00 summarize CI`), and `/until npm test` keeps Pi going until the check passes.
 - **Plan mode.** Pi reads and proposes a plan; nothing changes until someone approves it.

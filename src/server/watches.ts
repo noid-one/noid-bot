@@ -328,7 +328,7 @@ export class Watches {
         const id = app.rootOf(asking);
         const meta = app.sessionMeta(id);
 
-        if (meta === undefined || meta.pip !== undefined) {
+        if (meta === undefined) {
             throw new HttpError(400, "Only sessions can watch a pull request.");
         }
 

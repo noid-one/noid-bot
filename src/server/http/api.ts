@@ -239,27 +239,6 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return json(response, 200, app.subagents(user));
         }
 
-        // The PiP panel opened or closed in a tab: while open, it gets PiP's conversation (`pipview` events). Opening it
-        // the first time makes this person's PiP; the answer says which conversation it is.
-        if (first === "pip" && second === undefined && method === "POST") {
-            const body = await readJson<{ connection?: unknown; on?: unknown; seq?: unknown }>(
-                request,
-            );
-
-            if (body.seq !== undefined && !Number.isSafeInteger(body.seq)) {
-                throw new HttpError(400, "seq must be a whole number");
-            }
-
-            await app.setPip(
-                user,
-                String(body.connection ?? ""),
-                body.on === true,
-                body.seq as number | undefined,
-            );
-
-            return json(response, 200, { pip: app.pip.state(user) });
-        }
-
         // Webhooks: the ones this person may manage, with the address to give other services; making and removing one.
         if (first === "hooks" && second === undefined && method === "GET") {
             return json(response, 200, await app.commands.hooks(user));

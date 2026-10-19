@@ -58,7 +58,7 @@ function speedOf(samples) {
  * it calls `onClose` and stays where the finger left it, for its closing animation to go on from there; otherwise it
  * springs back. Only on touch.
  */
-export function useDragToClose(ref, { dir, onClose, enabled = true, scrim: scrimRef }) {
+export function useDragToClose(ref, { dir, onClose, enabled = true }) {
     const close = useRef(onClose);
 
     close.current = onClose;
@@ -70,10 +70,9 @@ export function useDragToClose(ref, { dir, onClose, enabled = true, scrim: scrim
         }
 
         const vertical = dir === "down" || dir === "up";
-        // PiP's sheet has a scrim beside it, not around it: dimming its parent would dim the whole app.
-        const scrim = scrimRef?.current ?? element.parentElement;
-        // Around the element (a sheet's overlay), the scrim's color fades, so the sheet in it stays solid; beside it
-        // (PiP's), or the element itself (a notice), the whole of it does.
+        const scrim = element.parentElement;
+        // Around the element (a sheet's overlay), the scrim's color fades, so the sheet in it stays solid; otherwise
+        // the whole of it does.
         const around = scrim !== element && scrim.contains(element);
         const fading = around ? "background-color" : "opacity";
         let ground = null;
@@ -249,7 +248,7 @@ export function useDragToClose(ref, { dir, onClose, enabled = true, scrim: scrim
             scrim.style.backgroundColor = "";
             scrim.style.transition = "";
         };
-    }, [ref.current, dir, enabled, scrimRef?.current]);
+    }, [ref.current, dir, enabled]);
 }
 
 // ─── Marks that follow a swipe ────────────────────────────────────────────────────

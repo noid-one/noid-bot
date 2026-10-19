@@ -34,8 +34,8 @@ export type SessionMeta = {
     /** The session of Pi's in the terminal this one continues, and how many messages its file had then. */
     fromPi?: { session: string; count: number };
     /**
-     * The id of the person whose PiP this is: their assistant, which looks after their other sessions (`pip.ts`). PiP is
-     * kept out of the session list; an older Pi Pocket, which does not know this field, lists it as a session.
+     * Stored by pi-pocket: the id of the person whose assistant this conversation was. noid writes it no more; one that
+     * has it stays out of the session list, and its person's alone.
      */
     pip?: string;
     /** noid: the bot this session is, with one continuous thread (`noid/bots.ts`). */

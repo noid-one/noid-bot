@@ -1,9 +1,8 @@
 /**
- * Noid's sessions tools, which every bot has too: Noid finds out what sessions are doing, starts and messages them, stops and archives them,
- * schedules messages, follows runs until they end, watches the owner's GitHub repositories and pull requests and acts
- * on what happens there, and can deny (never allow) calls waiting for approval. Pi Pocket gave these to PiP, an
- * assistant beside the sessions; noid gives them to Noid, in its conversation (`Pip.idOf`). While this is off, Noid
- * keeps its bots and its follows wait.
+ * Noid's session tools, which every bot has too: Noid finds out what sessions are doing, starts and messages them,
+ * stops and archives them, schedules messages, follows runs until they end, watches the owner's GitHub repositories and
+ * pull requests and acts on what happens there, and can deny (never allow) calls waiting for approval. While this is
+ * off, Noid keeps its bots and its follows wait.
  */
 import { Type } from "@earendil-works/pi-ai";
 import {
@@ -17,7 +16,7 @@ import {
 import type { PrWatch, RepoEvent, Schedule } from "../docs.ts";
 import { quoted } from "../fence.ts";
 import type { PocketHost } from "../host.ts";
-import { ago, PIP_EXTENSION, PIP_NAME, REPORT_HEAD, SESSION_CLOSE, SESSION_OPEN } from "../pip.ts";
+import { ago, PIP_EXTENSION, REPORT_HEAD, SESSION_CLOSE, SESSION_OPEN } from "../pip.ts";
 import { snippet } from "../projection.ts";
 import type { RepoWatchView } from "../repo-watches.ts";
 import { endedText } from "../watches.ts";
@@ -27,20 +26,7 @@ const reply = (text: string) => ({ output: [{ type: "text" as const, text }] });
 /** What a repository watch can look for (`repo-watches.ts`). */
 const EVENTS: readonly RepoEvent[] = ["issues", "pulls", "ci", "releases", "mentions"];
 
-function preamble(name: string): string {
-    return `You are ${PIP_NAME} ("Pi in Pocket"), ${name}'s assistant in Pi Pocket, a self-hosted app where Pi, a coding agent, works in many sessions at once. You look after those sessions for ${name}: you find out what is going on, start new work, pass messages along, stop or archive sessions, follow runs until they end, set up reminders and recurring jobs, and watch their GitHub repositories and pull requests to act on what happens there. You do not write code or run commands yourself: when something needs hands-on work, start a session (or message one) and let Pi do it there.
-
-${name} reaches you from a small panel over whatever they are doing, often on a phone, and relies on you: be dependable before fast. So:
-- Be brief: a sentence or a short list. Lead with the answer. No headings, no preamble.
-- Link every session you mention as [its title](/s/ID), so it opens with a tap.
-- Check before you act: before you message, stop, archive, follow, redo, or reschedule anything in a session, read it as it is now (session_read) and do only what it needs. Never send one message to several sessions without checking each.
-- When something that matters is unclear (which session, which folder), ask one short question instead of guessing.
-- Say only what your tools showed you just now, and plainly what you did not check.
-- Quality over speed: a task that touches code asks Pi there to run the checks and tests, and work is not finished until they pass.
-- Never choose a model: pass or name one only when ${name} did. If a model or its sign-in fails, tell ${name}; do not switch models.`;
-}
-
-/** noid: Noid does PiP's work in its own conversation; this says what that work is, after Noid's own prompt. */
+/** Noid looks after the owner's sessions; this says what that work is, after Noid's own prompt. */
 function noidPreamble(name: string): string {
     return `Besides your bots, you look after ${name}'s sessions, the other conversations in noid where Pi works in a folder: you find out what is going on, start new work, pass messages along, stop or archive sessions, follow runs until they end, set up reminders, and watch their GitHub repositories and pull requests to act on what happens there. When something in a session needs hands-on work, message that session (or start one) and let Pi do it there.
 
@@ -701,7 +687,7 @@ export default function createPip(host: PocketHost) {
         ],
         sections: [
             section(
-                "pip",
+                "session_tools",
                 (input) => {
                     const name = host.pip.ownerName(input.conversationId);
 
@@ -709,22 +695,15 @@ export default function createPip(host: PocketHost) {
                         return undefined;
                     }
 
-                    // A server that has not restarted since noid merged PiP into Noid has no isNoid.
-                    if (typeof host.pip.isNoid !== "function") {
-                        return preamble(name);
-                    }
-
                     return host.pip.isNoid(input.conversationId)
                         ? noidPreamble(name)
-                        : host.pip.ownerOf(input.conversationId) === undefined
-                          ? botPreamble(name)
-                          : preamble(name);
+                        : botPreamble(name);
                 },
                 { tag: false },
             ),
-            section("pip_rules", () => RULES),
-            section("pip_github", () => (github ? GITHUB : undefined)),
-            section("pip_environment", (input) => {
+            section("session_tools_rules", () => RULES),
+            section("session_tools_github", () => (github ? GITHUB : undefined)),
+            section("session_tools_environment", (input) => {
                 // The date only, so the prompt stays cache-friendly through the day.
                 const today = new Date().toLocaleDateString("en-CA", { timeZone: zone });
 

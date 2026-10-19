@@ -1,7 +1,7 @@
 /**
  * Triggers start work from outside the app: a PR watch tells Pi when its pull request's checks fail, it has conflicts,
- * or reviewers comment, until it is merged; repository watches tell PiP what happens on the owner's repositories;
- * webhooks turn posts from other services into messages to a session or to PiP. While this is off, watches wait and
+ * or reviewers comment, until it is merged; repository watches tell Noid what happens on the owner's repositories;
+ * webhooks turn posts from other services into messages to a session or to Noid. While this is off, watches wait and
  * webhooks answer 503.
  */
 import { Type } from "@earendil-works/pi-ai";

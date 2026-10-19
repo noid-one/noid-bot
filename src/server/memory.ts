@@ -124,17 +124,12 @@ export class Memory {
         this.#app = app;
     }
 
-    /** The project of a conversation working in `cwd`; undefined for PiP, which has lessons for everywhere only. */
+    /** The project of a conversation working in `cwd`. */
     async project(
         conversationId: ConversationId,
         cwd: string | undefined,
     ): Promise<Project | undefined> {
         const app = this.#app;
-
-        if (app.sessionMeta(app.rootOf(conversationId))?.pip !== undefined) {
-            return undefined;
-        }
-
         const folder = cwd ?? app.cwdOf(conversationId);
 
         const now = this.#app.now();
@@ -209,14 +204,14 @@ export class Memory {
         return this.#isOwner(userId) || (userId !== undefined && lesson.by === userId);
     }
 
-    /** Cross-project review is for the human owner in their private PiP, before reading any lesson or writing activity. */
+    /** Cross-project review is for the human owner in Noid's conversation, before reading any lesson or writing activity. */
     #requirePendingOwner(writer: Writer, conversationId: ConversationId): void {
         if (writer.byPi || !this.#isOwner(writer.userId)) {
             throw new HttpError(403, "Only the owner can review all pending lessons.");
         }
 
-        if (this.#app.sessionMeta(this.#app.rootOf(conversationId))?.pip !== writer.userId) {
-            throw new HttpError(403, "Review all pending lessons from your private PiP.");
+        if (this.#app.pip.ownerOf(this.#app.rootOf(conversationId)) !== writer.userId) {
+            throw new HttpError(403, "Review all pending lessons from Noid's conversation.");
         }
     }
 

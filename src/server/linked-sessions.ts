@@ -109,7 +109,7 @@ export class LinkedSessions implements LinkedSessionsApi {
         const requester = by ?? app.attribution.requesterOf(source);
         const user = requester === undefined ? undefined : app.config.userById(requester);
 
-        if (meta === undefined || meta.pip !== undefined || user === undefined) {
+        if (meta === undefined || user === undefined) {
             throw new HttpError(403, "Linked sessions need a session where Pi works for someone.");
         }
 

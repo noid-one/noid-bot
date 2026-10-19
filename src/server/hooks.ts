@@ -401,7 +401,7 @@ export class Hooks {
         app.requireSteer(user);
 
         if (app.sessionMeta(target) === undefined) {
-            throw new HttpError(400, "Webhooks message sessions, or PiP.");
+            throw new HttpError(400, "Webhooks message sessions, or Noid.");
         }
 
         // One line, without brackets: it is the label of every message the hook sends (`[via webhook <name>]`).
@@ -588,9 +588,9 @@ export class Hooks {
             );
         }
 
-        // PiP turned off keeps its hooks: they come back when it is on again.
-        if (meta.pip !== undefined && !app.pip.available(person)) {
-            throw new HttpError(503, "PiP is turned off on this server.");
+        // Noid's session tools turned off keep its hooks: they come back when they are on again.
+        if (app.pip.ownerOf(target) !== undefined && !app.pip.available(person)) {
+            throw new HttpError(503, "Noid's session tools are turned off on this server.");
         }
 
         const content = contentOf(post);

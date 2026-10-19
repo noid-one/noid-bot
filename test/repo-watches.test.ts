@@ -1,6 +1,6 @@
-// Repository watches and PiP on GitHub: told in plain words, PiP sets up a watch of a repository its person can push to;
-// what happens there (issues, PRs, CI failing on a branch, releases, @pi) reaches PiP once, with the instructions,
-// fenced, from people who can write to it unless the watch says anyone; PiP starts sessions in a repository's checkout,
+// Repository watches and Noid on GitHub: told in plain words, Noid sets up a watch of a repository its person can push to;
+// what happens there (issues, PRs, CI failing on a branch, releases, @pi) reaches Noid once, with the instructions,
+// fenced, from people who can write to it unless the watch says anyone; Noid starts sessions in a repository's checkout,
 // cloning it when there is none; and nothing reaches a repository gh cannot push to.
 import {
     type App,
@@ -38,7 +38,7 @@ import {
 const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
     fauxAssistantMessage([fauxToolCall(name, args)], { stopReason: "toolUse" });
 
-/** PiP, scripted: a JSON message is a call of the tool it names; anything else is said back. */
+/** Noid, scripted: a JSON message is a call of the tool it names; anything else is said back. */
 const route: FauxResponseStep = (request) => {
     const { role, text: written } = lastText(request as never);
     const text = written.replace(/^\[from: [^\]]+\] /, "");
@@ -148,7 +148,9 @@ async function fakeGh(args: string[]): Promise<string> {
 }
 
 before(async () => {
-    app = await openApp(scriptedModel(route), join(root, "repo-watch-data"));
+    app = await openApp(scriptedModel(route), join(root, "repo-watch-data"), undefined, {
+        mainBot: true,
+    });
     app.watches.gh = fakeGh;
     app.repoWatches.timing = { poll: 40, soon: 20, retry: 40 };
 });
@@ -158,9 +160,9 @@ after(async () => {
     cleanUp();
 });
 
-/** The owner's PiP, with the scripted model. */
+/** Noid's conversation, with the scripted model. */
 async function pip(): Promise<ConversationId> {
-    const id = await app.pip.ensure(owner(app));
+    const id = app.pip.noid()!;
 
     await app.commands.configure(id, owner(app), {
         model: { provider: "faux", modelId: "faux-1" },
@@ -177,7 +179,7 @@ async function messages(id: ConversationId): Promise<string[]> {
     return entries.flatMap((entry) => (entry.kind === "user" ? [entry.text] : []));
 }
 
-/** PiP's last answer. */
+/** Noid's last answer. */
 async function answer(id: ConversationId): Promise<string> {
     const entries = await app.transcripts.allEntries(id, true);
     const last = entries.findLast((entry) => entry.kind === "assistant");
@@ -235,7 +237,7 @@ test("a GitHub host other than github.com is asked nothing unless gh is signed i
     await assert.rejects(requirePush(gh, "evil.example/a/b"), /not signed in to evil\.example/);
     assert.deepEqual(calls, [["config", "get", "-h", "evil.example", "user"]]);
 
-    // GitHub's answer becomes a path and a line PiP reads: a name or a default branch that is not one is refused.
+    // GitHub's answer becomes a path and a line Noid reads: a name or a default branch that is not one is refused.
     const odd = async () => JSON.stringify({ full_name: "../..", permissions: { push: true } });
     const branch = async () =>
         JSON.stringify({
@@ -262,7 +264,7 @@ test("a GitHub host other than github.com is asked nothing unless gh is signed i
     assert.throws(() => repoOfUrl("https://github.com/../api/pull/7"));
 });
 
-test("told to watch a repository, PiP does; what happens there reaches it once, fenced, with the instructions", async () => {
+test("told to watch a repository, Noid does; what happens there reaches it once, fenced, with the instructions", async () => {
     const id = await pip();
     const instructions =
         "When CI fails on main, start a session in acme/api in a worktree to fix it, and tell me.";
@@ -464,8 +466,8 @@ test("told to watch a repository, PiP does; what happens there reaches it once, 
     ];
     github.asked = [];
 
-    await until(async () => (await watches())[0]?.count === 1, "the news to reach PiP");
-    await until(async () => !app.isBusy(id), "PiP to answer");
+    await until(async () => (await watches())[0]?.count === 1, "the news to reach Noid");
+    await until(async () => !app.isBusy(id), "Noid to answer");
     const told = (await messages(id)).find((text) => text.startsWith("[via watch acme/api]"))!;
 
     assert.ok(
@@ -491,7 +493,7 @@ test("told to watch a repository, PiP does; what happens there reaches it once, 
     assert.equal((await watches())[0]?.count, 1);
     assert.equal((await messages(id)).filter((text) => text.startsWith("[via watch")).length, 1);
 
-    // PiP lists it, and removes it when told.
+    // Noid lists it, and removes it when told.
     await say(app, id, JSON.stringify({ tool: "repo_watch", action: "list" }));
     assert.match(
         await answer(id),
@@ -538,7 +540,7 @@ test("nothing is watched, nor worked on, in a repository gh cannot push to", asy
     assert.match(await answer(id), /cannot push to stranger\/x/);
     assert.deepEqual(await watches(), []);
 
-    // Nor does a PR watch reach one: not by Pi's address, nor from PiP.
+    // Nor does a PR watch reach one: not by Pi's address, nor from Noid.
     const session = (await app.commands.createSession(owner(app), { cwd: work })).id;
 
     await assert.rejects(
@@ -552,7 +554,7 @@ test("nothing is watched, nor worked on, in a repository gh cannot push to", asy
     );
 });
 
-test("PiP starts a session in a repository: its checkout here, or a clone made once", async () => {
+test("Noid starts a session in a repository: its checkout here, or a clone made once", async () => {
     const id = await pip();
     // A checkout a session already works in.
     const here = join(root, "checkouts", "here");
@@ -582,7 +584,7 @@ test("PiP starts a session in a repository: its checkout here, or a clone made o
     assert.equal(github.calls.filter((call) => call[0] === "repo").length, 1);
 });
 
-test("a guest cannot set up a repository watch on the owner's PiP", async () => {
+test("a guest cannot set up a repository watch on Noid", async () => {
     const id = await pip();
     const added = await app.pip.addRepoWatch(id, { repo: "acme/api", events: ["ci"] }, "k-3");
 

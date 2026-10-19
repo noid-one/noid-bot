@@ -539,7 +539,7 @@ A page in the place of the session. It has its title and a close button. On a ph
 - `id`: the page's id in the module.
 - `title`: the page's title.
 - `component`: what the page shows. It gets [`PageProps`](#pageprops).
-- `escape`: with `false`, the page keeps Esc for itself. Esc still closes a sheet, the launcher, or PiP over the page. The close button and back still close the page.
+- `escape`: with `false`, the page keeps Esc for itself. Esc still closes a sheet or the launcher over the page. The close button and back still close the page.
 - `swipe`: with `false`, no swipe on the page goes back, also at the screen's edge.
 
 Esc and back close a page. Esc does not close it while an input method composes a character. On a narrow touch screen, a swipe to the right on the page goes back. This is not so in a field, or in an area that scrolls sideways. In an app added to the home screen of an iPhone or iPad, a swipe in from the left edge also goes back. A `data-no-swipe` attribute on an element stops the swipe on it and in it, for example on a slider. [Limits](limits.md#browser-modules) gives the width.

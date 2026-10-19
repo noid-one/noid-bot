@@ -233,7 +233,7 @@ Estimates are in agent-days, with checks and review included.
 ## Risks
 
 1. **The layers and `pocket.style()` must ship together.** Without both, extension CSS beats the whole app (seen in the experiment).
-2. **The JavaScript assumes positions:** the resize handle, swipes, the dock's sizing, and PiP's corner. A theme that moves regions can break them. Phase 1 documents which layout changes are supported, and phase 2 makes the JavaScript read real positions.
+2. **The JavaScript assumes positions:** the resize handle, swipes, and the dock's sizing. A theme that moves regions can break them. Phase 1 documents which layout changes are supported, and phase 2 makes the JavaScript read real positions.
 3. **The token sweep can change the look.** Check each step with a diff of computed styles, not with screenshots alone.
 4. **Every part is a promise.** Keep the list short, and use aliases for a rename.
 5. **Merge conflicts with the i18n sweep.** Plan the order.
