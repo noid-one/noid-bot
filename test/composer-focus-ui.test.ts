@@ -1,4 +1,13 @@
-import { type App, cleanUp, newSession, openApp, root, scriptedModel, until } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    newSession,
+    openApp,
+    root,
+    scriptedModel,
+    showSessions,
+    until,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -54,6 +63,7 @@ async function opened(id: ConversationId): Promise<void> {
 async function home(viewport: Viewport): Promise<void> {
     await page.setViewport(viewport);
     await page.navigate(`${base}/`);
+    await showSessions(page);
     await until(
         async () =>
             await inPage<boolean>(

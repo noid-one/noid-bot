@@ -59,7 +59,13 @@ test("the checker's answer, the call's secrets, and the prompt's data", () => {
 
     assert.equal(consequential("bash", { command: "rm -rf x" }, false), true);
     assert.equal(consequential("bash", { command: "ls" }, false), false, "read-only");
-    assert.equal(consequential("memory", { action: "add" }, false), false, "the bot's own notes");
+    assert.equal(
+        consequential("memory", { action: "add" }, false),
+        true,
+        "a lesson reaches every later session's prompt",
+    );
+    assert.equal(consequential("memory", { action: "update" }, false), true);
+    assert.equal(consequential("memory", { action: "list" }, false), false, "only reads");
     assert.equal(consequential("bot_brief", {}, false), false, "only reads");
     assert.equal(
         consequential("browser", { action: "navigate", url: "https://x.example/?d=secret" }, false),

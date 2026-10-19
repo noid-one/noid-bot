@@ -65,8 +65,8 @@ export type Group = {
     members: string[];
     messages: GroupMessage[];
     createdAt: number;
-    /** The round going on: its task, and the owner's message it answers. */
-    round?: { taskId: TaskId; messageId: string };
+    /** The round going on: its task, the owner's message it answers, and the bot it asks now. */
+    round?: { taskId: TaskId; messageId: string; asking?: string };
     /** The owner's messages waiting for the round going on to end, oldest first. */
     waiting?: { messageId: string; members: string[] }[];
 };
@@ -249,6 +249,13 @@ export class Groups {
             await runtime.commit(async (tx) => {
                 sent = (await tx.submissionByRequest(id, requestId)) !== undefined;
 
+                // Auto review checks this bot's calls against the round's message while it answers, and only then.
+                const round = (await tx.doc(GroupsDoc)).groups[input.groupId]?.round;
+
+                if (round?.messageId === input.messageId) {
+                    round.asking = botId;
+                }
+
                 return undefined;
             }, context);
 
@@ -354,7 +361,7 @@ export class Groups {
         );
 
         for (const group of groups) {
-            if (group.round !== undefined && botId !== undefined && group.members.includes(botId)) {
+            if (botId !== undefined && group.round?.asking === botId) {
                 const asked = group.messages.find(
                     (message) => message.id === group.round!.messageId,
                 );
@@ -569,7 +576,13 @@ export class Groups {
 
     /** Delete a group and its messages; its round stops. */
     async remove(user: User, id: string): Promise<void> {
-        await this.stop(user, id).catch(() => undefined);
+        this.#owner(user);
+        // One already gone is gone.
+        await this.stop(user, id).catch((error: unknown) => {
+            if (!(error instanceof HttpError && error.status === 404)) {
+                throw error;
+            }
+        });
         await this.#app.harness.commit(async (tx) => {
             delete (await tx.doc(GroupsDoc)).groups[id];
         }, context);

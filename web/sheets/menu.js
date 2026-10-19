@@ -7,7 +7,6 @@ import { schedulesAvailable, watchAvailable, watchPr } from "../commands.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
-import { onComputer } from "./terminal.js";
 import { openSubagent } from "../subagents.js";
 import {
     actions,
@@ -132,7 +131,7 @@ function PlacesGrid({ changes = null }) {
                 type="button"
                 class=${`place ${place.on ? "on" : ""}`}
                 data-place=${place.id}
-                aria-label=${place.count > 0 ? `${place.label}, ${place.count} ${place.counted ?? ""}`.trim() : place.dot ? `${place.label}, ${place.dotLabel ?? "a page open"}` : place.label}
+                aria-label=${place.count > 0 ? `${place.label}, ${place.count} ${place.counted ?? ""}`.trim() : place.dot ? `${place.label}, a page open` : place.label}
                 aria-pressed=${place.on === undefined ? undefined : place.on ? "true" : "false"}
                 onClick=${place.run}
             >

@@ -621,8 +621,6 @@ export class Room {
                 this.#app.signInNeeded,
             ),
             stats: projectStats(view.docs["pi.usage"] as UsageState | undefined, view.entries),
-            clients: [...new Set([...this.clients].map((each) => each.id))].length,
-            viewers: [...new Set([...this.clients].map((each) => each.user.name))],
             approvals: this.#app.approvals.forConversation(this.id),
             ...fields,
         });

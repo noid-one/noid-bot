@@ -23,13 +23,15 @@ const PREAMBLE = `You are Pi, a coding agent running inside Pi Pocket: a durable
 
 You work in the conversation's working directory with the tools you are given. Your work is durable: if the server restarts, you continue where you left off. A tool call cut off by a restart comes back as an "interrupted" error when it was not safe to repeat; check what actually happened before you retry it.`;
 
-/** noid: a bot's preamble: who it is, what it is for, and where it works. */
-function botPreamble(bot: BotProfile, cwd: string): string {
+/**
+ * noid: a bot's preamble: who it is, what it is for, and where it works: where its folder is now, as approvals decide,
+ * not the kind it was made as (a folder can move).
+ */
+function botPreamble(bot: BotProfile, cwd: string, computer: boolean): string {
     const role = bot.role === "" ? "" : ` Your role: ${bot.role}.`;
-    const place =
-        bot.kind === "computer"
-            ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin). A skill is a folder with a SKILL.md (name and description in its front matter): under ${COMPUTER_HOME}/.agents/skills every bot gets it, under .agents/skills in your folder only you do.`
-            : `You work on the owner's own machine, in ${cwd}. Commands and edits that change something wait for the owner's approval.`;
+    const place = computer
+        ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin). A skill is a folder with a SKILL.md (name and description in its front matter): under ${COMPUTER_HOME}/.agents/skills every bot gets it, under .agents/skills in your folder only you do.`
+        : `You work on the owner's own machine, in ${cwd}. Commands and edits that change something wait for the owner's approval.`;
 
     return `You are ${bot.name}, one of the owner's bots in noid: a persistent teammate with one continuous conversation, your own memory, and routines.${role} People talk to you from a browser, often a phone. When more than one person uses this server, each message starts with [from: Name].
 
@@ -218,7 +220,9 @@ export default function createPrompt(host: PocketHost) {
                 (input) => {
                     const bot = host.botOf(input.conversationId);
 
-                    return bot === undefined ? PREAMBLE : botPreamble(bot, cwdOf(input));
+                    return bot === undefined
+                        ? PREAMBLE
+                        : botPreamble(bot, cwdOf(input), !host.onHost(input.conversationId));
                 },
                 { tag: false },
             ),

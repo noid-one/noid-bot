@@ -2,7 +2,7 @@
 import { useState } from "preact/hooks";
 import { Face } from "../faces/face.js";
 import { EYES, SKINS } from "../faces/params.js";
-import { actions, api, attempt, closeSheet, navigate, store } from "../store.js";
+import { actions, api, attempt, closeSheet, navigate, store, uid } from "../store.js";
 import { html, Sheet } from "../ui.js";
 
 const COLORS = [
@@ -35,9 +35,13 @@ export function BotSheet({ id }) {
     );
     const [skin, setSkin] = useState(bot?.skin ?? "");
     const [eyes, setEyes] = useState(bot?.eyes ?? "");
-    const faceId = bot?.id ?? `new:${name || "bot"}`;
+    // A new bot's id, made here so its face is the one shown: the server keeps it.
+    const [newId] = useState(() => uid().slice(0, 8));
+    const faceId = bot?.id ?? newId;
     // A model at work: naming a new bot as it is made, or suggesting a name for this one.
     const [naming, setNaming] = useState(false);
+    // Saving: one click makes one bot.
+    const [saving, setSaving] = useState(false);
     const named = name.trim() !== "";
     const canMake = named || role.trim() !== "" || instructions.trim() !== "";
 
@@ -50,6 +54,7 @@ export function BotSheet({ id }) {
     };
 
     const save = () => {
+        setSaving(true);
         setNaming(!named);
         attempt(async () => {
             const body = { name, role, color, skin, eyes };
@@ -69,6 +74,7 @@ export function BotSheet({ id }) {
 
             const made = await actions.createBot({
                 ...body,
+                id: newId,
                 instructions,
                 kind,
                 ...(kind === "host" ? { folder } : {}),
@@ -76,7 +82,10 @@ export function BotSheet({ id }) {
 
             closeSheet();
             navigate(made.id);
-        }).finally(() => setNaming(false));
+        }).finally(() => {
+            setNaming(false);
+            setSaving(false);
+        });
     };
 
     const field = (label, input) => html`<div class="field">
@@ -240,7 +249,7 @@ export function BotSheet({ id }) {
             <button class="button" onClick=${closeSheet}>Cancel</button>
             <button
                 class="button primary"
-                disabled=${naming || (bot === undefined ? !canMake : !named)}
+                disabled=${naming || saving || (bot === undefined ? !canMake : !named)}
                 onClick=${save}
             >
                 ${bot === undefined ? (naming ? "Naming it…" : "Make the bot") : "Save"}

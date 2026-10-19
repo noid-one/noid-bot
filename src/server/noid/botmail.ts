@@ -226,7 +226,7 @@ export class BotMail {
                               ? "busy"
                               : "idle";
 
-                        return `- ${bot.name}${bot.main ? " (the main bot)" : ""}: ${bot.role || "no role given"}. Works on ${bot.kind === "computer" ? "the shared computer" : "the owner's machine"}; ${state}.`;
+                        return `- ${bot.name}${bot.main ? " (the main bot)" : ""}: ${bot.role || "no role given"}. Works on ${this.#app.onHost(conversationId) ? "the owner's machine" : "the shared computer"}; ${state}.`;
                     });
 
                 return reply(lines.length === 0 ? "You are the only bot." : lines.join("\n"));
@@ -408,7 +408,7 @@ export class BotMail {
                     });
 
                     return reply(
-                        `Made ${made.bot.name}. The owner picks its model before it can work.`,
+                        `Made ${made.bot.name}. It starts with the default model; the owner can pick another.`,
                     );
                 } catch (error) {
                     return { ...reply(describe(error)), isError: true };

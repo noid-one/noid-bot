@@ -288,9 +288,14 @@ test("auto review checks a bot's calls in a round against the owner's group mess
             text: "deploy the docs site",
             at: 1,
         });
-        live.round = { taskId: 1 as never, messageId: "m1" };
+        live.round = { taskId: 1 as never, messageId: "m1", asking: one.botId };
     }, context);
     assert.equal(await app.groups.roundTask(one.id), "deploy the docs site");
+    assert.equal(
+        await app.groups.roundTask(two.id),
+        undefined,
+        "a member not being asked works on something else",
+    );
     await app.harness.commit(async (tx) => {
         delete (await tx.doc(GroupsDoc)).groups[group.id]!.round;
     }, context);

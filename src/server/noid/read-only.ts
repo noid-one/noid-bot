@@ -130,8 +130,16 @@ const READERS: Readonly<Record<string, ArgsCheck>> = {
     tree: refuses("oR"),
     true: anyArgs,
     uname: anyArgs,
-    // A second file name is where uniq writes; `-` names standard input.
-    uniq: (args) => args.filter((arg) => arg === "-" || !arg.startsWith("-")).length <= 1,
+    // A second file name is where uniq writes; `-` names standard input, and after `--` every word is a file name.
+    uniq: (args) => {
+        const end = args.indexOf("--");
+        const before = end === -1 ? args : args.slice(0, end);
+        const after = end === -1 ? [] : args.slice(end + 1);
+
+        return (
+            before.filter((arg) => arg === "-" || !arg.startsWith("-")).length + after.length <= 1
+        );
+    },
     wc: anyArgs,
     which: anyArgs,
     whoami: anyArgs,

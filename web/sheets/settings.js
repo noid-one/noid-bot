@@ -44,6 +44,8 @@ function Row({ title, about, children }) {
 /** The server's page: what the owner does to the server itself. */
 function ServerPage() {
     const { server, modelRefresh } = store.state;
+    // One restart for one click.
+    const [restarting, setRestarting] = useState(false);
 
     return html`<div class="settings-rows">
         ${
@@ -54,12 +56,15 @@ function ServerPage() {
             >
                 <button
                     class="button small"
-                    onClick=${() =>
+                    disabled=${restarting}
+                    onClick=${() => {
+                        setRestarting(true);
                         attempt(async () => {
                             await api("restart", {});
                             closeSettings();
                             notify("info", "Restarting. Running work continues after the restart.");
-                        })}
+                        }).finally(() => setRestarting(false));
+                    }}
                 >
                     Restart
                 </button>

@@ -39,6 +39,7 @@ export class Workspace {
 
     /** The files in each folder, for `@` mentions. */
     readonly #files = new FileLists();
+    readonly #remoteFiles = new FileLists();
 
     /**
      * The looks at what a conversation's folder changed that are under way, per reach (its folder only, or its
@@ -464,11 +465,16 @@ export class Workspace {
         this.#app.requireSteer(user);
         await this.#app.conversation(id);
 
+        const cwd = this.#app.cwdOf(id);
+
+        // On the computer too, kept while fresh: each look walks the folder over docker exec (and wakes the computer).
         if (!this.#app.onHost(id)) {
-            return listFilesIn(this.#app.envFor(id), this.#app.cwdOf(id), context);
+            const env = this.#app.envFor(id);
+
+            return this.#remoteFiles.get(cwd, (folder) => listFilesIn(env, folder, context));
         }
 
-        return this.#files.get(this.#app.cwdOf(id));
+        return this.#files.get(cwd);
     }
 
     /**

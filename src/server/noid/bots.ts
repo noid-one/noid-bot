@@ -13,8 +13,8 @@ import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { SessionsDoc } from "../docs.ts";
 import { MAX_INSTRUCTIONS } from "../commands.ts";
-import { HttpError } from "../errors.ts";
-import { ownerOf } from "./owner.ts";
+import { describe, HttpError } from "../errors.ts";
+import { ownerOf, requireOwner } from "./owner.ts";
 import { COMPUTER_HOME } from "./computer.ts";
 import { nameBot, type Naming } from "./naming.ts";
 import { recordUsage } from "../titles.ts";
@@ -57,6 +57,8 @@ export type BotRequest = {
     eyes?: unknown;
     kind?: unknown;
     folder?: unknown;
+    /** The id the sheet drew its face from, so the bot looks as it did there; another is made when it is taken. */
+    id?: unknown;
 };
 
 const MAX_NAME = 40;
@@ -196,11 +198,8 @@ export class Bots {
     ): Promise<{ id: ConversationId; bot: BotProfile }> {
         const app = this.#app;
 
-        app.requireSteer(user);
-
-        if (user.sessions !== undefined) {
-            throw new HttpError(403, "You were invited to one session and cannot make bots.");
-        }
+        // Bots act as the owner (the session tools), so they are the owner's alone.
+        requireOwner(user, "Only the owner makes bots.");
 
         const role = text(request.role, "role", MAX_ROLE, false) ?? "";
         const instructions = instructionsOf(request.instructions);
@@ -232,7 +231,12 @@ export class Bots {
         if (kind === "computer") {
             cwd = `${COMPUTER_HOME}/bots/${this.#freeSlug(slugOf(name))}`;
         } else {
-            const folder = text(request.folder, "folder", 4096, true)!;
+            // A path as given: `text` would fold its runs of spaces into one, and name another folder.
+            const folder = typeof request.folder === "string" ? request.folder.trim() : "";
+
+            if (folder === "" || folder.length > 4096) {
+                throw new HttpError(400, "Give the bot a folder.");
+            }
 
             if (app.claims(folder)) {
                 throw new HttpError(400, "A host bot works in a folder of this machine.");
@@ -241,8 +245,12 @@ export class Bots {
             cwd = folder;
         }
 
+        const asked = typeof request.id === "string" && /^[0-9a-f]{8}$/.test(request.id);
         const bot: BotProfile = {
-            id: crypto.randomUUID().slice(0, 8),
+            id:
+                asked && !this.list({ archived: true }).some((each) => each.bot.id === request.id)
+                    ? (request.id as string)
+                    : crypto.randomUUID().slice(0, 8),
             name,
             role,
             color: color(request.color) ?? randomColor(name),
@@ -284,8 +292,8 @@ export class Bots {
     async suggestName(user: User, id: ConversationId): Promise<{ name: string }> {
         const app = this.#app;
 
+        requireOwner(user, "Only the owner names bots.");
         app.requireSee(user, id);
-        app.requireSteer(user);
 
         const current = app.sessionMeta(id)?.bot;
 
@@ -308,8 +316,8 @@ export class Bots {
     async update(user: User, id: ConversationId, request: BotRequest): Promise<BotProfile> {
         const app = this.#app;
 
+        requireOwner(user, "Only the owner changes bots.");
         app.requireSee(user, id);
-        app.requireSteer(user);
 
         const current = app.sessionMeta(id)?.bot;
 
@@ -345,15 +353,27 @@ export class Bots {
             what: string,
             kept?: T,
         ) => (value === undefined ? kept : pick(value, allowed, what));
-        const { skin: _skin, eyes: _eyes, ...rest } = current;
-        const next: BotProfile = {
-            ...rest,
-            name,
-            role: text(request.role, "role", MAX_ROLE, false) ?? current.role,
-            color: color(request.color) ?? current.color,
-            ...optional("skin", face(request.skin, SKINS, "skin", current.skin)),
-            ...optional("eyes", face(request.eyes, EYES, "eyes", current.eyes)),
+        const role = text(request.role, "role", MAX_ROLE, false);
+        const newColor = color(request.color);
+        const skin = face(request.skin, SKINS, "skin", current.skin);
+        const eyes = face(request.eyes, EYES, "eyes", current.eyes);
+
+        // Onto the profile as it is when written: what changed meanwhile (the agent-file sync's `fileGone`, another
+        // edit) stays.
+        const changed = (profile: BotProfile): BotProfile => {
+            const { skin: _skin, eyes: _eyes, ...rest } = profile;
+
+            return {
+                ...rest,
+                name,
+                role: role ?? profile.role,
+                color: newColor ?? profile.color,
+                ...optional("skin", request.skin === undefined ? profile.skin : skin),
+                ...optional("eyes", request.eyes === undefined ? profile.eyes : eyes),
+            };
         };
+
+        let next = changed(current);
 
         // Instructions first: they are the part that can be refused (who drives, their length), and then nothing changed.
         if (request.instructions !== undefined) {
@@ -363,7 +383,8 @@ export class Bots {
         await app.harness.commit(async (tx) => {
             const meta = (await tx.doc(SessionsDoc)).items[String(id)];
 
-            if (meta !== undefined) {
+            if (meta?.bot !== undefined) {
+                next = changed(meta.bot);
                 meta.bot = next;
                 meta.title = name;
                 meta.updatedAt = Date.now();
@@ -451,17 +472,25 @@ export class Bots {
                 continue;
             }
 
-            this.#refused.delete(file.path);
-
             if (own === undefined) {
-                await this.create(
+                const made = await this.create(
                     owner,
                     { name, role, instructions: file.instructions },
                     file.path,
-                );
+                ).catch((error: unknown) => {
+                    // One file that cannot be a bot (a name another file took first) leaves the others to sync.
+                    refuse(describe(error));
+                });
+
+                if (made !== undefined) {
+                    this.#refused.delete(file.path);
+                    bots.push({ conversationId: made.id, bot: made.bot });
+                }
 
                 continue;
             }
+
+            this.#refused.delete(file.path);
 
             const { conversationId: id, bot } = own;
 
@@ -597,9 +626,8 @@ export class Bots {
     /** A folder name under `bots/` that no bot uses yet. */
     #freeSlug(slug: string): string {
         const taken = new Set(
-            this.#app
-                .sessions()
-                .map((session) => session.cwd)
+            Object.values(this.#app.sessionCatalogue())
+                .map((meta) => meta.cwd)
                 .filter((cwd) => cwd.startsWith(`${COMPUTER_HOME}/bots/`))
                 .map((cwd) => cwd.slice(`${COMPUTER_HOME}/bots/`.length)),
         );

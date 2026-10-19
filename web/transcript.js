@@ -793,7 +793,15 @@ function ToolStep({
     busy,
     conversationId,
 }) {
-    const [open, setOpen] = useState(false);
+    // Kept outside: a call that joins a run of its kind is drawn anew inside it, and stays open as it was.
+    const stepKey = `${conversationId}:${call.id}`;
+    const [open, setOpenState] = useState(() => openedSteps.get(stepKey) === true);
+
+    const setOpen = (value) => {
+        keep(openedSteps, stepKey, value);
+        setOpenState(value);
+    };
+
     const [full, setFull] = useState(null);
     const view = store.state.view;
     const decision = decisionOf(view.decisions, call, result);
@@ -1117,8 +1125,9 @@ const ALONE = new Set(["artifact", "subagent", "memory", "browser"]);
  * Calls of a kind one after another, done and gone well, as one line ("Read a.js +3", and how long they took); opened,
  * each call's own line under it.
  */
-function StepRun({ views, took, children }) {
-    const [open, setOpen] = useState(false);
+function StepRun({ views, took, opened, children }) {
+    // Open when one of its calls was: one opened alone, then joined by the next of its kind, stays in sight.
+    const [open, setOpen] = useState(opened);
     const { verb, target, more } = runLabel(views);
     const files = views.some((view) => view.path !== undefined);
 
@@ -1145,6 +1154,8 @@ function StepRun({ views, took, children }) {
 
 /** Groups opened or closed by hand, per conversation and group, for as long as the page is open. */
 const openedGroups = new Map();
+/** Calls opened or closed by hand, per conversation and call, for as long as the page is open. */
+const openedSteps = new Map();
 /**
  * The answer a jump asked to see last (`jumpToEntry` in chat.js says so with a `pocket:reveal` event), and when: a group
  * that shows only after the jump moved the rows shown opens when it first draws. Groups already shown hear the event.
@@ -1413,8 +1424,9 @@ function ActivityGroup({
             html`<div class="timeline" data-part="timeline">
                 ${runsOf(
                     item.steps.map((step, index) => ({ ...step, index })),
-                    (step) => stepView(step.block).kind,
-                    (step) => joins(step, live && step === item.steps.at(-1)),
+                    (step) => viewOf(step.block).kind,
+                    // The newest call keeps a line of its own while the turn goes on.
+                    (step) => joins(step, live && step.index === item.steps.length - 1),
                 ).map((run) => {
                     const drawn = run.map(draw);
 
@@ -1422,13 +1434,12 @@ function ActivityGroup({
                         ? drawn[0]
                         : html`<${StepRun}
                               key=${`r:${drawn[0].key}`}
-                              views=${run.map((step) => stepView(step.block))}
-                              took=${run.reduce(
-                                  (sum, step) =>
-                                      sum +
-                                      (callTime(step.entry?.endedAt, results.get(step.block.id)) ??
-                                          0),
-                                  0,
+                              views=${run.map((step) => viewOf(step.block))}
+                              took=${runTime(run, results)}
+                              opened=${run.some(
+                                  (step) =>
+                                      openedSteps.get(`${conversationId}:${step.block.id}`) ===
+                                      true,
                               )}
                           >
                               ${drawn}
@@ -1437,6 +1448,31 @@ function ActivityGroup({
             </div>`
         }
     </div>`;
+}
+
+/**
+ * How long a run of calls took, from its first call's answer to its last result: the calls of one answer run side by
+ * side, all timed from when it ended, so their times do not add up.
+ */
+function runTime(run, results) {
+    const starts = run.map((step) => step.entry?.endedAt).filter((at) => at !== undefined);
+    const ends = run.map((step) => results.get(step.block.id)?.at).filter((at) => at !== undefined);
+
+    return starts.length === 0 || ends.length === 0 ? 0 : Math.max(...ends) - Math.min(...starts);
+}
+
+/** A step's label (`stepView`), worked out once per block: a live group draws again with every streamed token. */
+const stepViews = new WeakMap();
+
+function viewOf(block) {
+    let view = stepViews.get(block);
+
+    if (view === undefined) {
+        view = stepView(block);
+        stepViews.set(block, view);
+    }
+
+    return view;
 }
 
 /** Whether a step is still at work: a thought being written, or a call that has not finished. */
@@ -1955,6 +1991,13 @@ function rowDeps(entry) {
 
         if (entry.text.startsWith("[subagent ")) {
             deps.push(agentsKey(view));
+        }
+
+        // Bot mail shows its sender's face, which changes when the bot is edited.
+        const bot = /^\[via bot ([^\]]+)\]/.exec(entry.text)?.[1];
+
+        if (bot !== undefined) {
+            deps.push(store.state.sessions.find((session) => session.bot?.name === bot)?.bot);
         }
     }
 

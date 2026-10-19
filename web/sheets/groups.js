@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar } from "../avatar.js";
 import { Face } from "../faces/face.js";
 import { usePoll } from "../poll.js";
-import { api, attempt, openSheet, store } from "../store.js";
+import { api, attempt, notify, openSheet, store } from "../store.js";
 import { ToolFrame } from "../tool-page.js";
 import { BOTTOM_SHEETS, formatWhen, html, Icon } from "../ui.js";
 
@@ -24,12 +24,17 @@ function NewGroup({ onMade, onCancel }) {
     const bots = [...botsById().values()];
     const [name, setName] = useState("");
     const [members, setMembers] = useState([]);
+    // Making: one click makes one group.
+    const [busy, setBusy] = useState(false);
     const flip = (id) =>
         setMembers(members.includes(id) ? members.filter((each) => each !== id) : [...members, id]);
-    const make = () =>
+
+    const make = () => {
+        setBusy(true);
         attempt(async () => {
             onMade(await api("groups", { name, members }));
-        });
+        }).finally(() => setBusy(false));
+    };
 
     return html`<div class="group-new">
         <h3>New group</h3>
@@ -77,7 +82,7 @@ function NewGroup({ onMade, onCancel }) {
             <button class="button ghost" onClick=${onCancel}>Cancel</button>
             <button
                 class="button primary"
-                disabled=${name.trim() === "" || members.length < 2}
+                disabled=${busy || name.trim() === "" || members.length < 2}
                 onClick=${make}
             >
                 Make the group
@@ -286,10 +291,11 @@ export function GroupsPage() {
     const phone = BOTTOM_SHEETS.matches;
     const none = groups?.length === 0;
     const enough = bots.size >= 2;
+    // A list that could not be loaded is not an empty one: the groups shown stay, and the error says why.
     const load = () =>
         api("groups")
             .then((found) => setGroups(found.groups))
-            .catch(() => setGroups([]));
+            .catch((error) => notify("error", `Could not load the groups: ${error.message}`));
 
     useEffect(() => {
         void load();

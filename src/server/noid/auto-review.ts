@@ -53,9 +53,11 @@ const TASK_LOOKBACK = 500;
 const MAX_REASON = 160;
 /** Arguments whose values never go to the checker. */
 const SENSITIVE = /password|secret|token|api[_-]?key|authorization|cookie|credential/i;
-/** Tools that only read, or change only a bot's own notes and plans: nothing to check (and nothing to pay for). */
+/**
+ * Tools that only read, or change only a bot's own notes and plans: nothing to check (and nothing to pay for). A lesson
+ * saved or changed is checked: it reaches every later session's prompt, so a page's injected text could become one.
+ */
 const NOT_CHECKED = new Set([
-    "memory",
     "schedule",
     "goal",
     "subagent",
@@ -71,9 +73,14 @@ const NOT_CHECKED = new Set([
  * address, the way a page's injected text sends what a bot read out (`navigate` to a URL carrying it).
  */
 export function consequential(tool: string, args: Record<string, unknown>, readOnly: boolean) {
+    if (tool === "memory" && (args.action === "add" || args.action === "update")) {
+        return true;
+    }
+
     // Looking at the desktop, or letting it go, changes nothing.
     if (
         NOT_CHECKED.has(tool) ||
+        (tool === "memory" && args.action !== "add" && args.action !== "update") ||
         (tool === "desktop" && (args.action === "screenshot" || args.action === "release"))
     ) {
         return false;

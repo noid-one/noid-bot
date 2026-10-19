@@ -3,7 +3,7 @@
 // canvas, copying each frame into the face's own. Faces off screen, and every face while the page is hidden, are not
 // drawn. Without WebGL2 (or after the context is lost for good), faces fall back to SVG (face.js).
 
-import { createMotion } from "./motion.js";
+import { createMotion, DONE_SECONDS } from "./motion.js";
 import { EYES, SKINS, traitsOf } from "./params.js";
 import { FRAGMENT, VERTEX } from "./shader.js";
 
@@ -186,8 +186,19 @@ function createRenderer() {
         schedule();
     });
 
+    /** Whether some face is on screen: with none, no frames are asked for (seeing one again asks). */
+    function anyVisible() {
+        for (const face of faces) {
+            if (face.visible) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     function schedule() {
-        if (frame === 0 && !lost && faces.size > 0 && document.visibilityState !== "hidden") {
+        if (frame === 0 && !lost && document.visibilityState !== "hidden" && anyVisible()) {
             frame = requestAnimationFrame(tick);
         }
     }
@@ -272,7 +283,14 @@ function createRenderer() {
         const elapsed = now - lastDraw;
         const still = reducedMotion.matches;
 
-        if (elapsed >= 1000 / FPS - 2 || [...faces].some((face) => face.dirty)) {
+        // A face off screen that changed is drawn when it shows again: it does not lift the frame cap meanwhile.
+        let dirty = false;
+
+        for (const face of faces) {
+            dirty ||= face.visible && face.dirty;
+        }
+
+        if (elapsed >= 1000 / FPS - 2 || dirty) {
             const clock = now / 1000;
             const dt = Math.min(0.1, elapsed / 1000);
 
@@ -373,6 +391,18 @@ export function attach(canvas, options, onFallback) {
             options = next;
             face.dirty = true;
             shared.schedule();
+
+            // With reduced motion a face is drawn only when something changes: work that ended shows its happy moment,
+            // and then nothing would draw it back to idle.
+            if (shared.reducedMotion()) {
+                setTimeout(
+                    () => {
+                        face.dirty = true;
+                        shared.schedule();
+                    },
+                    DONE_SECONDS * 1000 + 50,
+                );
+            }
         },
         boop(strength) {
             face.motion.boop(strength);

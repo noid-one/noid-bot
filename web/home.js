@@ -40,6 +40,7 @@ export function Splash() {
                 target?.closest?.("input, textarea, select, [contenteditable]") ||
                 store.state.sheet ||
                 store.state.launcher ||
+                store.state.settings ||
                 !(
                     splash.current?.checkVisibility?.() ??
                     splash.current?.getClientRects().length > 0

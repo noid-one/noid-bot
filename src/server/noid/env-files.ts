@@ -11,15 +11,10 @@ import { promisify } from "node:util";
 import { gzip as gzipCallback } from "node:zlib";
 import { parseFrontmatter, type Skill } from "@earendil-works/pi-coding-agent";
 import type { FileListing, FileView } from "../files.ts";
-import { MAX_FILES } from "../files.ts";
+import { IMAGE_EXTENSIONS, MAX_FILES, VIEW_BYTES, VIEW_ENTRIES } from "../files.ts";
 
 const gzip = promisify(gzipCallback);
 
-/** As in `files.ts`: how much of a file and of a folder the viewer shows, and which files are images. */
-const VIEW_BYTES = 512 * 1024;
-const VIEW_ENTRIES = 1000;
-
-export const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 /** The largest image served from a remote folder: an image larger than this is not one a reply shows. */
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** Folders the `@` list leaves out (with what git ignores): dependencies and caches. */

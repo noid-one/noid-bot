@@ -271,7 +271,7 @@ export default function createSessionTools(host: PocketHost) {
             let id = await api.memo<number>("session_start.session", context);
 
             if (id === undefined) {
-                const made = await host.sessionTools.start(api.conversationId, args);
+                const made = await host.sessionTools.start(api.conversationId, args, key(api));
 
                 id = await api.memo("session_start.session", Number(made), context);
             }

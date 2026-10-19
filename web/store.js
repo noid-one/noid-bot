@@ -46,8 +46,6 @@ const emptyView = () => ({
     inbox: [],
     agent: null,
     stats: { cost: 0 },
-    clients: 0,
-    viewers: [],
     approvals: [],
     artifacts: [],
     subagents: [],
@@ -505,8 +503,6 @@ function mergeView(current, data) {
         live: data.live,
         agent: data.agent,
         stats: data.stats,
-        clients: data.clients,
-        viewers: data.viewers,
         approvals: data.approvals,
         // The server sends these again only when they change: a missing one keeps its last value.
         inbox: data.inbox ?? base.inbox,

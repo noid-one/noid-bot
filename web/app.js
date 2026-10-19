@@ -630,7 +630,9 @@ addEventListener("keydown", (event) => {
         store.state.view.conversation &&
         !store.state.launcher &&
         !store.state.board &&
-        !store.state.page
+        !store.state.page &&
+        !store.state.settings &&
+        !store.state.tool
     ) {
         event.preventDefault();
         openSheet({ type: "find" });
@@ -698,12 +700,15 @@ addEventListener("keydown", (event) => {
             return;
         }
 
-        // The panels are not beside the subagents board, nor an extension's page.
+        // The panels are not beside the subagents board, an extension's page, Settings, or a tool's page: a toggle there
+        // would show or hide them unseen.
+        const panels =
+            !store.state.board && !store.state.page && !store.state.settings && !store.state.tool;
+
         if (
             event.code === "KeyB" &&
             store.state.conversationId !== null &&
-            !store.state.board &&
-            !store.state.page &&
+            panels &&
             browserAvailable()
         ) {
             event.preventDefault();
@@ -712,15 +717,21 @@ addEventListener("keydown", (event) => {
             return;
         }
 
-        if (event.code === "KeyE" && !store.state.board && !store.state.page && filesAvailable()) {
+        if (event.code === "KeyE" && panels && filesAvailable()) {
             event.preventDefault();
             toggleFiles();
 
             return;
         }
 
-        // noid: Noid, the main bot; not under a sheet, where it would open unseen.
-        if (event.code === "KeyA" && mainBot() !== undefined && !store.state.sheet) {
+        // noid: Noid, the main bot; not under a sheet, Settings, or a tool's page, where it would open unseen.
+        if (
+            event.code === "KeyA" &&
+            mainBot() !== undefined &&
+            !store.state.sheet &&
+            !store.state.settings &&
+            !store.state.tool
+        ) {
             event.preventDefault();
             toNoid();
 
@@ -789,10 +800,20 @@ const ESCAPE_TWICE_MS = 1500;
 
 /** Esc twice stops Pi, as Esc does in other agents' terminals. Twice, since Esc also closes things and leaves fields. */
 function stopOnSecondEscape() {
-    const { view, sheet, launcher, board, page, drawer } = store.state;
+    const { view, sheet, launcher, board, page, drawer, settings, tool } = store.state;
 
-    // Esc closes these first.
-    if (sheet || launcher || board || page || drawer || !view.live?.busy || !canSteer()) {
+    // Esc closes these first; Settings and a tool's page hide the conversation, whose run it would stop unseen.
+    if (
+        sheet ||
+        launcher ||
+        board ||
+        page ||
+        drawer ||
+        settings ||
+        tool ||
+        !view.live?.busy ||
+        !canSteer()
+    ) {
         return;
     }
 

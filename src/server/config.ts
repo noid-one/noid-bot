@@ -9,7 +9,8 @@ export const APP_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 /** Where Pi Pocket keeps its database, users, uploads, and logs. */
 export function dataDir(): string {
-    return process.env.PI_POCKET_DIR ?? join(homedir(), ".pi-pocket");
+    // noid's own (a fork that read Pi Pocket's would share its lock, and read its sessions as noid's).
+    return process.env.NOID_DIR ?? process.env.PI_POCKET_DIR ?? join(homedir(), ".noid");
 }
 
 /** owner: everything. guest: steers Pi (which can run commands here). viewer: reads, chats, and reacts, never steers. */

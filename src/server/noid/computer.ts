@@ -444,9 +444,12 @@ export class Computer {
             `mkdir -p ${BROWSER_PROFILE} ${COMPUTER_HOME}/shared/downloads`,
             // A computer just started may not have its display yet (start.sh starts it in the background).
             "i=0; while [ ! -S /tmp/.X11-unix/X99 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done",
+            // The shared browser's processes: by name, then by profile, so a Chromium a bot opened on the desktop is left
+            // alone (a pattern on the whole command line would match this script too).
+            `shared() { for p in $(pgrep -x chromium); do grep -qaF -- "--user-data-dir=${BROWSER_PROFILE}" /proc/$p/cmdline 2>/dev/null && echo $p; done; }`,
             // The last browser may still be saving its profile as it exits: wait for it (a while), so two never share it.
-            "i=0; while pgrep -x chromium >/dev/null && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done",
-            "pkill -KILL -x chromium 2>/dev/null; true",
+            'i=0; while [ -n "$(shared)" ] && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done',
+            "kill -KILL $(shared) 2>/dev/null; true",
             // Only now: a browser stopped hard leaves its profile locked (rakazo clears these too).
             `rm -f ${BROWSER_PROFILE}/Singleton*`,
             `exec chromium ${BROWSER_FLAGS.join(" ")} about:blank 3<&0 4>&1 1>/dev/null 2>>/tmp/chromium.log`,

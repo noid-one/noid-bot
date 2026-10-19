@@ -210,8 +210,14 @@ export class FileLists {
         this.#now = now;
     }
 
-    /** The list for `cwd`: a fresh one kept here, the one being made, or a new one. */
-    get(cwd: string): Promise<FileListing> {
+    /**
+     * The list for `cwd`: a fresh one kept here, the one being made, or a new one, made by `make` (a folder on this
+     * machine by default; the shared computer's lists its own).
+     */
+    get(
+        cwd: string,
+        make: (cwd: string) => Promise<FileListing> = (each) => this.#make(each),
+    ): Promise<FileListing> {
         const kept = this.#lists.get(cwd);
         const now = this.#now();
 
@@ -222,7 +228,7 @@ export class FileLists {
         const entry: Entry = {
             at: now,
             freshFor: Number.POSITIVE_INFINITY,
-            listing: this.#make(cwd),
+            listing: make(cwd),
         };
 
         this.#lists.delete(cwd);
@@ -260,10 +266,10 @@ export class FileLists {
     }
 }
 
-/** How much of a file the viewer shows, and of a folder. */
-const VIEW_BYTES = 512 * 1024;
-const VIEW_ENTRIES = 1000;
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+/** How much of a file the viewer shows, and of a folder, and which files are images (the computer's viewer too). */
+export const VIEW_BYTES = 512 * 1024;
+export const VIEW_ENTRIES = 1000;
+export const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 
 /** A file as the viewer shows it: text, an image (loaded through the image route), a folder's entries, binary, or other (a pipe, a device). */
 export type FileView =

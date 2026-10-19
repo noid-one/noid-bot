@@ -276,14 +276,17 @@ export function commandFor(input: Record<string, unknown>): string[] | undefined
 
 /**
  * The programs opened on the desktop, and what they started, by the holder in their environment: `only` one holder's
- * closed, all `except` one holder's closed, or one holder's listed (`list`).
+ * closed, all `except` one holder's closed, or one holder's listed (`list`). One grep reads every process's environment
+ * (a fork per process took a fifth of a second), and says nothing of the ones that end meanwhile.
  */
 const OPENED_BY = `mode=$1 id=$2
-for dir in /proc/[0-9]*; do
-    by=$(tr '\\0' '\\n' < "$dir/environ" 2>/dev/null | sed -n 's/^NOID_DESKTOP_HOLDER=//p')
-    [ -n "$by" ] || continue
-    if [ "$mode" = except ]; then [ "$by" = "$id" ] && continue; elif [ "$by" != "$id" ]; then continue; fi
-    if [ "$mode" = list ]; then echo "\${dir#/proc/}"; else kill -TERM "\${dir#/proc/}" 2>/dev/null; fi
+all=$(grep -lsz '^NOID_DESKTOP_HOLDER=' /proc/[0-9]*/environ)
+mine=" $(grep -lszxF "NOID_DESKTOP_HOLDER=$id" $all /dev/null | tr '\\n' ' ')"
+for file in $all; do
+    case "$mine" in *" $file "*) own=1 ;; *) own=0 ;; esac
+    if [ "$mode" = except ]; then [ $own = 1 ] && continue; elif [ $own = 0 ]; then continue; fi
+    pid=\${file#/proc/}; pid=\${pid%/environ}
+    if [ "$mode" = list ]; then echo "$pid"; else kill -TERM "$pid" 2>/dev/null; fi
 done
 true`;
 
@@ -353,6 +356,8 @@ export class Desktop {
     readonly teaching: Teaching;
     /** The owner's actions, one after another. */
     #ownerTurn: Promise<unknown> = Promise.resolve();
+    /** A lesson being started: a second start waits for none, it is refused. */
+    #starting = false;
 
     constructor(app: PocketApp) {
         this.#app = app;
@@ -403,10 +408,13 @@ export class Desktop {
         return taken;
     }
 
+    /** The last close under way: the next action waits for it, so a click never lands in a window that is closing. */
+    #closing: Promise<unknown> = Promise.resolve();
+
     /** Close the programs one holder opened (`only`), or every other holder's (`except`). */
     #close(mode: "only" | "except", holderId: string): void {
         this.#opened.clear();
-        void this.#env()
+        this.#closing = this.#env()
             .exec(["sh", "-c", OPENED_BY, "close", mode, holderId], undefined, BACKGROUND_CONTEXT)
             .catch(() => undefined);
     }
@@ -441,6 +449,7 @@ export class Desktop {
 
     /** Run an action for a holder (its arguments already checked); what `open` starts is marked as the holder's. */
     async #run(holder: Holder, argv: string[], env: ExecutionEnv, context: Context): Promise<void> {
+        await this.#closing;
         await onDisplay(env, argv[3] === "open" ? [...argv, holder.id] : argv, context);
 
         if (argv[3] === "open") {
@@ -455,7 +464,17 @@ export class Desktop {
     async #require(env: ExecutionEnv, context: Context): Promise<void> {
         this.#ready ??= this.#hasDesktop(env, context);
 
-        if (!(await this.#ready)) {
+        let ready: boolean;
+
+        try {
+            ready = await this.#ready;
+        } catch (error) {
+            this.#ready = undefined;
+
+            throw error;
+        }
+
+        if (!ready) {
             this.#ready = undefined;
 
             throw new HttpError(
@@ -472,7 +491,12 @@ export class Desktop {
             context,
         );
 
-        return found.ok && found.value.exitCode === 0;
+        // The computer could not run it (Docker down, its start failed): that is what to say, not an old image.
+        if (!found.ok) {
+            throw found.error;
+        }
+
+        return found.value.exitCode === 0;
     }
 
     #tool() {
@@ -622,33 +646,56 @@ export class Desktop {
             throw new HttpError(409, `You are already showing “${this.teaching.lesson.name}”.`);
         }
 
+        if (this.#starting) {
+            throw new HttpError(409, "A lesson is starting already.");
+        }
+
         // The owner holds the desktop for the whole lesson: no bot acts on it meanwhile, and what bots had open closes
         // now, so the screen before is the one the steps start from.
         const who = { id: `owner:${user.id}`, name: user.name };
-
-        this.#take(who, true, LESSON_MS);
-        await new Promise((resolve) => setTimeout(resolve, 300));
         // The screen before, kept on the computer until the skill is saved (a lesson outlives a restart of the server).
         const start = `${COMPUTER_HOME}/.cache/noid-lessons/${randomUUID()}.png`;
         const env = this.#env();
-        const made = await env.createDir(
-            `${COMPUTER_HOME}/.cache/noid-lessons`,
-            { recursive: true },
-            BACKGROUND_CONTEXT,
-        );
-        const written = made.ok
-            ? await env.writeFile(
-                  start,
-                  Buffer.from(await screenshot(env, BACKGROUND_CONTEXT), "base64"),
-                  BACKGROUND_CONTEXT,
-              )
-            : made;
 
-        if (!written.ok) {
-            throw new HttpError(500, `Could not keep the screen: ${written.error.message}`);
+        this.#starting = true;
+
+        try {
+            this.#take(who, true, LESSON_MS);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+
+            const made = await env.createDir(
+                `${COMPUTER_HOME}/.cache/noid-lessons`,
+                { recursive: true },
+                BACKGROUND_CONTEXT,
+            );
+            const written = made.ok
+                ? await env.writeFile(
+                      start,
+                      Buffer.from(await screenshot(env, BACKGROUND_CONTEXT), "base64"),
+                      BACKGROUND_CONTEXT,
+                  )
+                : made;
+
+            if (!written.ok) {
+                throw new HttpError(500, `Could not keep the screen: ${written.error.message}`);
+            }
+
+            await this.teaching.begin(user, {
+                name,
+                goal,
+                folder,
+                startedAt: this.#app.now(),
+                start,
+            });
+        } catch (error) {
+            // No lesson: the desktop is free again for the hour the lesson would have held it.
+            this.lease.release(who);
+            await env.remove(start, { force: true }, BACKGROUND_CONTEXT).catch(() => undefined);
+
+            throw error;
+        } finally {
+            this.#starting = false;
         }
-
-        await this.teaching.begin(user, { name, goal, folder, startedAt: this.#app.now(), start });
     }
 
     /**

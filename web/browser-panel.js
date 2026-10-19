@@ -680,23 +680,6 @@ if (savedWidth > 0) {
 /** The page may close again after it opens (a crash, a long while unused): open it by itself at most this often. */
 const REOPEN_MS = 2 * 60_000;
 
-/** noid: whether the Browser sits beside the conversation (1100px and wider): only then can it be a page instead. */
-const WIDE = matchMedia("(min-width: 1100px)");
-
-function useWide() {
-    const [wide, setWide] = useState(WIDE.matches);
-
-    useEffect(() => {
-        const change = () => setWide(WIDE.matches);
-
-        WIDE.addEventListener("change", change);
-
-        return () => WIDE.removeEventListener("change", change);
-    }, []);
-
-    return wide;
-}
-
 export function BrowserPanel({ leaving = false }) {
     const { conversationId, browser: state, me, view } = store.state;
     // Using the page takes what steering Pi takes: while take turns is on, the wheel.
@@ -718,7 +701,6 @@ export function BrowserPanel({ leaving = false }) {
     // noid: how it shows: a panel beside the conversation, a page in its place (wide screens), or the whole screen.
     const panel = useRef(null);
     const [full, setFull] = useState(false);
-    const wide = useWide();
 
     useEffect(() => {
         const change = () =>
@@ -1036,7 +1018,8 @@ export function BrowserPanel({ leaving = false }) {
                 </button>`
             }
             ${
-                wide &&
+                // noid: only beside the conversation (wide screens) can it be a page in its place instead.
+                beside &&
                 !full &&
                 html`<button
                     class=${`icon-button ${store.state.browserPage ? "on" : ""}`}

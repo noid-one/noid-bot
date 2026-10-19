@@ -48,9 +48,10 @@ export function Face({
         };
     }, [vector]);
 
+    // A new size clears the canvas: it is drawn again then too.
     useEffect(() => {
         controls.current?.update(options);
-    }, [id, color, skin, eyes, state]);
+    }, [id, color, skin, eyes, state, pixels]);
 
     const style = `width:${size}px;height:${size}px`;
     const common = {

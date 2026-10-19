@@ -66,13 +66,14 @@ const matches = (model, query) => {
  * `/model son` opened it already searching. Opened for the default (`forDefault`, from the menu), it picks the model
  * and thinking level new sessions start with instead, and stays open for both.
  */
-export function ModelPicker() {
+export function ModelPicker({ forDefault: forDefaultProp = false } = {}) {
     const { models, server, me } = store.state;
     const view = store.state.view;
     const configure = (change) => actions.configure(change);
     // While the picker animates out, the store has no sheet any more.
     const [query, setQuery] = useState(store.state.sheet?.query ?? "");
-    const [forDefault] = useState(() => store.state.sheet?.forDefault === true);
+    // Settings shows it as a page, with no sheet in the store: the page says it is for the default.
+    const [forDefault] = useState(() => forDefaultProp || store.state.sheet?.forDefault === true);
     // noid: Pi's enabledModels when it is set, else the current models (`recent`, from an older server none): the
     // session's model shows with them whatever it is.
     const scopeName = models.some((model) => model.scoped) ? "scoped" : "recent";

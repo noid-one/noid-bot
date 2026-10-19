@@ -1,5 +1,14 @@
 // Session-row actions in a dedicated headless browser, with isolated app data and a scripted model.
-import { type App, cleanUp, newSession, openApp, root, scriptedModel, until } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    newSession,
+    openApp,
+    root,
+    scriptedModel,
+    showSessions,
+    until,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -56,6 +65,7 @@ async function fresh(mobile = false): Promise<void> {
     list = mobile ? ".home-list" : ".sidebar";
     await page.setViewport(mobile ? VIEWPORTS.mobile : DESKTOP);
     await page.navigate(`${base}/`);
+    await showSessions(page);
     await until(
         async () =>
             await inPage<boolean>(
@@ -66,9 +76,11 @@ async function fresh(mobile = false): Promise<void> {
     );
     await selectTab("Recent");
     await page.hover({ x: 1, y: 1 });
+    // Touch is what the rows' code tells apart. Chromium 141 forgets the launch flag's mouse once a page's touch
+    // emulation is set, as every page's is, so the desktop can say (hover: none) too: only touch is (pointer: coarse).
     assert.equal(
-        await inPage<boolean>(`return JSON.stringify(matchMedia("(hover: hover)").matches)`),
-        !mobile,
+        await inPage<boolean>(`return JSON.stringify(matchMedia("(pointer: coarse)").matches)`),
+        mobile,
         "a mouse on the desktop, touch on the phone",
     );
 }

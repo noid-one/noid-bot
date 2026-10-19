@@ -94,18 +94,18 @@ const PROGRAMS = [
 ];
 
 /** Whether a screenshot is all black: nothing open on the desktop. Read from a small copy, so it is cheap. */
+/** The small canvas `isBlank` reads a screen in, made once. */
+let blankCanvas;
+
 async function isBlank(source) {
     const picture = new Image();
 
     picture.src = source;
     await picture.decode();
 
-    const canvas = document.createElement("canvas");
+    blankCanvas ??= Object.assign(document.createElement("canvas"), { width: 64, height: 40 });
 
-    canvas.width = 64;
-    canvas.height = 40;
-
-    const context = canvas.getContext("2d", { willReadFrequently: true });
+    const context = blankCanvas.getContext("2d", { willReadFrequently: true });
 
     context.drawImage(picture, 0, 0, 64, 40);
 
@@ -147,6 +147,9 @@ export function DesktopPage() {
     const typed = useRef({ text: "", timer: 0 });
     const press = useRef(null);
     const wheel = useRef(0);
+    // The screen last shown: one that has not changed is not decoded again (four times a second while busy).
+    const shown = useRef("");
+    const [starting, setStarting] = useState(false);
     const computerBots = store.state.sessions.filter(
         (session) => session.bot !== undefined && !session.archived && onComputer(session.cwd),
     );
@@ -166,10 +169,14 @@ export function DesktopPage() {
                             return;
                         }
 
-                        const source = `data:image/png;base64,${view.image}`;
+                        if (view.image !== shown.current) {
+                            const source = `data:image/png;base64,${view.image}`;
 
-                        setShot(source);
-                        setBlank(await isBlank(source).catch(() => false));
+                            shown.current = view.image;
+                            setShot(source);
+                            setBlank(await isBlank(source).catch(() => false));
+                        }
+
                         setHolder(view.holder);
                         setYours(view.yours);
                         setOpened(view.opened);
@@ -262,6 +269,8 @@ export function DesktopPage() {
 
         event.preventDefault();
         event.currentTarget.focus({ preventScroll: true });
+        // A drag let go past the screen's edge still ends, at the edge.
+        event.currentTarget.setPointerCapture?.(event.pointerId);
         press.current = { ...at(event), clientX: event.clientX, clientY: event.clientY };
     };
 
@@ -344,7 +353,12 @@ export function DesktopPage() {
             flushTyped();
 
             for (let from = 0; from < text.length; from += 1000) {
-                void act({ action: "type", text: text.slice(from, from + 1000) });
+                void act({
+                    action: "type",
+                    text: text.slice(from, from + 1000),
+                    // A pasted password (from a password manager) is as secret as a typed one.
+                    ...(teaching && secret ? { secret: true } : {}),
+                });
             }
         }
     };
@@ -360,13 +374,16 @@ export function DesktopPage() {
             }
         });
 
-    const begin = () =>
+    const begin = () => {
+        setStarting(true);
         attempt(async () => {
             await api("desktop/teach", lesson);
             setTeaching({ name: lesson.name, steps: 0 });
             setLesson(undefined);
             setSaved(undefined);
-        });
+        }).finally(() => setStarting(false));
+    };
+
     const finish = (save) =>
         attempt(async () => {
             const result = await api("desktop/learned", { save });
@@ -470,7 +487,7 @@ export function DesktopPage() {
                     </select>
                     <button
                         class="button primary"
-                        disabled=${lesson.name.trim() === "" || lesson.goal.trim() === ""}
+                        disabled=${starting || lesson.name.trim() === "" || lesson.goal.trim() === ""}
                         onClick=${begin}
                     >
                         Start recording

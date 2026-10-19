@@ -1673,7 +1673,7 @@ export class PocketApp {
         const all: SubagentEntry[] = [];
 
         for (const [id, list] of this.#subagentsBySession()) {
-            if (user?.sessions !== undefined && !user.sessions.includes(id)) {
+            if (user !== undefined && !this.canSee(user, Number(id) as unknown as ConversationId)) {
                 continue;
             }
 
@@ -1868,32 +1868,33 @@ export class PocketApp {
 
         this.#sessionsTimer = setTimeout(() => {
             this.#sessionsTimer = undefined;
-            const all = this.sessions();
+            let all: ReturnType<PocketApp["sessions"]> | undefined;
             let board: SubagentEntry[] | undefined;
+            // Everyone but the owner gets a list of their own: bots are the owner's alone, and scoped people see theirs.
+            const lists = new Map<string, ReturnType<PocketApp["sessions"]>>();
 
             for (const client of this.#clients) {
-                const scope = client.user.sessions;
+                const user = client.user;
+                const whole = user.role === "owner" && user.sessions === undefined;
+                let list = whole ? (all ??= this.sessions()) : lists.get(user.id);
 
-                client.send(
-                    "sessions",
-                    // Scoped lists need their own metadata projection, not just a filter over the global list.
-                    scope === undefined ? all : this.sessions(client.user),
-                );
+                if (list === undefined) {
+                    list = this.sessions(user);
+                    lists.set(user.id, list);
+                }
+
+                client.send("sessions", list);
 
                 if (client.board === true) {
-                    board ??= this.subagents();
                     this.#sendBoard(
                         client,
-                        scope === undefined
-                            ? board
-                            : board.filter((entry) => scope.includes(String(entry.id))),
+                        whole ? (board ??= this.subagents()) : this.subagents(user),
                     );
                 }
             }
         }, 400);
     }
 
-    /** The session list, with who is in each session and its newest chat message. Scoped people see only theirs. */
     /** noid: read what a bot last said, then tell the lists. */
     async #readLastSaid(id: string): Promise<void> {
         this.#lastSaid.set(id, this.#lastSaid.get(id));
@@ -1910,6 +1911,7 @@ export class PocketApp {
         }
     }
 
+    /** The session list, with who is in each session and its newest chat message. Each person sees what they may open. */
     sessions(user?: User) {
         const waiting = new Set(
             this.approvals.all().map((approval) => String(this.rootOf(approval.conversationId))),
@@ -1930,7 +1932,11 @@ export class PocketApp {
         }
 
         return Object.entries(this.#sessions)
-            .filter(([id]) => user?.sessions === undefined || user.sessions.includes(id))
+            .filter(
+                ([id]) =>
+                    user === undefined ||
+                    this.canSee(user, Number(id) as unknown as ConversationId),
+            )
             .map(([id, meta]) => {
                 const model = this.#agents.get(Number(id) as unknown as ConversationId)?.model;
                 const busy = this.#busy.has(Number(id) as unknown as ConversationId);

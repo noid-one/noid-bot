@@ -96,7 +96,7 @@ export function snapOf(
 
 /**
  * Where the browser keeps its profile. A snap may not write to hidden folders in the home folder, as the data folder
- * usually is (`~/.pi-pocket`): its profile goes in the snap's own folder instead, one per data folder.
+ * usually is (`~/.noid`): its profile goes in the snap's own folder instead, one per data folder.
  */
 export function profileFolder(executable: string, dataDir: string, snapBin = SNAP_BIN): string {
     const snap = snapOf(executable, snapBin);

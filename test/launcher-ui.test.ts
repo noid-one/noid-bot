@@ -160,26 +160,27 @@ test("open resets query and focus", real, async () => {
 
     await search("@ alpha");
     await page.press("ArrowDown");
-    const reopened = await inPage<boolean>(`
-                const { store } = await import('/store.js');
+    await page.evaluate(`
+        const { store } = await import('/store.js');
 
-                store.set({ launcher: false });
+        // Observe the inert leaving node and reopen within the page, not over two CDP round trips. Not in an awaited
+        // evaluation either: on a loaded machine Chromium can drop one pending across the history step closing makes.
+        window.reopenedWhileLeaving = false;
+        const observer = new MutationObserver(() => {
+            if (document.querySelector('.launcher-overlay')?.inert === true) {
+                observer.disconnect();
+                store.set({ launcher: true });
+                window.reopenedWhileLeaving = true;
+            }
+        });
 
-                // Observe the inert leaving node and reopen within the page, not over two CDP round trips.
-                for (let frame = 0; frame < 10; frame++) {
-                    await new Promise((resolve) => requestAnimationFrame(resolve));
-
-                    if (document.querySelector('.launcher-overlay')?.inert === true) {
-                        store.set({ launcher: true });
-
-                        return JSON.stringify(true);
-                    }
-                }
-
-                return JSON.stringify(false);
-            `);
-
-    assert.equal(reopened, true, "the leaving state was observed before reopening");
+        observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+        store.set({ launcher: false });
+    `);
+    await see(
+        `return JSON.stringify(window.reopenedWhileLeaving)`,
+        "the leaving state observed and the launcher reopened",
+    );
 
     await until(focused, "reopened launcher focused");
     await settle();

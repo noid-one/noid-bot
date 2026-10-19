@@ -152,7 +152,9 @@ store.subscribe(({ sheet, launcher }) => {
  */
 export function Sheets() {
     const [sheet, leaving] = usePresence(store.state.sheet, 200);
-    const auth = store.state.auth && sheet?.type !== "providers" ? html`<${AuthDialog} />` : null;
+    // The Providers page shows a sign-in in place, as a sheet or as a page of Settings: one over it would cover it.
+    const inPlace = sheet?.type === "providers" || store.state.settings?.page === "providers";
+    const auth = store.state.auth && !inPlace ? html`<${AuthDialog} />` : null;
 
     if (!sheet) {
         return auth;
@@ -182,7 +184,7 @@ export function sheetBody(sheet) {
             body = html`<${ShortcutsSheet} />`;
             break;
         case "model":
-            body = html`<${ModelPicker} />`;
+            body = html`<${ModelPicker} forDefault=${sheet.forDefault === true} />`;
             break;
         case "branch":
             body = view.conversation ? html`<${BranchPicker} />` : null;

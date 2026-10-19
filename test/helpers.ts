@@ -103,6 +103,33 @@ export async function until(
     }
 }
 
+/**
+ * noid: show the sessions in the sidebar's lists, by their Sessions tab: the lists start on the bots, and keep the
+ * tab last chosen for the next load. Taps it in every list on the page, the sidebar's and the phone's home list.
+ */
+export async function showSessions(page: {
+    evaluate(script: string): Promise<string>;
+}): Promise<void> {
+    await until(
+        async () =>
+            JSON.parse(
+                await page.evaluate(`
+                    const tabs = [...document.querySelectorAll('.pane-tab[aria-label="Sessions"]')];
+
+                    for (const tab of tabs) {
+                        if (tab.getAttribute("aria-selected") !== "true") {
+                            tab.click();
+                        }
+                    }
+
+                    return JSON.stringify(tabs.length > 0);
+                `),
+            ) === true,
+        "the Sessions tab",
+        20_000,
+    );
+}
+
 /** Record `dollars` more of model usage in a conversation, the way a model response does: the scripted model costs nothing. */
 export async function recordCost(app: App, id: ConversationId, dollars: number): Promise<void> {
     await app.harness.commit(async (tx) => {
@@ -184,5 +211,19 @@ export function fakeTab(id: ConversationId | undefined, user: User) {
 
 /** Remove the temporary folder: call from `after`, once the app is closed. */
 export function cleanUp(): void {
-    rmSync(root, { recursive: true, force: true });
+    // A browser just stopped can still write its profile a moment longer (Chromium's network service, on a loaded
+    // machine), and a folder emptied meanwhile gains a file again: removing it then starts over.
+    for (let attempt = 1; ; attempt++) {
+        try {
+            rmSync(root, { recursive: true, force: true });
+
+            return;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOTEMPTY" || attempt === 20) {
+                throw error;
+            }
+
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+        }
+    }
 }

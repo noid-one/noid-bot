@@ -26,7 +26,15 @@ import {
     workspaceOrder,
 } from "./store.js";
 import { finishedUnseen } from "./seen.js";
-import { isPinned, prefs, setPrefs, togglePin } from "./theme.js";
+import {
+    isPinned,
+    prefs,
+    setPrefs,
+    SIDEBAR_MAX,
+    SIDEBAR_MIN,
+    SIDEBAR_WIDTH,
+    togglePin,
+} from "./theme.js";
 import {
     APPLE,
     html,
@@ -777,17 +785,19 @@ export function SessionList({ compact = false }) {
             // Kept for this page only.
         }
 
+        // What was chosen in the other list is not in sight: the bar would act on rows nobody sees.
+        clearSelection();
         setPaneState(next);
     };
 
-    // Opening a bot or a session, from anywhere, shows its list.
+    // Opening a bot or a session, from anywhere, shows its list; after a reload, once the list is there to say which.
     useEffect(() => {
         const open = sessions.find((session) => session.id === conversationId);
 
         if (open !== undefined && !open.archived) {
             setPaneState(open.bot === undefined ? "sessions" : "bots");
         }
-    }, [conversationId]);
+    }, [conversationId, sessionsLoaded]);
 
     const setQuery = (next) => {
         if (!compact) {
@@ -1655,13 +1665,6 @@ function ComputerRailButtons() {
         </button>`,
     );
 }
-
-/** The sidebar's usual width, the rail and its list together: the one a new browser starts with (theme.js). */
-export const SIDEBAR_WIDTH = 312;
-
-/** The open sidebar's narrowest and widest, the rail included (theme.js keeps a saved width within them too). */
-export const SIDEBAR_MIN = 264;
-export const SIDEBAR_MAX = 524;
 
 /**
  * Drag the sidebar's edge to resize it, or step it with the arrow keys; a double click puts back its usual width. No

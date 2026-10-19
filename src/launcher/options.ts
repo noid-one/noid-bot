@@ -17,7 +17,7 @@ Usage: pi-pocket [options]
   -y, --yes           Use the last choice without asking
   -p, --port N        Port (default 8787)
       --cwd DIR       Folder for new sessions (default: the current folder)
-      --data DIR      Data folder (default ~/.pi-pocket)
+      --data DIR      Data folder (default ~/.noid)
       --host HOST     Listen on this address instead of choosing an access mode
       --rotate-token  Replace the owner sign-in link, signing out the devices that used it
   -h, --help          Show this help
@@ -42,7 +42,9 @@ export function parseArgs(argv: string[]): Options {
         host: process.env.PI_POCKET_HOST || undefined,
         port: Number(process.env.PI_POCKET_PORT ?? 8787),
         cwd: process.cwd(),
-        data: resolve(process.env.PI_POCKET_DIR ?? join(homedir(), ".pi-pocket")),
+        data: resolve(
+            process.env.NOID_DIR ?? process.env.PI_POCKET_DIR ?? join(homedir(), ".noid"),
+        ),
         rotateToken: false,
     };
 

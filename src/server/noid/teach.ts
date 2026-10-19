@@ -33,13 +33,29 @@ const oneLine = (text: string) =>
         .replace(/\s+/g, " ")
         .trim();
 
+/**
+ * A step as it is kept while the lesson goes on: a secret's text is dropped there and then, so it never reaches the
+ * database (whose history keeps every version), not only the skill.
+ */
+export function keptStep(step: TaughtStep): TaughtStep {
+    if (step.action === "type" && (step.secret === true || SECRET.test(String(step.text)))) {
+        return { action: "type", secret: true };
+    }
+
+    if (step.action === "open" && SECRET.test(String(step.command))) {
+        return { action: "open", secret: true };
+    }
+
+    return step;
+}
+
 /** A playbook step for one action, in words a bot follows with the desktop tool. */
 export function describeStep(step: TaughtStep): string | undefined {
     const at = `(${String(step.x)}, ${String(step.y)})`;
 
     switch (step.action) {
         case "open":
-            return SECRET.test(String(step.command))
+            return step.secret === true || SECRET.test(String(step.command))
                 ? "Open the program the task needs (its command held a secret, so it was not recorded; ask the owner)."
                 : `Open the program ${quoted(step.command)} (desktop open).`;
         case "click":
@@ -184,7 +200,7 @@ export class Teaching {
             step.action !== "release" &&
             this.#lesson.steps.length < MAX_STEPS
         ) {
-            this.#lesson.steps.push(step);
+            this.#lesson.steps.push(keptStep(step));
             await this.#save(this.#lesson);
         }
     }

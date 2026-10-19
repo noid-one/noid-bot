@@ -23,6 +23,13 @@ export const BASE_LOOK = "pocket";
 /** What the app's own look is called: its id stays "pocket", which browsers have saved. */
 export const BASE_LOOK_NAME = "noid";
 
+/** The sidebar's usual width, the rail and its list together: the one a new browser starts with. */
+export const SIDEBAR_WIDTH = 312;
+
+/** The open sidebar's narrowest and widest, the rail included: a saved width is kept within them too. */
+export const SIDEBAR_MIN = 264;
+export const SIDEBAR_MAX = 524;
+
 const DEFAULTS = {
     /**
      * The colors: "desktop" follows the Omarchy theme of the machine noid runs on; otherwise a key of THEMES, or the id
@@ -52,7 +59,7 @@ const DEFAULTS = {
     /** The sidebar on wide screens: "open", or "rail" (icons and numbered sessions only). */
     sidebar: "open",
     /** The open sidebar's width, its borders, the rail, and the list's: a 254px list. */
-    sidebarWidth: 312,
+    sidebarWidth: SIDEBAR_WIDTH,
     /** How the session list groups: "recent" (by day) or "folder". */
     group: "recent",
     /** Other sessions' live work as peek tiles beside the session (a strip on narrow screens). Off until turned on. */
@@ -152,8 +159,8 @@ const WIDTHS = {
     full: { "--transcript-width": "100%", "--composer-width": "100%" },
 };
 
-/** The open sidebar's width as it shows: the rail and its borders, and a list 204–464px wide. */
-const sidebarWidth = (p) => `${Math.min(524, Math.max(264, p.sidebarWidth))}px`;
+/** The open sidebar's width as it shows, the rail and its borders included. */
+const sidebarWidth = (p) => `${Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, p.sidebarWidth))}px`;
 
 /** This browser's own choices: what it saved, over the defaults. */
 let own = { ...DEFAULTS, ...savedPrefs() };

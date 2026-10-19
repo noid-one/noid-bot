@@ -5,7 +5,8 @@
  * who may do it, and changes others should know about become activity lines in the session's chat.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { basename, extname, join, posix } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -156,7 +157,7 @@ function entryIdOf(value: unknown): number {
  * a conversation holds many, and then every request fails until they leave its context.
  */
 async function modelImage(path: string, mimeType: string): Promise<ImageContent> {
-    return modelImageOf(readFileSync(path), mimeType);
+    return modelImageOf(await readFile(path), mimeType);
 }
 
 /** As `modelImage`, for an image already read (noid: one from the shared computer). */
@@ -370,8 +371,11 @@ export class Commands {
             bot,
             instructions,
             extensions,
+            startedBy,
         }: {
             projectDefaults?: boolean;
+            /** The session tools' call that starts it (`SessionMeta.startedBy`). */
+            startedBy?: string;
             bot?: BotProfile;
             instructions?: string;
             /** noid: extensions this session selects besides the host's (a bot's own tools). */
@@ -391,6 +395,11 @@ export class Commands {
         const requested = optionalText(request.cwd, "cwd") ?? app.defaultCwd;
         // noid: a folder on the shared computer is made there; worktrees are of this machine's repositories.
         const remote = app.claims(normalFolder(requested));
+
+        // The computer is the owner's, as its terminal and desktop are: its browser holds every bot's logins.
+        if (remote && user.role !== "owner") {
+            throw new HttpError(403, "Only the owner works on the shared computer.");
+        }
 
         if (remote && request.worktree === true) {
             throw new HttpError(
@@ -437,6 +446,7 @@ export class Commands {
                                 ...(title === undefined ? {} : { title }),
                                 ...(worktree === undefined ? {} : { worktree }),
                                 ...(bot === undefined ? {} : { bot }),
+                                ...(startedBy === undefined ? {} : { startedBy }),
                             };
                         },
                     },
@@ -1158,21 +1168,24 @@ export class Commands {
 
         await env.createDir(folder, { recursive: true }, context);
 
-        return Promise.all(
-            attachments.map(async (file) => {
-                const target = posix.join(folder, basename(file.path));
-                const written = await env.writeFile(target, readFileSync(file.path), context);
+        // One at a time, read without blocking: uploads run to 50 MB each, and all of them at once would sit in memory.
+        const targets: string[] = [];
 
-                if (!written.ok) {
-                    throw new HttpError(
-                        409,
-                        `Could not copy ${file.name} to the computer: ${written.error.message}`,
-                    );
-                }
+        for (const file of attachments) {
+            const target = posix.join(folder, basename(file.path));
+            const written = await env.writeFile(target, await readFile(file.path), context);
 
-                return target;
-            }),
-        );
+            if (!written.ok) {
+                throw new HttpError(
+                    409,
+                    `Could not copy ${file.name} to the computer: ${written.error.message}`,
+                );
+            }
+
+            targets.push(target);
+        }
+
+        return targets;
     }
 
     /** A message to Pi as the model gets it: with more than one person on this server, it says who is talking. */
@@ -1392,6 +1405,15 @@ export class Commands {
             current?.thinkingLevel ??
             "off") as ModelThinkingLevel;
         const thinkingLevel = model === undefined ? wanted : clampThinkingLevel(model, wanted);
+
+        if (
+            request.cwd !== undefined &&
+            user.role !== "owner" &&
+            app.claims(normalFolder(request.cwd))
+        ) {
+            throw new HttpError(403, "Only the owner works on the shared computer.");
+        }
+
         const cwd =
             request.cwd === undefined ? undefined : app.workspace.prepareFolder(request.cwd);
 

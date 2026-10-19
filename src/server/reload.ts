@@ -86,7 +86,8 @@ const TITLES: Record<string, string> = {
  * with a name already taken replaces it in place, so a drop-in that used one would quietly replace a built-in (or be
  * replaced by it when the built-in is turned on), and turning the drop-in off would remove the built-in too.
  */
-export const RESERVED_EXTENSIONS = /^(pocket-.*|noid-sessions|coding-tools)$/;
+// noid's own (approvals, bot mail, the desktop, groups) are all noid-: a drop-in of one's name would replace the guard.
+export const RESERVED_EXTENSIONS = /^(pocket-.*|noid-.*|coding-tools)$/;
 
 /** The tools of Pi Durable's coding tools and of the built-in modules, kept in step with what they install by hand. */
 export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
@@ -113,6 +114,14 @@ export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     "watch_pr",
     "repo_watch",
     "session_watch_pr",
+    // noid's bot mail, overseer, and desktop.
+    "bots",
+    "bot_message",
+    "bot_brief",
+    "bot_create",
+    "bot_update",
+    "bot_archive",
+    "desktop",
 ]);
 
 /** Pi Pocket's own modules, or the owner's from the drop-in folder. */

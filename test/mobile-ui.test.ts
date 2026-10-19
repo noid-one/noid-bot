@@ -6,6 +6,7 @@ import {
     root,
     say,
     scriptedModel,
+    showSessions,
     until,
     work,
 } from "./helpers.ts";
@@ -111,6 +112,7 @@ async function fresh(): Promise<void> {
         }
     `);
     await page.navigate(`${base}/`);
+    await showSessions(page);
     await until(
         async () =>
             (await inPage<boolean>(
@@ -147,6 +149,7 @@ before(async () => {
     page = await browsers.open(1);
     await page.setViewport(VIEWPORTS.mobile);
     await page.navigate(`${base}/login?token=${encodeURIComponent(app.config.ownerToken)}`);
+    await showSessions(page);
     await until(
         async () =>
             (await inPage<boolean>(

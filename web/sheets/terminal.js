@@ -50,6 +50,10 @@ export function TerminalPage({ cwd }) {
         let gone = false;
         let term;
         let observer;
+        let resizing;
+        // The read waiting on the server (up to 25 seconds) ends with the page: held open, each would take one of the
+        // browser's few connections to the server.
+        const reads = new AbortController();
 
         void (async () => {
             try {
@@ -90,14 +94,23 @@ export function TerminalPage({ cwd }) {
                 }
 
                 const id = opened.id;
-                const resize = () =>
-                    api(`terminals/${id}/resize`, { cols: term.cols, rows: term.rows }).catch(
+                // The size the shell has: a new one was made at this size, a running one may have another.
+                let size = running === undefined ? `${term.cols}x${term.rows}` : "";
+
+                const resize = () => {
+                    const now = `${term.cols}x${term.rows}`;
+
+                    if (now === size) {
+                        return;
+                    }
+
+                    size = now;
+                    void api(`terminals/${id}/resize`, { cols: term.cols, rows: term.rows }).catch(
                         () => {},
                     );
+                };
 
-                if (running !== undefined) {
-                    void resize();
-                }
+                resize();
 
                 setStatus("");
                 term.focus();
@@ -130,20 +143,30 @@ export function TerminalPage({ cwd }) {
                     queued += data;
                     void send();
                 });
+                // Once the size settles: dragging a splitter would send dozens.
                 observer = new ResizeObserver(() => {
                     fit.fit();
-                    void resize();
+                    clearTimeout(resizing);
+                    resizing = setTimeout(resize, 150);
                 });
                 observer.observe(host.current);
 
                 let next = 0;
+                let failing = false;
 
                 while (!gone) {
                     try {
-                        const read = await api(`terminals/${id}/read?from=${next}`);
+                        const read = await api(`terminals/${id}/read?from=${next}`, undefined, {
+                            signal: reads.signal,
+                        });
 
                         if (gone) {
                             return;
+                        }
+
+                        if (failing) {
+                            failing = false;
+                            setStatus("");
                         }
 
                         term.write(bytes(read.data));
@@ -156,6 +179,10 @@ export function TerminalPage({ cwd }) {
                             return;
                         }
                     } catch (error) {
+                        if (gone) {
+                            return;
+                        }
+
                         if (error.status === 404) {
                             shell.current = undefined;
                             setStatus("The shell is gone.");
@@ -163,6 +190,15 @@ export function TerminalPage({ cwd }) {
                             return;
                         }
 
+                        // Signed out, or no longer allowed: trying again would not change that.
+                        if (error.status === 401 || error.status === 403) {
+                            setStatus(`The shell cannot be read: ${error.message}`);
+
+                            return;
+                        }
+
+                        failing = true;
+                        setStatus(`Reconnecting to the shell… (${error.message})`);
                         await new Promise((resolve) => setTimeout(resolve, 1000));
                     }
                 }
@@ -175,6 +211,8 @@ export function TerminalPage({ cwd }) {
 
         return () => {
             gone = true;
+            reads.abort();
+            clearTimeout(resizing);
             observer?.disconnect();
             term?.dispose();
         };

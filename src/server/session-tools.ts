@@ -320,14 +320,18 @@ export class SessionTools {
         return this.#counted(counted, make);
     }
 
-    /** Do `make`, counted as one of the bot's actions; refused (nothing made), it gives its count back. */
-    async #counted<T>(user: User, make: () => Promise<T>): Promise<T> {
-        this.#count(user, "act", ACTIONS_PER_HOUR);
+    /** Do `make`, counted as one of the bot's actions (or starts); refused (nothing made), it gives its count back. */
+    async #counted<T>(
+        user: User,
+        make: () => Promise<T>,
+        kind: "start" | "act" = "act",
+    ): Promise<T> {
+        this.#count(user, kind, kind === "start" ? STARTS_PER_HOUR : ACTIONS_PER_HOUR);
 
         try {
             return await make();
         } catch (error) {
-            this.#recent.get(`${user.id}:act`)?.pop();
+            this.#recent.get(`${user.id}:${kind}`)?.pop();
 
             throw error;
         }
@@ -863,9 +867,22 @@ export class SessionTools {
             model?: string;
             message?: string;
         },
+        key?: string,
     ): Promise<ConversationId> {
         const app = this.#app;
         const user = this.#person(botId);
+        // A call run again after a restart, which made its session but had not kept it: that one, not a second.
+        const made =
+            key === undefined
+                ? undefined
+                : Object.entries(app.sessionCatalogue()).find(
+                      ([, meta]) => meta.startedBy === key,
+                  )?.[0];
+
+        if (made !== undefined) {
+            return Number(made) as unknown as ConversationId;
+        }
+
         // Before anything is made: a model that is not there, or that nobody chose, leaves no session behind.
         const model =
             request.model === undefined
@@ -882,17 +899,28 @@ export class SessionTools {
             throw new Error("Give a folder or a repository, not both.");
         }
 
-        this.#count(user, "start", STARTS_PER_HOUR);
-        const folder =
-            request.repo === undefined ? request.folder : await this.checkout(botId, request.repo);
-        const { id } = await app.commands.createSession(
+        const { id } = await this.#counted(
             user,
-            {
-                ...(folder === undefined ? {} : { cwd: folder }),
-                ...(request.title === undefined ? {} : { title: request.title }),
-                worktree: request.worktree === true,
+            async () => {
+                const folder =
+                    request.repo === undefined
+                        ? request.folder
+                        : await this.checkout(botId, request.repo);
+
+                return app.commands.createSession(
+                    user,
+                    {
+                        ...(folder === undefined ? {} : { cwd: folder }),
+                        ...(request.title === undefined ? {} : { title: request.title }),
+                        worktree: request.worktree === true,
+                    },
+                    {
+                        projectDefaults: model === undefined,
+                        ...(key === undefined ? {} : { startedBy: key }),
+                    },
+                );
             },
-            { projectDefaults: model === undefined },
+            "start",
         );
 
         if (model !== undefined) {
@@ -968,10 +996,19 @@ export class SessionTools {
 
         folders.add(app.defaultCwd);
 
-        for (const folder of [clone, ...[...folders].slice(0, 200)]) {
-            if (existsSync(folder) && sameRepo(await this.#origin(folder), info.repo)) {
+        // A few at a time, in order: each folder not yet known asks git for its origin.
+        const candidates = [clone, ...[...folders].slice(0, 200)].filter((each) =>
+            existsSync(each),
+        );
+
+        for (let at = 0; at < candidates.length; at += 8) {
+            const batch = candidates.slice(at, at + 8);
+            const origins = await Promise.all(batch.map((folder) => this.#origin(folder)));
+            const found = batch.find((_folder, index) => sameRepo(origins[index], info.repo));
+
+            if (found !== undefined) {
                 return (
-                    await git(folder, ["rev-parse", "--show-toplevel"]).catch(() => folder)
+                    await git(found, ["rev-parse", "--show-toplevel"]).catch(() => found)
                 ).trim();
             }
         }
@@ -1277,6 +1314,9 @@ export class SessionTools {
             this.#requireLooked(botId, sessionId, "follow");
         }
 
+        // Counted once, however often the commit runs its callback.
+        let counted = false;
+
         await app.harness.commit(async (tx) => {
             const follows = (await tx.doc(FollowsDoc, botId)).items;
 
@@ -1318,7 +1358,11 @@ export class SessionTools {
                 );
             }
 
-            this.#count(user, "act", ACTIONS_PER_HOUR);
+            if (!counted) {
+                this.#count(user, "act", ACTIONS_PER_HOUR);
+                counted = true;
+            }
+
             const taskId = await tx.createTask(
                 this.task,
                 {

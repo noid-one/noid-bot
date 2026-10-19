@@ -35,6 +35,8 @@ export type SessionMeta = {
     fromPi?: { session: string; count: number };
     /** noid: the bot this session is, with one continuous thread (`noid/bots.ts`). */
     bot?: BotProfile;
+    /** The session tools' call that started it: a call run again after a restart finds it, not a second one. */
+    startedBy?: string;
 };
 
 /** The catalogue of user-facing sessions: ownerless conversations created by the app. Subagents are not listed. */
