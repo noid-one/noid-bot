@@ -15,7 +15,7 @@ import type { User } from "./config.ts";
 import { AuthorsDoc } from "./docs.ts";
 import { transcriptMarkdown } from "./export.ts";
 import { homePath } from "./paths.ts";
-import { type ClientEntry, projectEntry } from "./projection.ts";
+import { type ClientEntry, entryText, projectEntry, snippet } from "./projection.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -129,6 +129,23 @@ export class Transcripts {
         } while (cursor !== undefined && out.length < limit);
 
         return out.slice(0, limit).reverse();
+    }
+
+    /** noid: what Pi last said in a conversation, in a line, from its newest entries; undefined when it has said nothing. */
+    async lastSaid(id: ConversationId): Promise<string | undefined> {
+        const conversation = await this.#app.conversation(id);
+        const page = await conversation.entries({}, 64, undefined, context);
+
+        for (const entry of page.items) {
+            const projected = projectEntry(entry);
+            const text = projected?.kind === "assistant" ? entryText(projected).trim() : "";
+
+            if (text !== "") {
+                return snippet(text, 160);
+            }
+        }
+
+        return undefined;
     }
 
     /** A conversation's whole history, oldest first, as browsers get it (`full`: nothing clipped). */

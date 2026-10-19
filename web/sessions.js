@@ -571,7 +571,7 @@ function SectionHead({ name, count, part, folded, onFold, add, onAdd }) {
 
 /** noid: how tall the bot list is, as the owner dragged it (`--bots-h`); none set, it takes what it needs. */
 const BOTS_HEIGHT_KEY = "pocket.botsHeight";
-const BOTS_MIN = 60;
+const BOTS_MIN = 120;
 const botsHeight = Number(localStorage.getItem(BOTS_HEIGHT_KEY));
 
 if (botsHeight > 0) {
@@ -593,6 +593,10 @@ function BotList({ compact, canStart, folded, onFold }) {
         return null;
     }
 
+    // Noid on its own, above the others, as Grok's list puts Grok.
+    const main = bots[0]?.bot.main === true ? bots[0] : undefined;
+    const others = main === undefined ? bots : bots.slice(1);
+
     return html`<div class=${`bots ${folded ? "folded" : ""}`} data-part="bot-list">
         <${SectionHead}
             name="Bots"
@@ -604,12 +608,20 @@ function BotList({ compact, canStart, folded, onFold }) {
             onAdd=${canStart && (() => openSheet({ type: "bot" }))}
         />
         <div class="bot-items">
-            ${bots.map(
+            ${
+                main &&
+                html`<${MainBot}
+                    session=${main}
+                    active=${main.id === conversationId}
+                    size=${compact ? 64 : 72}
+                />`
+            }
+            ${others.map(
                 (session) => html`<${BotRow}
                     key=${session.id}
                     session=${session}
                     active=${session.id === conversationId}
-                    size=${compact ? 20 : 22}
+                    size=${compact ? 42 : 44}
                 />`,
             )}
         </div>
@@ -634,6 +646,39 @@ function BotList({ compact, canStart, folded, onFold }) {
     </div>`;
 }
 
+/** What a bot's row says under its name: what it is doing when that matters, else what it last said, else its role. */
+function botLine(session) {
+    const mark = sessionMark(session);
+    const busy = ["working", "waiting", "failed"].includes(mark.shape.split(" ")[0]);
+
+    return busy ? mark.label : (session.said ?? session.bot.role);
+}
+
+/** noid: Noid, the main bot, at the top of the list: a big face and its name. */
+function MainBot({ session, active, size }) {
+    const { bot } = session;
+
+    return html`<button
+        class=${`bot-main ${active ? "active" : ""}`}
+        data-part="bot-row"
+        data-state=${botFaceState(session)}
+        aria-current=${active ? "page" : undefined}
+        title=${session.said ?? bot.role}
+        onClick=${() => navigate(session.id)}
+    >
+        <${Face}
+            id=${bot.id}
+            color=${bot.color}
+            skin=${bot.skin}
+            eyes=${bot.eyes}
+            state=${botFaceState(session)}
+            size=${size}
+            label=${bot.name}
+        />
+        <span class="bot-name">${bot.name}</span>
+    </button>`;
+}
+
 function BotRow({ session, active, size }) {
     const { bot } = session;
     const mark = sessionMark(session);
@@ -648,7 +693,7 @@ function BotRow({ session, active, size }) {
 
     return html`<button
         ref=${row}
-        class=${`bot-row ${active ? "active" : ""}`}
+        class=${`bot-row ${active ? "active" : ""} ${mark.shape.startsWith("fresh") ? "fresh" : ""}`}
         data-part="bot-row"
         data-state=${botFaceState(session)}
         aria-current=${active ? "page" : undefined}
@@ -666,7 +711,7 @@ function BotRow({ session, active, size }) {
         />
         <span class="bot-text">
             <span class="bot-name">${bot.name}</span>
-            <span class="bot-role">${mark.label || bot.role}</span>
+            <span class="bot-role">${botLine(session)}</span>
         </span>
     </button>`;
 }

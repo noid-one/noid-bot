@@ -40,6 +40,10 @@ at hairlines, a header line that runs across the whole width, quiet section head
   splitter (`web/splitter.js`) instead of separate copies.
   Drag it, focus it and use the arrow keys (Shift for bigger steps, Home and End for the limits), or double-click it
   (or press Enter) to reset. The edge lights up while you drag or focus it.
+- **Bots as Grok lists them.** Noid on its own at the top, a big face over its name; each other bot a 44px face, its
+  name, and what it last said under it (what it is doing instead, while it works, waits, or failed). The server sends
+  each bot's last words with the session list (`said`). The top bar's face is as big as the list's, with room to its
+  left.
 - **Noid first.** The home screen counts bots and sessions apart. Its first button is **Message Noid**, then New bot,
   New session, and the launcher. The message box says "Message Noid…" in a bot's conversation, and "Ask anything…" in
   a plain session.

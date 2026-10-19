@@ -10,6 +10,7 @@ import {
     root,
     say,
     scriptedModel,
+    until,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -112,4 +113,16 @@ test("Noid acts as the owner, so only the owner sees it", () => {
 
     assert.equal(app.canSee(owner(app), noid), true);
     assert.equal(app.canSee(guest, noid), false);
+});
+
+test("the list says what a bot last said, under its name", async () => {
+    await say(app, noid, "hello there");
+    await until(
+        () =>
+            app
+                .sessions()
+                .find((session) => Number(session.id) === Number(noid))
+                ?.said?.endsWith("hello there") === true,
+        "the list to say Noid's last words",
+    );
 });

@@ -360,6 +360,8 @@ export class PocketApp {
     readonly #busy = new Set<ConversationId>();
     /** When each conversation's last run ended, since this server started: peek tiles show sessions done since a look. */
     readonly #endedAt = new Map<ConversationId, number>();
+    /** noid: what each bot last said, for its row in the list (Grok's list shows it): read once, and as its runs end. */
+    readonly #lastSaid = new Map<string, string | undefined>();
     /**
      * Conversations whose last run ended because the model or provider failed (not stopped by someone), since this
      * server started: the session list marks them until their next run starts.
@@ -920,6 +922,11 @@ export class PocketApp {
 
                     if (this.#sessions[String(id)] !== undefined) {
                         this.#endedAt.set(id, Date.now());
+                    }
+
+                    // Read once this change is committed: inside its listener, the answer is not there yet.
+                    if (this.#sessions[String(id)]?.bot !== undefined) {
+                        setTimeout(() => void this.#readLastSaid(String(id)), 0);
                     }
                 }
 
@@ -1977,6 +1984,22 @@ export class PocketApp {
     }
 
     /** The session list, with who is in each session and its newest chat message. Scoped people see only theirs. */
+    /** noid: read what a bot last said, then tell the lists. */
+    async #readLastSaid(id: string): Promise<void> {
+        this.#lastSaid.set(id, this.#lastSaid.get(id));
+
+        try {
+            const said = await this.transcripts.lastSaid(Number(id) as unknown as ConversationId);
+
+            if (said !== this.#lastSaid.get(id)) {
+                this.#lastSaid.set(id, said);
+                this.#scheduleSessions();
+            }
+        } catch {
+            // A conversation that cannot be read yet shows its role instead.
+        }
+    }
+
     sessions(user?: User) {
         const waiting = new Set(
             this.approvals.all().map((approval) => String(this.rootOf(approval.conversationId))),
@@ -2010,6 +2033,12 @@ export class PocketApp {
                     ([userId, name]) => ({ id: userId, name }),
                 );
                 const chat = this.#lastChat.get(id);
+
+                if (meta.bot !== undefined && !this.#lastSaid.has(id)) {
+                    void this.#readLastSaid(id);
+                }
+
+                const said = this.#lastSaid.get(id);
                 const endedAt = this.#endedAt.get(Number(id) as unknown as ConversationId);
                 const counts = countSubagents(subagents.get(id) ?? []);
                 // Which of Pi's sessions it continues is the owner's to know (the Pi sessions sheet), not the list's.
@@ -2044,6 +2073,7 @@ export class PocketApp {
                     ...(here.length === 0 ? {} : { people: here }),
                     ...(chat === undefined ? {} : { chatAt: chat.at, chatBy: chat.userId }),
                     ...(counts === undefined ? {} : { subagents: counts }),
+                    ...(said === undefined ? {} : { said }),
                 };
             })
             .sort((a, b) => b.updatedAt - a.updatedAt);

@@ -159,7 +159,7 @@ function Topbar() {
                     skin=${botSession.bot.skin}
                     eyes=${botSession.bot.eyes}
                     state=${botFaceState(botSession)}
-                    size=${32}
+                    size=${44}
                     label=${botSession.bot.name}
                 />
             </button>`
