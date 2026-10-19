@@ -162,6 +162,24 @@ const toInt = (value: unknown, name: string, max: number): number => {
 };
 
 /**
+ * Point at (x, y), first raising and focusing the window there, then run the xdotool commands after them. The desktop
+ * has no window manager, so nothing else does: keys would stay with whichever program last took them, perhaps under
+ * the window clicked. xwininfo lists windows topmost first; xdotool cannot tell which is under the pointer without one.
+ */
+const POINT_AT = `x=$1 y=$2; shift 2
+shown=" $(xdotool search --onlyvisible --name '' | tr '\\n' ' ') "
+xwininfo -root -children | sed -n 's/^ *\\(0x[0-9a-f]*\\) .* \\([0-9]*\\)x\\([0-9]*\\)+-\\{0,1\\}[0-9]*+-\\{0,1\\}[0-9]* *+\\(-\\{0,1\\}[0-9]*\\)+\\(-\\{0,1\\}[0-9]*\\)$/\\1 \\2 \\3 \\4 \\5/p' |
+while read -r id w h left top; do
+    id=$((id))
+    case "$shown" in *" $id "*) ;; *) continue ;; esac
+    if [ "$x" -ge "$left" ] && [ "$x" -lt $((left + w)) ] && [ "$y" -ge "$top" ] && [ "$y" -lt $((top + h)) ]; then
+        xdotool windowraise "$id" windowfocus "$id"
+        break
+    fi
+done
+exec xdotool mousemove "$x" "$y" "$@"`;
+
+/**
  * The command for an action, as argv: xdotool's, or a shell that starts a program for `open`. Undefined for a
  * screenshot. Throws on arguments that do not fit, before anything runs.
  */
@@ -176,15 +194,17 @@ export function commandFor(input: Record<string, unknown>): string[] | undefined
         case "move":
             return ["xdotool", "mousemove", x(), y()];
         case "click":
-            return ["xdotool", "mousemove", x(), y(), "click", "1"];
+            return ["sh", "-c", POINT_AT, "point", x(), y(), "click", "1"];
         case "double_click":
-            return ["xdotool", "mousemove", x(), y(), "click", "--repeat", "2", "1"];
+            return ["sh", "-c", POINT_AT, "point", x(), y(), "click", "--repeat", "2", "1"];
         case "right_click":
-            return ["xdotool", "mousemove", x(), y(), "click", "3"];
+            return ["sh", "-c", POINT_AT, "point", x(), y(), "click", "3"];
         case "drag":
             return [
-                "xdotool",
-                "mousemove",
+                "sh",
+                "-c",
+                POINT_AT,
+                "point",
                 x(),
                 y(),
                 "mousedown",

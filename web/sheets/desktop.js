@@ -79,10 +79,11 @@ const PROGRAMS = [
     {
         label: "Terminal window",
         icon: "terminal",
-        // Dark, as the app's own terminal, and the whole screen: with no window manager, xdotool finds it by a
-        // class name of its own (bash's prompt changes its title) and sizes it.
+        // Dark, as the app's own terminal, in color (bash colors its prompt for a 256-color terminal), and the whole
+        // screen with the keys: with no window manager, xdotool finds it by a class name of its own (bash's prompt
+        // changes its title), sizes it, and focuses it.
         command:
-            "xterm -fa 'DejaVu Sans Mono' -fs 11 -bg '#16161e' -fg '#c0caf5' -cr '#7aa2f7' -b 6 -name term-$$ & w=$!; xdotool search --sync --onlyvisible --classname ^term-$$$ windowmove 0 0 windowsize 1280 800; wait $w",
+            "xterm -tn xterm-256color -fa 'DejaVu Sans Mono' -fs 11 -bg '#16161e' -fg '#c0caf5' -cr '#7aa2f7' -b 6 -name term-$$ & w=$!; xdotool search --sync --onlyvisible --classname ^term-$$$ windowmove 0 0 windowsize 1280 800 windowfocus; wait $w",
     },
     {
         label: "Browser",
@@ -133,6 +134,7 @@ export function DesktopPage() {
     // While showing: what is typed now is a secret, typed but never kept in the skill.
     const [secret, setSecret] = useState(false);
     const image = useRef(null);
+    const frame = useRef(null);
     // The refresh loop: when the last input went out, and how to wake it for a picture now.
     const lastInput = useRef(0);
     const wake = useRef(() => {});
@@ -224,9 +226,11 @@ export function DesktopPage() {
         typed.current.timer = setTimeout(flushTyped, 60);
     };
 
-    // Opened by the owner: it shows at the next picture, and is closed when the desktop is given back.
+    // Opened by the owner: it shows at the next picture, and is closed when the desktop is given back. Keys go to the
+    // screen, where the program is.
     const open = (command) => {
         setBlank(false);
+        frame.current?.focus({ preventScroll: true });
         void act({ action: "open", command });
     };
 
@@ -455,6 +459,7 @@ export function DesktopPage() {
                 ? html`<div
                       class=${`desktop-frame ${focused ? "focused" : ""}`}
                       tabindex="0"
+                      ref=${frame}
                       role="application"
                       aria-label="The computer's desktop: click it, then type"
                       onPointerDown=${onPointerDown}

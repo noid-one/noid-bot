@@ -66,14 +66,18 @@ test("a bot keeping it ten minutes in a row gives way to one that waits; the own
 
 test("each action is its xdotool command, and arguments that do not fit are refused", () => {
     assert.equal(commandFor({ action: "screenshot" }), undefined);
-    assert.deepEqual(commandFor({ action: "click", x: 10.4, y: 20 }), [
-        "xdotool",
-        "mousemove",
+    // A click first raises and focuses the window under it: the desktop has no window manager to.
+    assert.deepEqual(commandFor({ action: "click", x: 10.4, y: 20 })!.slice(3), [
+        "point",
         "10",
         "20",
         "click",
         "1",
     ]);
+    assert.match(
+        commandFor({ action: "click", x: 1, y: 1 })![2]!,
+        /windowraise "\$id" windowfocus "\$id"/,
+    );
     assert.deepEqual(commandFor({ action: "scroll", x: 1, y: 1, dy: -3 })!.slice(-2), ["3", "4"]);
     assert.deepEqual(commandFor({ action: "key", keys: "ctrl+s Enter" }), [
         "xdotool",
