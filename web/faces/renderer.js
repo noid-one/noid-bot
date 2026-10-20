@@ -21,6 +21,8 @@ const DROWSY_FPS = 4;
 const DROWSY_AFTER_MS = 20_000;
 /** And once nobody has touched the page for this long (left open on a desk): still, until something happens. */
 const ASLEEP_AFTER_MS = 120_000;
+/** How long every face in sight must have rested, unchanged, before they keep still: their poses have eased home. */
+const SETTLE_MS = 3000;
 const AT_REST = new Set(["idle", "asleep"]);
 /** How long after the pointer moves the eyes may still be following it. */
 const POINTER_SETTLE_MS = 1500;
@@ -191,6 +193,8 @@ function createRenderer() {
         schedule();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
     let frame = 0;
+    /** Since when every face in sight has rested, unchanged. */
+    let restSince = 0;
     /** While every face rests: the wait for the next frame, so no frame is asked for in between. */
     let resting = 0;
     let lastDraw = 0;
@@ -363,10 +367,23 @@ function createRenderer() {
         // A face off screen that changed is drawn when it shows again: it does not lift the frame cap meanwhile.
         let dirty = false;
         let calm = now - pointer.at > POINTER_SETTLE_MS;
+        // A face mid-blink (eyes shut on an idle face) is not one to keep still.
+        let blinking = false;
 
         for (const face of faces) {
-            dirty ||= face.visible && face.dirty;
-            calm &&= !face.visible || AT_REST.has(face.motion.state);
+            if (!face.visible) {
+                continue;
+            }
+
+            const state = face.motion.state;
+
+            dirty ||= face.dirty;
+            calm &&= AT_REST.has(state);
+            blinking ||= state === "idle" && face.motion.pose.open < 0.9;
+
+            if (face.dirty || !AT_REST.has(state)) {
+                restSince = now;
+            }
         }
 
         const fps = !calm ? FPS : now - pointer.at > DROWSY_AFTER_MS ? DROWSY_FPS : RESTING_FPS;
@@ -391,7 +408,10 @@ function createRenderer() {
         // With reduced motion, faces are drawn only when something changes; so too on a page nobody has touched for a
         // while. At rest, nothing until the next frame is due: a change, a face coming into sight, the pointer, or a
         // key asks for one sooner (`schedule`).
-        if (still || (calm && now - pointer.at > ASLEEP_AFTER_MS)) {
+        const asleep =
+            calm && now - pointer.at > ASLEEP_AFTER_MS && now - restSince > SETTLE_MS && !blinking;
+
+        if (still || asleep) {
             return;
         }
 
