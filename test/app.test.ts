@@ -847,6 +847,46 @@ test("a tab gets the queue when it changes, not with each update of a turn, and 
     }
 });
 
+test("a tab of protocol 3 gets the answer being written as what changed, an older tab whole", async () => {
+    const { liveMessage } = (await import(new URL("../web/live.js", import.meta.url).href)) as {
+        liveMessage: (current: unknown, update: unknown) => unknown;
+    };
+    const id = await newSession();
+    const tab = fakeTab(id, owner(), 3);
+    const old = fakeTab(id, owner(), 2);
+
+    type Live = { generation?: { message?: { keep?: number } } };
+    const lives = (of: typeof tab) =>
+        of.events.flatMap((each) => (each.event === "view" ? [each.data.live as Live] : []));
+    const size = (of: typeof tab) => JSON.stringify(lives(of)).length;
+
+    await app.attach(tab.client);
+    await app.attach(old.client);
+
+    try {
+        await app.commands.submit(id, owner(), {
+            text: "stream a long answer",
+            requestId: crypto.randomUUID(),
+        });
+        await until(() => size(old) > 200_000, "the answer to stream a while");
+        // Both tabs get each update at once: the new one's changes add up to the old one's whole message.
+        let shown: unknown = undefined;
+
+        for (const live of lives(tab)) {
+            shown = liveMessage(shown, live.generation?.message);
+        }
+
+        assert.deepEqual(shown, lives(old).at(-1)!.generation?.message);
+        assert.ok(lives(tab).some((live) => live.generation?.message?.keep !== undefined));
+        assert.ok(lives(old).every((live) => live.generation?.message?.keep === undefined));
+        assert.ok(size(tab) * 5 < size(old), `${size(tab)} bytes, against ${size(old)}`);
+        await app.commands.abort(id, owner());
+    } finally {
+        app.detach(tab.client);
+        app.detach(old.client);
+    }
+});
+
 test("requests with the wrong types are refused, and nothing odd is stored", async () => {
     const id = await newSession();
 

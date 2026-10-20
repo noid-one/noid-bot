@@ -46,7 +46,11 @@ import {
 import { COMMAND_ENTRY, SHELL_ENTRY } from "./entry-format.ts";
 import { agentInfo } from "./models.ts";
 import {
+    type ClientBlock,
     type ClientEntry,
+    type ClientLive,
+    type ClientLiveUpdate,
+    liveMessageDelta,
     PEEK_LINES,
     type PeekLine,
     peekLines,
@@ -123,10 +127,13 @@ export interface Client {
     /** The JSON of each slow-changing view field this client last got, so updates repeat only those that changed. */
     sentFields?: Map<string, string>;
     /**
-     * What the tab's code understands of updates (`PROTOCOL` in `web/store.js`): 2 keeps the queue an update leaves out.
-     * Older code names none, and gets the queue with each update.
+     * What the tab's code understands of updates (`PROTOCOL` in `web/store.js`): 2 keeps the queue an update leaves out;
+     * 3 also takes the live message as what changed (`liveMessageDelta`). Older code names none, and gets the queue and
+     * the whole live message with each update.
      */
     readonly protocol?: number;
+    /** The blocks of the live message this tab has, for protocol 3: undefined when it has none. */
+    liveBlocks?: ClientBlock[];
     /**
      * This connection, apart from others of the same tab id: a duplicated browser tab keeps the id, and a reconnect
      * briefly overlaps the old connection. Sent in `hello`; peek lists name it.
@@ -280,6 +287,8 @@ export class Room {
     /** The branch this view last read, as JSON. */
     #head = "";
     readonly #projected = new Map<number, ClientEntry | null>();
+    /** The live run as tabs get it, projected once for each state of it, not once for each tab. */
+    #live: { from: LiveState | undefined; projected: ClientLive } | undefined;
     /** Each waiting message's text for the queue, and the subagents it reports from: what it says does not change. */
     readonly #queued = new Map<number, { text: string; reports: string[] | undefined }>();
     authors: Record<string, string> = {};
@@ -491,6 +500,7 @@ export class Room {
             client.sentEntries.clear();
             client.orderKey = "";
             sentFields.clear();
+            client.liveBlocks = undefined;
         }
 
         const entries: ClientEntry[] = [];
@@ -517,7 +527,7 @@ export class Room {
         client.orderKey = orderKey;
         const agentState = (view.docs["pi.agent"] ?? {}) as AgentState;
         const inbox = (view.docs["pi.inbox"] ?? { items: [] }) as unknown as InboxState;
-        const live = view.docs["pi.live"] as LiveState | undefined;
+        const live = this.#liveFor(client, view.docs["pi.live"] as LiveState | undefined);
         // These grow with the session (authors has one item per message) but rarely change: streaming sends an update
         // every 90 ms, which would repeat them all each time. Send each only when it differs from what this client has.
         const queue = this.#inbox(inbox.items);
@@ -613,7 +623,7 @@ export class Room {
             conversation: this.#app.conversationInfo(this),
             entries,
             ...(orderChanged || full ? { order } : {}),
-            live: projectLive(live),
+            live,
             agent: agentInfo(
                 this.#app.models,
                 agentState,
@@ -624,6 +634,39 @@ export class Room {
             approvals: this.#app.approvals.forConversation(this.id),
             ...fields,
         });
+    }
+
+    /** The live run as tabs get it, projected once for each state of it. */
+    #projectLive(live: LiveState | undefined): ClientLive {
+        if (this.#live === undefined || this.#live.from !== live) {
+            this.#live = { from: live, projected: projectLive(live) };
+        }
+
+        return this.#live.projected;
+    }
+
+    /**
+     * The live run for this client. One whose code takes protocol 3 gets the message as what changed since its last
+     * update; older code, the whole message each time.
+     */
+    #liveFor(client: Client, state: LiveState | undefined): ClientLiveUpdate {
+        const live = this.#projectLive(state);
+        const generation = live.generation;
+        const sent = client.liveBlocks;
+
+        client.liveBlocks = generation?.message?.blocks;
+
+        if (generation?.message === undefined || sent === undefined || (client.protocol ?? 1) < 3) {
+            return live;
+        }
+
+        return {
+            ...live,
+            generation: {
+                ...generation,
+                message: liveMessageDelta(sent, generation.message.blocks),
+            },
+        };
     }
 
     /** The queue as its rows show it: each message's start, who sent it, and the subagents a message of reports is from. */
@@ -751,7 +794,7 @@ export class Room {
             conversationId: this.id,
             lines: peekLines(
                 recent.reverse(),
-                projectLive(view.docs["pi.live"] as LiveState | undefined),
+                this.#projectLive(view.docs["pi.live"] as LiveState | undefined),
             ),
             // Its own calls waiting for someone; for a session, its subagents' too, as they make the session wait.
             approvals: this.#app.approvals
