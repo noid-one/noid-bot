@@ -31,7 +31,7 @@ All the numbers that limit a module, in one place. Each group links to the guide
 
 [Starting and messaging sessions](../linked-sessions.md)
 
-- **Sessions that one session starts:** 10 at most. A linked session cannot start sessions.
+- **Sessions that one session starts:** no limit, since 0.19.0. Before 0.19.0, 10 at most. A linked session cannot start sessions.
 - **Messages between the sessions of a team:** no limit, since 0.19.0. Before 0.19.0, 20 at most since a person last wrote in one of them. The spend limit of the session that started the team still applies.
 - **A message:** 20,000 characters at most.
 - **A title:** one line of 120 characters at most.

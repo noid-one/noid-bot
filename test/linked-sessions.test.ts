@@ -189,6 +189,20 @@ test("an unavailable model creates no session", async (t) => {
     );
 });
 
+test("one session starts 12 linked sessions, and no count refuses one", async () => {
+    const id = await source();
+
+    // Past the 10 that one session could start before 0.19.0.
+    for (let each = 0; each < 12; each++) {
+        await start(id);
+    }
+
+    const started = app.sessions().filter((session) => session.linkedFrom?.id === Number(id));
+
+    assert.equal(started.length, 12);
+    assert.equal(new Set(started.map((session) => session.id)).size, 12);
+});
+
 test("a session that started others shows what counts against its limit: theirs too", async () => {
     const id = await source();
     const { session: child } = await start(id);

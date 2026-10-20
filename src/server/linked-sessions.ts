@@ -122,9 +122,6 @@ function recordOf(
     return calls.items[token];
 }
 
-/** The most linked sessions one session may start. Linked sessions start none, so a team is one level deep. */
-const MAX_STARTED = 10;
-
 /** Stable across restarts, short enough that Commands.submit preserves the entire request key. */
 function callKey(source: ConversationId, key: string): string {
     return createHash("sha256").update(`${source}:${key}`).digest("hex");
@@ -703,17 +700,6 @@ export class LinkedSessions implements LinkedSessionsApi {
             }
 
             const sessions = await tx.doc(SessionsDoc);
-            const started = Object.values(sessions.items).filter(
-                (each) => each.linkedFrom?.id === Number(source),
-            ).length;
-
-            if (started >= MAX_STARTED) {
-                throw new HttpError(
-                    409,
-                    `A session can start at most ${String(MAX_STARTED)} linked sessions.`,
-                );
-            }
-
             const child = await tx.createConversation({ ownership: { kind: "ownerless" } });
 
             Object.assign(await tx.doc(AgentDoc, child.id), withoutBotTools(inherited), {
