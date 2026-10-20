@@ -49,8 +49,9 @@ Yes. By dimension:
   database server. pi-web-desktop starts smaller but passes noid once used, and installs 1.6 GB with a build.
 - **Speed of what people wait for**: noid answers its API in 2–7 ms like Pi Pocket and pi-web-desktop; rakazo takes
   9–22 ms through Postgres, its RPC layer, and its proxy.
-- **Payload**: noid now sends the least of the four on a first visit (752 kB, against rakazo's 836 kB; the app's
-  fonts are no longer preloaded, as the browser never matched that preload and asked for each font twice) and almost
+- **Payload**: noid now sends the least of the four on a first visit (752 kB, against rakazo's 836 kB; a `Vary`
+  header on the fonts kept the browser from using their preload, so each came twice; fonts no longer carry it, and the
+  app's are no longer preloaded, which paints sooner) and almost
   nothing on a revisit (32 kB); a 220-turn session's first view is 15 KB on the wire. That came from this review, not from the base, but the base made
   it a few lines: one process serves everything.
 - **Start**: about even with Pi Pocket, faster with the compile cache; rakazo four to seven times slower.
