@@ -24,7 +24,7 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
 | Home, revisit: sent                     | 32 KB (all 304)                                                          | 2.1 MB again          | –                                         | –                                                            |
 | Home: first paint                       | 40 ms [32–52] (180 before its boot screen stopped fading in)             | 596 ms                | 56 ms                                     | 156 ms                                                       |
 | Home: script during load                | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94)          | 29 ms                 | 987 ms                                    | 188 ms                                                       |
-| Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still                                             | 0.2–2.6 ms/s          | 6–21 ms/s                                 | 363–372 ms/s (CSS avatars)                                   |
+| Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still, 0 after 2 min untouched                    | 0.2–2.6 ms/s          | 6–21 ms/s                                 | 363–372 ms/s (CSS avatars)                                   |
 | Home: main thread at idle, a real GPU   | 6–8 ms/s at rest (Chrome, Intel integrated, Direct3D 11)                 | –                     | –                                         | –                                                            |
 | Session list / small conversation       | 1.9 / 1.8 ms                                                             | 1.7 / 1.5 ms          | 2.2 (378 the first call) / 2.7 ms         | 20.4 / 14.2 ms                                               |
 | 220-turn conversation, first view       | 7.1 ms; 15 KB gzipped (488 KB raw), all 440 entries                      | 6.9 ms, 482 KB        | 8.1 ms, 247 KB, its last 200 entries      | 15.1 ms, 112 KB, 100 messages a page                         |
@@ -74,8 +74,9 @@ Yes. By dimension:
 ## What this review changed
 
 - **Faces** (`web/faces/renderer.js`) draw 30 frames a second while something happens, 10 while every face in sight
-  rests and the pointer is still, and 4 once nothing has moved for 20 seconds, sleeping between frames. A change, a
-  tap, or the pointer brings back 30 at once. Before: 99–124 ms/s at idle, headless.
+  rests and the pointer is still, 4 once nothing has moved for 20 seconds, and none once nobody has touched the page for
+  2 minutes (0 ms/s, as Pi Pocket), sleeping between frames. A change, a tap, a key, the wheel, or the pointer brings
+  back 30 at once. Before: 99–124 ms/s at idle, headless.
 - **App files** (`src/server/http/assets.ts`) are kept in memory while unchanged on disk (checked on every request, so
   live edits show at once), gzipped once, and answered `304` by ETag. Before: 2.08 MB on every load.
 - **The event stream** (`src/server/http/events.ts`) is gzipped, each event flushed as it goes; so are long-poll

@@ -19,6 +19,8 @@ const RESTING_FPS = 10;
 /** And once nothing has moved for a while (a page left open): breathing still reads at this rate. */
 const DROWSY_FPS = 4;
 const DROWSY_AFTER_MS = 20_000;
+/** And once nobody has touched the page for this long (left open on a desk): still, until something happens. */
+const ASLEEP_AFTER_MS = 120_000;
 const AT_REST = new Set(["idle", "asleep"]);
 /** How long after the pointer moves the eyes may still be following it. */
 const POINTER_SETTLE_MS = 1500;
@@ -220,6 +222,19 @@ function createRenderer() {
         },
         { passive: true },
     );
+
+    // Someone at the page: keys, a press, or a wheel wake faces left still, as the pointer does.
+    for (const type of ["keydown", "pointerdown", "wheel"]) {
+        addEventListener(
+            type,
+            () => {
+                pointer.at = performance.now();
+                schedule();
+            },
+            { passive: true, capture: true },
+        );
+    }
+
     document.addEventListener("pointerleave", () => {
         pointer.known = false;
     });
@@ -373,9 +388,10 @@ function createRenderer() {
             }
         }
 
-        // With reduced motion, faces are drawn only when something changes. At rest, nothing until the next frame is
-        // due: a change, a face coming into sight, or the pointer asks for one sooner (`schedule`).
-        if (still) {
+        // With reduced motion, faces are drawn only when something changes; so too on a page nobody has touched for a
+        // while. At rest, nothing until the next frame is due: a change, a face coming into sight, the pointer, or a
+        // key asks for one sooner (`schedule`).
+        if (still || (calm && now - pointer.at > ASLEEP_AFTER_MS)) {
             return;
         }
 
