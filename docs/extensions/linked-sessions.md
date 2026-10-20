@@ -67,6 +67,8 @@ Pi Pocket keeps a team small. Past these limits ([Limits](reference/limits.md#li
 - The budget of the session that started a team covers all of the team. What its linked sessions spend counts against it.
 - A message and a title have a length limit. A title is one line, without invisible or direction characters.
 
+**Note:** since 0.19.0, no count limit applies to a team. The spend limit of the top session is the brake. The owner can set a session budget for a team in Menu → Spend.
+
 ## Replays
 
 Give a `key` that stays the same when the call runs again: `${api.taskId}:${api.callId}`. A start or a send with a key that Pi Pocket saw before returns what the first call returned. So a replay makes one session, and sends one message. Pi Pocket keeps the record of a key for a limited time, and for a limited number of calls ([limits](reference/limits.md#linked-sessions)).

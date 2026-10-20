@@ -111,7 +111,7 @@ export default function createAgentTeams(host: PocketHost, web?: ExtensionWeb) {
                 }
 
                 return reply(
-                    `Started linked session ${address} and sent its first message. Send to that address for more, and ask it to send back what it finds.`,
+                    `Started linked session ${address} and sent its first message. Send to that address for more, and ask it to send back what it finds, once. Do not reply to a message that asks for nothing: no thanks, no acknowledgement.`,
                 );
             }
 

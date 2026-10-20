@@ -37,6 +37,8 @@ All the numbers that limit a module, in one place. Each group links to the guide
 - **A title:** one line of 120 characters at most.
 - **A call's key:** Pi Pocket keeps the record of a `key` for 30 days, and the records of the last 1,000 calls of each session.
 
+**Note:** since 0.19.0, no count limit applies to a team. The spend limit of the top session is the brake. The owner can set a session budget for a team in Menu → Spend.
+
 ## Browser modules
 
 [Browser modules](../browser-modules.md)
