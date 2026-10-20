@@ -406,6 +406,7 @@ function UserEntry({ entry, view, users }) {
                               color=${sender.color}
                               skin=${sender.skin}
                               eyes=${sender.eyes}
+                              shape=${sender.shape}
                               state="idle"
                               size=${20}
                               label=${sender.name}
@@ -2015,7 +2016,10 @@ function rowDeps(entry) {
             // By value: the session list, and each bot in it, is new with every update.
             const face = store.state.sessions.find((session) => session.bot?.name === bot)?.bot;
 
-            deps.push(face && `${face.id}|${face.color}|${face.skin ?? ""}|${face.eyes ?? ""}`);
+            deps.push(
+                face &&
+                    `${face.id}|${face.color}|${face.skin ?? ""}|${face.eyes ?? ""}|${face.shape ?? ""}`,
+            );
         }
     }
 

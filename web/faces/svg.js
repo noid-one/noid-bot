@@ -7,14 +7,17 @@ import { bodyRadius } from "./params.js";
 const css = (rgb) => `rgb(${rgb.map((channel) => Math.round(channel * 255)).join(" ")})`;
 
 /** The body's outline as SVG path data in a 100x100 box, with `points` samples around it. */
-export function bodyPath(traits, points = 48) {
+export function bodyPath(traits, points = 96) {
     const coordinates = [];
 
     for (let index = 0; index < points; index++) {
         const theta = (index / points) * Math.PI * 2;
         const radius = bodyRadius(traits, theta) * 72;
 
-        coordinates.push([50 + Math.cos(theta) * radius, 54 - Math.sin(theta) * radius]);
+        coordinates.push([
+            50 + Math.cos(theta) * radius,
+            54 - traits.center * 72 - Math.sin(theta) * radius,
+        ]);
     }
 
     return `M${coordinates.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`).join("L")}Z`;
@@ -47,6 +50,11 @@ export function faceSvg(traits, state = "idle", uid = traits.seed.toString(36)) 
             ? `<rect x="${50 - 0.34 * aspect * 72}" y="${eyeY - 9.5}" width="${0.68 * aspect * 72}" height="19" rx="7" fill="rgb(10 12 16)"/>`
             : "";
 
+    const nose =
+        traits.nose[0] > 0
+            ? `<ellipse cx="50" cy="${eyeY + traits.nose[2] * 72}" rx="${traits.nose[0] * 72}" ry="${traits.nose[1] * 72}" fill="${css(palette.eye)}"/>`
+            : "";
+
     return [
         `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" class="noid-face-svg" data-state="${state}">`,
         `<defs><linearGradient id="noid-face-${uid}" x1="0.2" y1="0" x2="0.8" y2="1">`,
@@ -55,6 +63,7 @@ export function faceSvg(traits, state = "idle", uid = traits.seed.toString(36)) 
         `<ellipse cx="50" cy="94" rx="${26 * aspect}" ry="4" fill="rgb(0 0 0 / 0.25)"/>`,
         `<path d="${bodyPath(traits)}" fill="url(#noid-face-${uid})"${asleep ? ' opacity="0.7"' : ""}/>`,
         visor,
+        nose,
         `<g class="noid-face-eyes">${eye(50 - gap, 1)}${eye(50 + gap, -1)}</g>`,
         `</svg>`,
     ].join("");

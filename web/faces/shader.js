@@ -1,6 +1,6 @@
 // The face shader (WebGL2, GLSL ES 3.00). One full-screen triangle; everything is drawn from signed distances in the
-// fragment shader: a soft shadow, the glow, the body (a rippled superellipse, the same shape as `bodyRadius` in
-// params.js), its skin's shading, and the eyes. Output is premultiplied alpha on a transparent background.
+// fragment shader: a soft shadow, the glow, the body (a rippled shape, the same as `bodyRadius` in params.js), its
+// skin's shading, and the eyes. Output is premultiplied alpha on a transparent background.
 
 export const VERTEX = `#version 300 es
 void main() {
@@ -21,6 +21,8 @@ uniform vec3 u_amp;
 uniform vec3 u_phase;
 uniform float u_roundness;
 uniform float u_aspect;
+uniform int u_shape;
+uniform float u_center;
 uniform vec2 u_offset;
 uniform vec2 u_squash;
 uniform float u_tilt;
@@ -37,6 +39,7 @@ uniform float u_smile;
 uniform float u_sad;
 uniform float u_eyeHeight;
 uniform float u_eyeGap;
+uniform vec3 u_nose;
 uniform int u_skin;
 uniform int u_eyes;
 
@@ -51,16 +54,125 @@ mat2 rotation(float angle) {
     return mat2(c, s, -s, c);
 }
 
+float bump(float offset, float width) {
+    return exp(-(offset * offset) / (width * width));
+}
+
+float plateau(float offset, float width) {
+    return exp(-pow(abs(offset) / width, 4.0));
+}
+
+// params.js floppyEar: a dog's ear by the angle from its middle.
+float floppyEar(float offset) {
+    return (1.0 - smoothstep(0.15, 0.95, offset)) * smoothstep(-0.62, -0.42, offset);
+}
+
+float tent(float offset, float width) {
+    return max(0.0, 1.0 - abs(offset) / width);
+}
+
+// The angle between two angles, from -PI to PI.
+float turn(float from, float to) {
+    return mod(from - to + PI, 2.0 * PI) - PI;
+}
+
+float smoothMin(float a, float b, float k) {
+    float h = max(k - abs(a - b), 0.0) / k;
+    return min(a, b) - h * h * k * 0.25;
+}
+
+// params.js starRadius: points at radius outer, and between each two a point at radius inner.
+float starRadius(float theta, float sides, float outer, float inner, float start) {
+    float sector = 2.0 * PI / sides;
+    float phi = mod(theta - start, sector);
+    phi = phi > sector * 0.5 ? sector - phi : phi;
+    float edgeX = inner * cos(sector * 0.5) - outer;
+    float edgeY = inner * sin(sector * 0.5);
+    return (outer * edgeY) / (cos(phi) * edgeY - sin(phi) * edgeX);
+}
+
+float polygon(float theta, float sides, float outer, float start, float round_) {
+    return smoothMin(starRadius(theta, sides, outer, outer * cos(PI / sides), start), outer, round_);
+}
+
+float superellipse(float theta, float exponent, float wide) {
+    float x = abs(cos(theta)) / wide;
+    float y = abs(sin(theta));
+    return 1.0 / pow(pow(x, exponent) + pow(y, exponent), 1.0 / exponent);
+}
+
+// The shape's radius toward theta: params.js shapeRadius, line for line, with shapes by their index in SHAPES.
+float shapeRadius(float theta) {
+    float up = turn(theta, PI * 0.5);
+
+    if (u_shape == 1) {
+        return 0.47 * superellipse(theta, 7.0, 1.14);
+    } else if (u_shape == 2) {
+        return polygon(theta, 3.0, 0.7, PI * 0.5, 0.14);
+    } else if (u_shape == 3) {
+        return polygon(theta, 4.0, 0.62, PI * 0.5, 0.08);
+    } else if (u_shape == 4) {
+        return polygon(theta, 5.0, 0.57, PI * 0.5, 0.08);
+    } else if (u_shape == 5) {
+        return polygon(theta, 6.0, 0.55, 0.0, 0.06);
+    } else if (u_shape == 6) {
+        return polygon(theta, 8.0, 0.53, PI / 8.0, 0.04);
+    } else if (u_shape == 7) {
+        return smoothMin(starRadius(theta, 5.0, 0.7, 0.38, PI * 0.5), 0.66, 0.08);
+    } else if (u_shape == 8) {
+        return 0.41 + 0.13 * sqrt(abs(cos(3.0 * up)));
+    } else if (u_shape == 9) {
+        float down = turn(theta, -PI * 0.5);
+        float lobes = 1.0
+            - 0.08 * bump(up, 0.3)
+            - 0.09 * (bump(up - 0.8, 0.14) + bump(up + 0.8, 0.14))
+            - 0.05 * (bump(down - 0.85, 0.2) + bump(down + 0.85, 0.2));
+        float stem = 0.14 * plateau(turn(theta, PI * 0.5 - 0.05), 0.11);
+        return 0.48 * superellipse(theta, 2.3, 1.2) * lobes + stem;
+    } else if (u_shape == 10) {
+        return 0.47 * superellipse(theta, 2.2, 1.06)
+            + 0.23 * tent(turn(theta, PI * 0.5 - 0.62), 0.3)
+            + 0.23 * tent(turn(theta, PI * 0.5 + 0.62), 0.3);
+    } else if (u_shape == 11) {
+        return 0.43 * superellipse(theta, 2.2, 0.86)
+            + 0.15 * floppyEar(turn(theta, 0.3))
+            + 0.15 * floppyEar(turn(PI - theta, 0.3))
+            + 0.04 * bump(turn(theta, -PI * 0.5), 0.4);
+    } else if (u_shape == 12) {
+        float radius = 0.44;
+        float apex = 0.76;
+        float touch = asin(radius / apex);
+        if (abs(up) >= PI * 0.5 - touch) {
+            return radius;
+        }
+        float side = up < 0.0 ? 1.0 : -1.0;
+        float toX = side * radius * cos(touch);
+        float toY = radius * sin(touch) - apex;
+        return (-apex * toX) / (cos(theta) * toY - sin(theta) * toX);
+    } else if (u_shape == 13) {
+        float puffs = 0.15 * sqrt(abs(cos(2.5 * up)));
+        float top = clamp((sin(theta) + 0.15) / 0.45, 0.0, 1.0);
+        return 0.38 * superellipse(theta, 3.0, 1.4) + puffs * top * top;
+    } else if (u_shape == 14) {
+        float down = turn(theta, -PI * 0.5);
+        float below = max(0.0, -sin(theta));
+        float hem = 0.12 * sqrt(abs(cos(3.5 * down))) * smoothstep(0.4, 0.85, below);
+        return 0.44 * superellipse(theta, sin(theta) > 0.0 ? 2.1 : 4.5, 0.88) * (1.0 + 0.16 * below) + hem;
+    }
+
+    return 0.5 * superellipse(theta, u_roundness, 1.0);
+}
+
 // The body's radius toward angle theta: params.js bodyRadius, line for line.
 float bodyRadius(float theta) {
-    float x = abs(cos(theta)) / u_aspect;
-    float y = abs(sin(theta));
-    float superellipse = 1.0 / pow(pow(x, u_roundness) + pow(y, u_roundness), 1.0 / u_roundness);
+    float along = atan(sin(theta) * u_aspect, cos(theta));
+    float stretch = length(vec2(cos(along) * u_aspect, sin(along)));
+    float shape = shapeRadius(along) * stretch;
     float wave = 0.0;
     wave += u_amp.x * u_ripple * sin(2.0 * theta + u_phase.x + u_time * 0.7);
     wave += u_amp.y * u_ripple * sin(3.0 * theta + u_phase.y + u_time * 1.05);
     wave += u_amp.z * u_ripple * sin(4.0 * theta + u_phase.z + u_time * 1.4);
-    return 0.5 * superellipse * (1.0 + wave);
+    return shape * (1.0 + wave);
 }
 
 float roundedBox(vec2 p, vec2 half_, float radius) {
@@ -108,9 +220,11 @@ void main() {
     b.y = (b.y + 0.5) / u_squash.y - 0.5;
     b.x /= u_squash.x;
 
-    float theta = atan(b.y, b.x);
+    // The shape is drawn about its own middle, u_center up from the body's.
+    vec2 c = b - vec2(0.0, u_center);
+    float theta = atan(c.y, c.x);
     float radius = bodyRadius(theta);
-    float dist = length(b) - radius;
+    float dist = length(c) - radius;
     float body = 1.0 - smoothstep(-aa, aa, dist);
 
     // A shadow on the ground, smaller when the body is up in the air.
@@ -123,8 +237,8 @@ void main() {
     float glow = exp(-max(dist, 0.0) * 18.0) * u_glow * pulse * (1.0 - body);
 
     // Shading. s is how far out from the middle (1 at the edge); the dome gives a normal.
-    float s = clamp(length(b) / radius, 0.0, 1.0);
-    vec2 outward = length(b) > 0.0 ? normalize(b) : vec2(0.0);
+    float s = clamp(length(c) / radius, 0.0, 1.0);
+    vec2 outward = length(c) > 0.0 ? normalize(c) : vec2(0.0);
     float flat_ = u_eyes == 1 ? 0.75 : 0.9;
     vec3 normal = normalize(vec3(outward * s * flat_, sqrt(max(1.0 - s * s, 0.0)) + 0.15));
     float diffuse = max(dot(normal, LIGHT), 0.0);
@@ -211,6 +325,12 @@ void main() {
 
     float eyeMask = 1.0 - smoothstep(-aa, aa, eyes);
     color = mix(color, eyeColor, eyeMask);
+
+    // An animal's nose, under its eyes.
+    if (u_nose.x > 0.0) {
+        float nose = (length((b - center + vec2(0.0, u_nose.z)) / u_nose.xy) - 1.0) * min(u_nose.x, u_nose.y);
+        color = mix(color, u_eyeColor, 1.0 - smoothstep(-aa, aa, nose));
+    }
     color = mix(color, vec3(1.0), shine * 0.9);
 
     // Asleep or upset: dimmer and greyer.

@@ -26,9 +26,26 @@ import {
     MAX_AGENT_NAME,
 } from "./agent-files.ts";
 
-/** Faces: the skins and eyes `web/faces/params.js` draws. */
+/** Faces: the skins, eyes, and shapes `web/faces/params.js` draws. */
 export const SKINS = ["jelly", "clay", "chrome", "holo", "pixel"] as const;
 export const EYES = ["capsule", "visor", "dots"] as const;
+export const SHAPES = [
+    "blob",
+    "rectangle",
+    "triangle",
+    "diamond",
+    "pentagon",
+    "hexagon",
+    "octagon",
+    "star",
+    "flower",
+    "pumpkin",
+    "cat",
+    "dog",
+    "drop",
+    "cloud",
+    "ghost",
+] as const;
 
 export type BotProfile = {
     id: string;
@@ -39,6 +56,7 @@ export type BotProfile = {
     color: string;
     skin?: (typeof SKINS)[number];
     eyes?: (typeof EYES)[number];
+    shape?: (typeof SHAPES)[number];
     /** Where it works: the shared computer, or a folder of this machine. */
     kind: "computer" | "host";
     /** Noid, the main bot: made on first open, never archived. */
@@ -56,6 +74,7 @@ export type BotRequest = {
     color?: unknown;
     skin?: unknown;
     eyes?: unknown;
+    shape?: unknown;
     kind?: unknown;
     folder?: unknown;
     /** The id the sheet drew its face from, so the bot looks as it did there; another is made when it is taken. */
@@ -257,6 +276,7 @@ export class Bots {
             color: color(request.color) ?? randomColor(name),
             ...optional("skin", pick(request.skin, SKINS, "skin")),
             ...optional("eyes", pick(request.eyes, EYES, "eyes")),
+            ...optional("shape", pick(request.shape, SHAPES, "shape")),
             kind,
             ...(request === NOID_REQUEST ? { main: true as const } : {}),
             ...optional("file", file),
@@ -358,11 +378,12 @@ export class Bots {
         const newColor = color(request.color);
         const skin = face(request.skin, SKINS, "skin", current.skin);
         const eyes = face(request.eyes, EYES, "eyes", current.eyes);
+        const shape = face(request.shape, SHAPES, "shape", current.shape);
 
         // Onto the profile as it is when written: what changed meanwhile (the agent-file sync's `fileGone`, another
         // edit) stays.
         const changed = (profile: BotProfile): BotProfile => {
-            const { skin: _skin, eyes: _eyes, ...rest } = profile;
+            const { skin: _skin, eyes: _eyes, shape: _shape, ...rest } = profile;
 
             return {
                 ...rest,
@@ -371,6 +392,7 @@ export class Bots {
                 color: newColor ?? profile.color,
                 ...optional("skin", request.skin === undefined ? profile.skin : skin),
                 ...optional("eyes", request.eyes === undefined ? profile.eyes : eyes),
+                ...optional("shape", request.shape === undefined ? profile.shape : shape),
             };
         };
 

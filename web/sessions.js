@@ -709,6 +709,7 @@ function MainBot({ session, active, size }) {
             color=${bot.color}
             skin=${bot.skin}
             eyes=${bot.eyes}
+            shape=${bot.shape}
             state=${botFaceState(session)}
             size=${size}
             label=${bot.name}
@@ -743,6 +744,7 @@ function BotRow({ session, active, size }) {
             color=${bot.color}
             skin=${bot.skin}
             eyes=${bot.eyes}
+            shape=${bot.shape}
             state=${botFaceState(session)}
             size=${size}
             label=${bot.name}

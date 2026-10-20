@@ -1,4 +1,5 @@
-// Bot faces (web/faces/): each id gives its own steady face, palettes stay readable, the body shape stays in its box,
+// Bot faces (web/faces/): each id gives its own steady face, palettes stay readable, every body shape stays in its box
+// and holds its eyes,
 // the motion blinks, looks around and spins at work, celebrates finished work once, and sleeps, and the SVG fallback draws the same face.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -8,6 +9,11 @@ type Traits = {
     seed: number;
     skin: string;
     eyes: string;
+    shape: string;
+    center: number;
+    eyeHeight: number;
+    eyeGap: number;
+    nose: number[];
     roundness: number;
     aspect: number;
     palette: { base: Rgb; light: Rgb; dark: Rgb; eye: Rgb; glow: Rgb };
@@ -31,11 +37,13 @@ type Motion = {
 type Params = {
     SKINS: string[];
     EYES: string[];
+    SHAPES: string[];
     STATES: string[];
     hashOf: (text: string) => number;
     traitsOf: (id: string, overrides?: Record<string, unknown>) => Traits;
     paletteOf: (color: string | undefined, seed?: number) => Traits["palette"];
     bodyRadius: (traits: Traits, theta: number, time?: number, ripple?: number) => number;
+    shapeRadius: (shape: string, theta: number, roundness?: number) => number;
 };
 type MotionModule = {
     DONE_SECONDS: number;
@@ -71,7 +79,7 @@ test("the same id always gives the same face, and different ids give different f
         Array.from({ length: 60 }, (_, index) => {
             const traits = params.traitsOf(`bot-${index}`);
 
-            return `${traits.skin}/${traits.eyes}/${traits.roundness.toFixed(1)}/${traits.aspect.toFixed(2)}`;
+            return `${traits.skin}/${traits.eyes}/${traits.shape}/${traits.roundness.toFixed(1)}/${traits.aspect.toFixed(2)}`;
         }),
     );
 
@@ -85,10 +93,111 @@ test("the owner's picks win over the id's, and unknown picks are ignored", () =>
     assert.equal(picked.eyes, "visor");
     assert.ok(picked.roundness > 3, "visors sit on squarer bodies");
 
-    const odd = params.traitsOf("Scout", { skin: "plaid", eyes: "lasers" });
+    const odd = params.traitsOf("Scout", { skin: "plaid", eyes: "lasers", shape: "teapot" });
 
     assert.ok(params.SKINS.includes(odd.skin));
     assert.ok(params.EYES.includes(odd.eyes));
+    assert.ok(params.SHAPES.includes(odd.shape));
+});
+
+test("a picked shape changes the body only: the rest of the face stays the one from its id", () => {
+    const own = params.traitsOf("Scout");
+    const other = params.traitsOf("Scout", { shape: own.shape === "cat" ? "dog" : "cat" });
+
+    // The ripples' strength is the shape's (built shapes ripple less); the rest is the id's.
+    const kept = (traits: Traits) => {
+        const {
+            shape: _s,
+            center: _c,
+            eyeHeight: _h,
+            eyeGap: _g,
+            nose: _n,
+            wobble,
+            ...rest
+        } = traits as Traits & {
+            wobble: { amplitude: number; phase: number }[];
+        };
+
+        return { ...rest, phases: wobble.map((wave) => wave.phase) };
+    };
+
+    assert.deepEqual(kept(other), kept(own));
+    // A blob is the superellipse faces always had.
+    const blob = params.traitsOf("Scout", { shape: "blob" });
+
+    assert.equal(
+        params.shapeRadius("blob", 0.3, blob.roundness),
+        params.shapeRadius("unknown", 0.3, blob.roundness),
+    );
+});
+
+test("bots get many shapes from their ids, and robots only built ones", () => {
+    const shapes = new Set(
+        Array.from({ length: 200 }, (_, index) => params.traitsOf(`bot-${index}`).shape),
+    );
+
+    assert.ok(shapes.size >= 12, `only ${String(shapes.size)} shapes in 200 bots`);
+
+    for (let index = 0; index < 100; index++) {
+        const robot = params.traitsOf(`robot-${index}`, { eyes: "visor" });
+
+        assert.ok(
+            ["blob", "rectangle", "hexagon", "octagon", "pentagon", "diamond"].includes(
+                robot.shape,
+            ),
+            robot.shape,
+        );
+    }
+});
+
+test("every shape stays inside the face's box, is drawn around its eyes, and has its own outline", () => {
+    const outlines = new Set<string>();
+
+    for (const shape of params.SHAPES) {
+        outlines.add(
+            Array.from({ length: 36 }, (_, step) =>
+                params.shapeRadius(shape, (step / 36) * Math.PI * 2).toFixed(3),
+            ).join(),
+        );
+
+        for (let index = 0; index < 30; index++) {
+            const traits = params.traitsOf(`${shape}-${index}`, { shape });
+
+            for (let step = 0; step < 360; step++) {
+                const theta = (step / 360) * Math.PI * 2;
+                const radius = params.bodyRadius(traits, theta, step / 7, 1.6);
+                // In the shader's view, which spans -0.8…0.8 with the body's middle at -0.04.
+                const x = Math.cos(theta) * radius;
+                const y = -0.04 + traits.center + Math.sin(theta) * radius;
+
+                assert.ok(
+                    Number.isFinite(radius) && radius > 0.25,
+                    `${shape} radius ${String(radius)}`,
+                );
+                assert.ok(
+                    Math.abs(x) < 0.8 && y < 0.8 && y > -0.8,
+                    `${shape} at ${x.toFixed(2)}, ${y.toFixed(2)}`,
+                );
+            }
+
+            // The middle of each eye, and of the nose, is well inside the body.
+            const gap = traits.eyeGap * Math.min(traits.aspect, 1.05);
+            const marks: [number, number][] = [
+                [-gap, traits.eyeHeight],
+                [gap, traits.eyeHeight],
+                [0, traits.eyeHeight - (traits.nose[2] ?? 0)],
+            ];
+
+            for (const [x, height] of marks) {
+                const y = height - traits.center;
+                const inside = params.bodyRadius(traits, Math.atan2(y, x)) - Math.hypot(x, y);
+
+                assert.ok(inside > 0.07, `${shape}: a mark only ${inside.toFixed(3)} inside`);
+            }
+        }
+    }
+
+    assert.equal(outlines.size, params.SHAPES.length, "no two shapes alike");
 });
 
 test("palettes stay in range and readable, whatever the color", () => {
@@ -118,9 +227,9 @@ test("palettes stay in range and readable, whatever the color", () => {
     }
 });
 
-test("the body stays inside its box at every angle and moment", () => {
+test("a blob stays inside its box at every angle and moment", () => {
     for (let index = 0; index < 40; index++) {
-        const traits = params.traitsOf(`shape-${index}`);
+        const traits = params.traitsOf(`shape-${index}`, { shape: "blob" });
 
         for (let step = 0; step < 72; step++) {
             const theta = (step / 72) * Math.PI * 2;
@@ -253,7 +362,7 @@ test("the SVG fallback draws the body and two eyes, and arches them when happy",
     assert.match(idle, /^<svg /);
     assert.match(idle, /data-state="idle"/);
     assert.equal((idle.match(/class="noid-face-eye"/g) ?? []).length, 2);
-    assert.match(svg.bodyPath(traits), /^M[\d.]+ [\d.]+(L[\d.]+ [\d.]+){47}Z$/);
+    assert.match(svg.bodyPath(traits), /^M[\d.]+ [\d.]+(L[\d.]+ [\d.]+){95}Z$/);
 
     const happy = svg.faceSvg(traits, "done");
 

@@ -414,7 +414,16 @@ test("a bot's edits check before they change anything; its face can go back to i
         name: "Careful",
         skin: "clay",
         eyes: "dots",
+        shape: "pumpkin",
     });
+
+    assert.equal(app.sessionMeta(id)?.bot?.shape, "pumpkin");
+    await assert.rejects(app.bots.update(owner(app), id, { shape: "teapot" }), /shape/);
+    assert.equal(
+        (await app.bots.update(owner(app), id, { name: "Careful" })).shape,
+        "pumpkin",
+        "kept",
+    );
 
     await assert.rejects(
         app.bots.update(owner(app), id, { name: "Renamed", instructions: "x".repeat(9000) }),
@@ -422,10 +431,11 @@ test("a bot's edits check before they change anything; its face can go back to i
     );
     assert.equal(app.sessionMeta(id)?.bot?.name, "Careful", "nothing changed");
 
-    const reset = await app.bots.update(owner(app), id, { skin: "", eyes: "" });
+    const reset = await app.bots.update(owner(app), id, { skin: "", eyes: "", shape: "" });
 
     assert.equal(reset.skin, undefined);
     assert.equal(reset.eyes, undefined);
+    assert.equal(reset.shape, undefined);
     await assert.rejects(
         app.bots.create(owner(app), { name: "Long", instructions: "x".repeat(9000) }),
         /8000/,

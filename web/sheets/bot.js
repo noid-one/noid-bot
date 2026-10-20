@@ -1,7 +1,7 @@
 // A bot: make one, or change one's name, role, face, and instructions. The face shows as it will look, as you pick.
 import { useState } from "preact/hooks";
 import { Face } from "../faces/face.js";
-import { EYES, SKINS } from "../faces/params.js";
+import { EYES, SHAPES, SKINS } from "../faces/params.js";
 import { actions, api, attempt, closeSheet, navigate, store, uid } from "../store.js";
 import { html, Sheet } from "../ui.js";
 
@@ -35,6 +35,7 @@ export function BotSheet({ id }) {
     );
     const [skin, setSkin] = useState(bot?.skin ?? "");
     const [eyes, setEyes] = useState(bot?.eyes ?? "");
+    const [shape, setShape] = useState(bot?.shape ?? "");
     // A new bot's id, made here so its face is the one shown: the server keeps it.
     const [newId] = useState(() => uid().slice(0, 8));
     const faceId = bot?.id ?? newId;
@@ -57,7 +58,7 @@ export function BotSheet({ id }) {
         setSaving(true);
         setNaming(!named);
         attempt(async () => {
-            const body = { name, role, color, skin, eyes };
+            const body = { name, role, color, skin, eyes, shape };
 
             if (bot !== undefined) {
                 // Instructions only change when they were shown here (this bot's session is open).
@@ -104,6 +105,7 @@ export function BotSheet({ id }) {
                 color=${color}
                 skin=${skin || undefined}
                 eyes=${eyes || undefined}
+                shape=${shape || undefined}
                 state="idle"
                 size=${88}
                 label=${name || "New bot"}
@@ -138,6 +140,17 @@ export function BotSheet({ id }) {
                     >
                         <option value="">From its name</option>
                         ${EYES.map((each) => html`<option value=${each}>${each}</option>`)}
+                    </select>
+                </label>
+                <label class="bot-pick">
+                    <span class="label">Shape</span>
+                    <select
+                        value=${shape}
+                        aria-label="Shape"
+                        onChange=${(event) => setShape(event.currentTarget.value)}
+                    >
+                        <option value="">From its name</option>
+                        ${SHAPES.map((each) => html`<option value=${each}>${each}</option>`)}
                     </select>
                 </label>
             </div>

@@ -4,7 +4,7 @@
 // drawn. Without WebGL2 (or after the context is lost for good), faces fall back to SVG (face.js).
 
 import { createMotion, DONE_SECONDS } from "./motion.js";
-import { EYES, SKINS, traitsOf } from "./params.js";
+import { EYES, SHAPES, SKINS, traitsOf } from "./params.js";
 import { FRAGMENT, VERTEX } from "./shader.js";
 
 /** Frames per second faces animate at: smooth enough for breathing and blinks, light on batteries. */
@@ -48,6 +48,8 @@ const UNIFORMS = [
     "u_phase",
     "u_roundness",
     "u_aspect",
+    "u_shape",
+    "u_center",
     "u_offset",
     "u_squash",
     "u_tilt",
@@ -64,6 +66,7 @@ const UNIFORMS = [
     "u_sad",
     "u_eyeHeight",
     "u_eyeGap",
+    "u_nose",
     "u_skin",
     "u_eyes",
 ];
@@ -353,6 +356,8 @@ function createRenderer() {
         gl.uniform3f(locations.u_phase, ...traits.wobble.map((wave) => wave.phase));
         gl.uniform1f(locations.u_roundness, traits.roundness);
         gl.uniform1f(locations.u_aspect, traits.aspect);
+        gl.uniform1i(locations.u_shape, SHAPES.indexOf(traits.shape));
+        gl.uniform1f(locations.u_center, traits.center);
         gl.uniform2f(locations.u_offset, pose.offset[0], pose.offset[1]);
         gl.uniform2f(locations.u_squash, pose.squash[0], pose.squash[1]);
         gl.uniform1f(locations.u_tilt, pose.tilt);
@@ -369,6 +374,7 @@ function createRenderer() {
         gl.uniform1f(locations.u_sad, pose.sad);
         gl.uniform1f(locations.u_eyeHeight, traits.eyeHeight);
         gl.uniform1f(locations.u_eyeGap, traits.eyeGap);
+        gl.uniform3f(locations.u_nose, ...traits.nose);
         gl.uniform1i(locations.u_skin, SKINS.indexOf(traits.skin));
         gl.uniform1i(locations.u_eyes, EYES.indexOf(traits.eyes));
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -523,7 +529,8 @@ export function attach(canvas, options, onFallback) {
                 next.id !== options.id ||
                 next.color !== options.color ||
                 next.skin !== options.skin ||
-                next.eyes !== options.eyes;
+                next.eyes !== options.eyes ||
+                next.shape !== options.shape;
 
             if (changed) {
                 traits = traitsOf(next.id, next);

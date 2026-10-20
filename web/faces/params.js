@@ -8,6 +8,53 @@ export const SKINS = ["jelly", "clay", "chrome", "holo", "pixel"];
 /** Eyes: solid capsules, a dark visor with glowing eyes (the robot look), or two small dots. */
 export const EYES = ["capsule", "visor", "dots"];
 
+/**
+ * Body shapes: a soft blob (the superellipse), polygons, a star, and things: a flower, a pumpkin, a cat's and a dog's
+ * head, a water drop, a cloud, a ghost. Each is a radius by angle about its own middle (`shapeRadius`), so the shader, the SVG
+ * fallback, and the tests draw the same outline.
+ */
+export const SHAPES = [
+    "blob",
+    "rectangle",
+    "triangle",
+    "diamond",
+    "pentagon",
+    "hexagon",
+    "octagon",
+    "star",
+    "flower",
+    "pumpkin",
+    "cat",
+    "dog",
+    "drop",
+    "cloud",
+    "ghost",
+];
+
+/**
+ * Where each shape sits and where its eyes go: `center` raises or lowers its middle so its bottom rests on the ground,
+ * `lift` moves the eyes up or down from where the id put them, `spread` brings them closer together where the shape
+ * is narrow, `ripple` keeps built shapes' edges straighter than soft ones', and `nose` is an animal's nose: its half width,
+ * half height, and how far under its eyes.
+ */
+const SHAPE_FIT = {
+    blob: { center: 0, lift: 0, spread: 1, ripple: 1 },
+    rectangle: { center: -0.04, lift: 0, spread: 1, ripple: 0.4 },
+    triangle: { center: -0.13, lift: -0.17, spread: 0.78, ripple: 0.3 },
+    diamond: { center: 0.06, lift: -0.04, spread: 0.85, ripple: 0.3 },
+    pentagon: { center: -0.03, lift: -0.02, spread: 0.95, ripple: 0.3 },
+    hexagon: { center: -0.03, lift: 0, spread: 1, ripple: 0.25 },
+    octagon: { center: -0.03, lift: 0, spread: 1, ripple: 0.25 },
+    star: { center: 0.03, lift: -0.06, spread: 0.72, ripple: 0.3 },
+    flower: { center: -0.02, lift: -0.03, spread: 0.9, ripple: 0.6 },
+    pumpkin: { center: -0.06, lift: -0.04, spread: 1, ripple: 0.5 },
+    cat: { center: -0.06, lift: -0.04, spread: 0.95, ripple: 0.6, nose: [0.04, 0.026, 0.12] },
+    dog: { center: -0.05, lift: -0.01, spread: 0.9, ripple: 0.5, nose: [0.06, 0.04, 0.17] },
+    drop: { center: -0.08, lift: -0.06, spread: 0.92, ripple: 0.6 },
+    cloud: { center: -0.06, lift: -0.05, spread: 1.05, ripple: 0.6 },
+    ghost: { center: 0.05, lift: 0, spread: 0.92, ripple: 0.7 },
+};
+
 /** What a bot is doing, as its face shows it. `done` plays once when work ends, then the face goes back to idle. */
 export const STATES = ["idle", "working", "waiting", "done", "error", "asleep"];
 
@@ -163,35 +210,215 @@ export function traitsOf(id, overrides = {}) {
         amplitude: ripple * (0.4 + random() * 0.6),
         phase: random() * Math.PI * 2,
     }));
+    const eyeHeight = 0.1 + random() * 0.1;
+    const eyeGap = 0.21 + random() * 0.08;
+    const breathPeriod = 3.6 + random() * 1.8;
+    const blinkMin = 2.2 + random() * 1.2;
+    const blinkSpread = 2.5 + random() * 2.5;
+    // Drawn last and always, so a face drawn before shapes existed keeps everything else; a blob is likelier than
+    // any one other shape, and a visor's robot gets a built one.
+    const drawn = robot
+        ? pick(["blob", "blob", "rectangle", "hexagon", "octagon", "pentagon", "diamond"])
+        : pick(["blob", "blob", "blob", ...SHAPES.slice(1)]);
+    const shape = SHAPES.includes(overrides.shape) ? overrides.shape : drawn;
+    const fit = SHAPE_FIT[shape];
+
+    for (const wave of wobble) {
+        wave.amplitude *= fit.ripple;
+    }
 
     return {
         seed,
         skin,
         eyes,
+        shape,
         roundness,
         aspect,
         wobble,
+        // How far the shape's middle is from the body's.
+        center: fit.center,
         // Where the eyes sit (up from the middle) and how far apart, so faces differ in expression too.
-        eyeHeight: 0.1 + random() * 0.1,
-        eyeGap: 0.21 + random() * 0.08,
+        eyeHeight: eyeHeight + fit.lift,
+        eyeGap: eyeGap * fit.spread,
+        nose: fit.nose ?? [0, 0, 0],
         // Idle rhythms, so bots on one screen never breathe or blink together.
-        breathPeriod: 3.6 + random() * 1.8,
-        blinkMin: 2.2 + random() * 1.2,
-        blinkSpread: 2.5 + random() * 2.5,
+        breathPeriod,
+        blinkMin,
+        blinkSpread,
         palette: paletteOf(overrides.color, seed),
     };
 }
 
+const TAU = Math.PI * 2;
+const modulo = (value, by) => value - by * Math.floor(value / by);
+const bump = (offset, width) => Math.exp(-(offset * offset) / (width * width));
+
+const smoothstep = (from, to, value) => {
+    const t = Math.min(1, Math.max(0, (value - from) / (to - from)));
+
+    return t * t * (3 - 2 * t);
+};
+
+/** A dog's ear by the angle from its middle: rising slowly from the top of the head, ending sharply at its tip. */
+const floppyEar = (offset) =>
+    (1 - smoothstep(0.15, 0.95, offset)) * smoothstep(-0.62, -0.42, offset);
+
+/** Like `bump`, with a flat top and steeper sides. */
+const plateau = (offset, width) => Math.exp(-Math.pow(offset / width, 4));
+const tent = (offset, width) => Math.max(0, 1 - Math.abs(offset) / width);
+
+/** The angle between two angles, from -π to π. */
+const turn = (from, to) => modulo(from - to + Math.PI, TAU) - Math.PI;
+
+/** A smooth minimum: like `min`, with the corner where `a` and `b` meet rounded over `k`. */
+function smoothMin(a, b, k) {
+    const h = Math.max(k - Math.abs(a - b), 0) / k;
+
+    return Math.min(a, b) - h * h * k * 0.25;
+}
+
 /**
- * The body's radius toward angle `theta` at time `time` in seconds, the same function the shader and the SVG fallback
- * use: a superellipse with three slow ripples on top.
+ * A regular polygon or star's radius toward `theta`: `sides` points at radius `outer`, and between each two a point at
+ * radius `inner` (a polygon when `inner` is `outer · cos(π / sides)`). `start` is the angle of the first point.
+ */
+function starRadius(theta, sides, outer, inner, start) {
+    const sector = TAU / sides;
+    let phi = modulo(theta - start, sector);
+
+    phi = phi > sector / 2 ? sector - phi : phi;
+    const edgeX = inner * Math.cos(sector / 2) - outer;
+    const edgeY = inner * Math.sin(sector / 2);
+
+    return (outer * edgeY) / (Math.cos(phi) * edgeY - Math.sin(phi) * edgeX);
+}
+
+const polygon = (theta, sides, outer, start, round) =>
+    smoothMin(
+        starRadius(theta, sides, outer, outer * Math.cos(Math.PI / sides), start),
+        outer,
+        round,
+    );
+
+/** A superellipse's radius: 2 is an ellipse, higher is squarer; `wide` stretches it sideways. */
+function superellipse(theta, exponent, wide) {
+    const x = Math.abs(Math.cos(theta)) / wide;
+    const y = Math.abs(Math.sin(theta));
+
+    return 1 / Math.pow(Math.pow(x, exponent) + Math.pow(y, exponent), 1 / exponent);
+}
+
+/**
+ * A shape's radius toward `theta`, before it is stretched by the aspect and rippled: `bodyRadius` and the shader's
+ * `shapeRadius` both draw from it. Angles count from the right, counterclockwise, so up is π / 2.
+ */
+export function shapeRadius(shape, theta, roundness = 2) {
+    const up = turn(theta, Math.PI / 2);
+
+    switch (shape) {
+        case "rectangle":
+            return 0.47 * superellipse(theta, 7, 1.14);
+        case "triangle":
+            return polygon(theta, 3, 0.7, Math.PI / 2, 0.14);
+        case "diamond":
+            return polygon(theta, 4, 0.62, Math.PI / 2, 0.08);
+        case "pentagon":
+            return polygon(theta, 5, 0.57, Math.PI / 2, 0.08);
+        case "hexagon":
+            return polygon(theta, 6, 0.55, 0, 0.06);
+        case "octagon":
+            return polygon(theta, 8, 0.53, Math.PI / 8, 0.04);
+        case "star":
+            return smoothMin(starRadius(theta, 5, 0.7, 0.38, Math.PI / 2), 0.66, 0.08);
+        case "flower":
+            // Six round petals, one at the top.
+            return 0.41 + 0.13 * Math.sqrt(Math.abs(Math.cos(3 * up)));
+
+        case "pumpkin": {
+            // Wide, with lobes (notches where its ribs meet the top and bottom), a dip at the top, and a stem.
+            const down = turn(theta, -Math.PI / 2);
+            const lobes =
+                1 -
+                0.08 * bump(up, 0.3) -
+                0.09 * (bump(up - 0.8, 0.14) + bump(up + 0.8, 0.14)) -
+                0.05 * (bump(down - 0.85, 0.2) + bump(down + 0.85, 0.2));
+            const stem = 0.14 * plateau(turn(theta, Math.PI / 2 - 0.05), 0.11);
+
+            return 0.48 * superellipse(theta, 2.3, 1.2) * lobes + stem;
+        }
+
+        case "cat":
+            // A round head with two pointed ears.
+            return (
+                0.47 * superellipse(theta, 2.2, 1.06) +
+                0.23 * tent(turn(theta, Math.PI / 2 - 0.62), 0.3) +
+                0.23 * tent(turn(theta, Math.PI / 2 + 0.62), 0.3)
+            );
+        case "dog":
+            // A round head, ears that hang from its top down its sides, and a muzzle.
+            return (
+                0.43 * superellipse(theta, 2.2, 0.86) +
+                0.15 * floppyEar(turn(theta, 0.3)) +
+                0.15 * floppyEar(turn(Math.PI - theta, 0.3)) +
+                0.04 * bump(turn(theta, -Math.PI / 2), 0.4)
+            );
+
+        case "drop": {
+            // A circle, and the two lines from a point above it that just touch it.
+            const radius = 0.44;
+            const apex = 0.76;
+            const touch = Math.asin(radius / apex);
+
+            if (Math.abs(up) >= Math.PI / 2 - touch) {
+                return radius;
+            }
+
+            // The ray toward theta meets the line from the apex (0, apex) to where it touches the circle.
+            const side = up < 0 ? 1 : -1;
+            const toX = side * radius * Math.cos(touch);
+            const toY = radius * Math.sin(touch) - apex;
+
+            return (-apex * toX) / (Math.cos(theta) * toY - Math.sin(theta) * toX);
+        }
+
+        case "cloud": {
+            // Puffs on top, a flatter bottom.
+            const puffs = 0.15 * Math.sqrt(Math.abs(Math.cos(2.5 * up)));
+            const top = Math.min(1, Math.max(0, (Math.sin(theta) + 0.15) / 0.45));
+
+            return 0.38 * superellipse(theta, 3, 1.4) + puffs * top * top;
+        }
+
+        case "ghost": {
+            // A round dome, straight sides that hang down, and a hem of scallops.
+            const down = turn(theta, -Math.PI / 2);
+            const below = Math.max(0, -Math.sin(theta));
+            const hem =
+                0.12 * Math.sqrt(Math.abs(Math.cos(3.5 * down))) * smoothstep(0.4, 0.85, below);
+
+            return (
+                0.44 *
+                    superellipse(theta, Math.sin(theta) > 0 ? 2.1 : 4.5, 0.88) *
+                    (1 + 0.16 * below) +
+                hem
+            );
+        }
+
+        default:
+            return 0.5 * superellipse(theta, roundness, 1);
+    }
+}
+
+/**
+ * The body's radius toward angle `theta` (about the shape's middle, `traits.center` up from the body's) at time `time`
+ * in seconds, the same function the shader and the SVG fallback use: the shape, stretched sideways by the aspect, with
+ * three slow ripples on top.
  */
 export function bodyRadius(traits, theta, time = 0, ripple = 1) {
     const { roundness, aspect, wobble } = traits;
-    const x = Math.abs(Math.cos(theta)) / aspect;
-    const y = Math.abs(Math.sin(theta));
-    const superellipse =
-        1 / Math.pow(Math.pow(x, roundness) + Math.pow(y, roundness), 1 / roundness);
+    // The angle on the unstretched shape that the stretch carries to theta, and how much longer it gets.
+    const along = Math.atan2(Math.sin(theta) * aspect, Math.cos(theta));
+    const stretch = Math.hypot(Math.cos(along) * aspect, Math.sin(along));
+    const shape = shapeRadius(traits.shape, along, roundness) * stretch;
     let wave = 0;
 
     wobble.forEach(({ amplitude, phase }, index) => {
@@ -201,5 +428,5 @@ export function bodyRadius(traits, theta, time = 0, ripple = 1) {
             amplitude * ripple * Math.sin(harmonic * theta + phase + time * (0.7 + index * 0.35));
     });
 
-    return 0.5 * superellipse * (1 + wave);
+    return shape * (1 + wave);
 }

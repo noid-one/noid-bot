@@ -11,7 +11,7 @@ import { faceSvg } from "./svg.js";
 let uids = 0;
 
 /**
- * `id` is the bot's id (it seeds the face), `color` its color, `skin` and `eyes` the owner's picks (else from the id),
+ * `id` is the bot's id (it seeds the face), `color` its color, `skin`, `eyes`, and `shape` the owner's picks (else from the id),
  * `state` one of STATES, `size` the CSS size in pixels, and `label` the accessible name (the bot's name).
  */
 export function Face({
@@ -19,6 +19,7 @@ export function Face({
     color,
     skin,
     eyes,
+    shape,
     state = "idle",
     size = 32,
     label,
@@ -29,7 +30,7 @@ export function Face({
     const [vector, setVector] = useState(() => !supported());
     const uid = useMemo(() => `f${(uids += 1).toString(36)}`, []);
     const pixels = backingSize(size);
-    const options = { id, color, skin, eyes, state };
+    const options = { id, color, skin, eyes, shape, state };
 
     useEffect(() => {
         if (vector || canvas.current === null) {
@@ -51,7 +52,7 @@ export function Face({
     // A new size clears the canvas: it is drawn again then too.
     useEffect(() => {
         controls.current?.update(options);
-    }, [id, color, skin, eyes, state, pixels]);
+    }, [id, color, skin, eyes, shape, state, pixels]);
 
     const style = `width:${size}px;height:${size}px`;
     const common = {
@@ -64,7 +65,7 @@ export function Face({
     };
 
     if (vector) {
-        const markup = faceSvg(traitsOf(id, { color, skin, eyes }), state, uid);
+        const markup = faceSvg(traitsOf(id, { color, skin, eyes, shape }), state, uid);
 
         return h("span", { ...common, style, dangerouslySetInnerHTML: { __html: markup } });
     }

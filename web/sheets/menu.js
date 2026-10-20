@@ -436,6 +436,7 @@ export function MenuSheet() {
                               color=${bot.color}
                               skin=${bot.skin}
                               eyes=${bot.eyes}
+                              shape=${bot.shape}
                               state=${botFaceState(botSession)}
                               size=${30}
                               label=${bot.name}

@@ -155,6 +155,7 @@ function Topbar() {
                     color=${botSession.bot.color}
                     skin=${botSession.bot.skin}
                     eyes=${botSession.bot.eyes}
+                    shape=${botSession.bot.shape}
                     state=${botFaceState(botSession)}
                     size=${44}
                     label=${botSession.bot.name}

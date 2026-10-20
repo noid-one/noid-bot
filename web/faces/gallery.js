@@ -1,11 +1,11 @@
-// A page to look at faces while working on them: every skin with every kind of eyes, each state, a crowd of bots,
+// A page to look at faces while working on them: every skin with every kind of eyes, every shape, each state, a crowd of bots,
 // and big ones. Open /faces/gallery.html on a running server.
 
 import htm from "htm";
 import { h, render } from "preact";
 import { useState } from "preact/hooks";
 import { Face } from "./face.js";
-import { DEFAULT_COLORS, EYES, SKINS, STATES } from "./params.js";
+import { DEFAULT_COLORS, EYES, SHAPES, SKINS, STATES } from "./params.js";
 import { supported } from "./renderer.js";
 
 const html = htm.bind(h);
@@ -59,6 +59,33 @@ function Gallery() {
                                     state=${state}
                                     size=${size}
                                     label=${`${skin} ${eyes}`}
+                                />
+                            </div>
+                        `,
+                    )}
+                `,
+            )}
+        </div>
+
+        <h2>Shapes × skins</h2>
+        <div class="grid">
+            <span></span>
+            ${SKINS.map((skin) => html`<strong class="cell">${skin}</strong>`)}
+            ${SHAPES.map(
+                (shape, row) => html`
+                    <strong class="cell">${shape}</strong>
+                    ${SKINS.map(
+                        (skin, column) => html`
+                            <div class="cell">
+                                <${Face}
+                                    id=${`${shape}-${skin}`}
+                                    color=${DEFAULT_COLORS[(row + column) % DEFAULT_COLORS.length]}
+                                    skin=${skin}
+                                    eyes=${EYES[(row + column) % EYES.length]}
+                                    shape=${shape}
+                                    state=${state}
+                                    size=${size}
+                                    label=${`${shape} ${skin}`}
                                 />
                             </div>
                         `,

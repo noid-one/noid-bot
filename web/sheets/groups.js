@@ -65,6 +65,7 @@ function NewGroup({ onMade, onCancel }) {
                             color=${bot.color}
                             skin=${bot.skin}
                             eyes=${bot.eyes}
+                            shape=${bot.shape}
                             size=${36}
                             label=${bot.name}
                         />
@@ -104,6 +105,7 @@ function Faces({ members, bots, size = 22 }) {
                       color=${bot.color}
                       skin=${bot.skin}
                       eyes=${bot.eyes}
+                      shape=${bot.shape}
                       size=${size}
                       label=${bot.name}
                   />`
@@ -246,6 +248,7 @@ function Thread({ id, onBack, onSaid }) {
                                   color=${bot.color}
                                   skin=${bot.skin}
                                   eyes=${bot.eyes}
+                                  shape=${bot.shape}
                                   size=${28}
                                   label=${bot.name}
                               />`
