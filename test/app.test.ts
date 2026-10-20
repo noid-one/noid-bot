@@ -887,6 +887,29 @@ test("a tab of protocol 3 gets the answer being written as what changed, an olde
     }
 });
 
+test("a tab does not get the session list again when it did not change", async () => {
+    const id = await newSession();
+    const tab = fakeTab(id, owner());
+    const again = fakeTab(id, owner());
+    const lists = () => tab.events.filter((each) => each.event === "sessions").length;
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
+
+    await app.attach(tab.client);
+
+    try {
+        await pause();
+        const before = lists();
+
+        // The same person in the same session again: the list says the same, though it is worked out again.
+        await app.attach(again.client);
+        await pause();
+        assert.equal(lists(), before);
+    } finally {
+        app.detach(tab.client);
+        app.detach(again.client);
+    }
+});
+
 test("requests with the wrong types are refused, and nothing odd is stored", async () => {
     const id = await newSession();
 

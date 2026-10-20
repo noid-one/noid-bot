@@ -141,6 +141,8 @@ The message Pi is writing goes as what changed since the tab's last update (`liv
 
 A tab's connection names what its code understands (`p`, `PROTOCOL` in `web/store.js`). 2 keeps the queue when an update leaves it out; 3 takes the message as what changed. A tab below 3 gets the whole message with each update, and one that names none (older code, as a tab asleep through an update keeps) also gets the queue with each update, because its code drops a queue that an update leaves out.
 
+The session list goes to a tab only when it differs from the one that tab last got (`Client.sessionsSent`): it is large, and it is worked out again for many changes that leave it as it was.
+
 ## Who Pi works for
 
 A message to Pi names its person in its request id (`requests.ts`):

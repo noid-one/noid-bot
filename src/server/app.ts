@@ -1236,7 +1236,7 @@ export class PocketApp {
         }
 
         client.send("hello", this.#helloFor(client, hello));
-        client.send("sessions", this.sessions(client.user));
+        this.#sendSessions(client, this.sessions(client.user));
 
         if (client.user.role === "owner" && this.themes.failure !== undefined) {
             client.send("notice", { level: "warning", message: this.themes.failure });
@@ -1901,6 +1901,8 @@ export class PocketApp {
             let board: SubagentEntry[] | undefined;
             // Everyone but the owner gets a list of their own: bots are the owner's alone, and scoped people see theirs.
             const lists = new Map<string, ReturnType<PocketApp["sessions"]>>();
+            // Each list's JSON, worked out once however many tabs get it.
+            const jsons = new Map<ReturnType<PocketApp["sessions"]>, string>();
 
             for (const client of this.#clients) {
                 const user = client.user;
@@ -1912,7 +1914,14 @@ export class PocketApp {
                     lists.set(user.id, list);
                 }
 
-                client.send("sessions", list);
+                let json = jsons.get(list);
+
+                if (json === undefined) {
+                    json = JSON.stringify(list);
+                    jsons.set(list, json);
+                }
+
+                this.#sendSessions(client, list, json);
 
                 if (client.board === true) {
                     this.#sendBoard(
@@ -1937,6 +1946,18 @@ export class PocketApp {
             }
         } catch {
             // A conversation that cannot be read yet shows its role instead.
+        }
+    }
+
+    /** Send a tab its session list, unless it is what the tab last got: the list is large, and changes come often. */
+    #sendSessions(
+        client: Client,
+        sessions: ReturnType<PocketApp["sessions"]>,
+        json = JSON.stringify(sessions),
+    ): void {
+        if (json !== client.sessionsSent) {
+            client.sessionsSent = json;
+            client.send("sessions", sessions);
         }
     }
 
@@ -2365,7 +2386,7 @@ export class PocketApp {
             }
 
             client.send("hello", this.#helloFor(client, await this.hello(user)));
-            client.send("sessions", this.sessions(user));
+            this.#sendSessions(client, this.sessions(user));
 
             // An open board too: it must not keep subagents of sessions no longer shared.
             if (client.board === true) {

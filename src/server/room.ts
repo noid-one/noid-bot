@@ -149,6 +149,8 @@ export interface Client {
     boardSeq?: number;
     /** The JSON of the subagents this tab's board last got, so an unchanged list is not sent again. */
     boardSent?: string;
+    /** The JSON of the session list this tab last got, so an unchanged list is not sent again. */
+    sessionsSent?: string;
 }
 
 export type TypingPlace = "chat" | "pi";
