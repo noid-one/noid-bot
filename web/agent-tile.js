@@ -14,10 +14,15 @@ function waitingOf(agent, peek) {
     return agent.waiting === true || (peek?.approvals?.length ?? 0) > 0;
 }
 
-/** What it does now; before its own peek arrives, what it was asked says more than "Working…". */
+/**
+ * What it does now; before its own peek arrives, what it was asked says more than "Working…". A call it waits on is
+ * the call alone: the tile says it needs approval.
+ */
 function doingOf(agent, peek) {
-    if (agent.waiting === true && agent.approval !== undefined) {
-        return `Waiting for approval: ${agent.approval.tool} ${agent.approval.subject}`.trim();
+    const approval = agent.waiting === true ? agent.approval : peek?.approvals?.[0];
+
+    if (approval !== undefined) {
+        return `${approval.tool} ${approval.subject}`.trim();
     }
 
     const doing = nowDoing(agent, peek);

@@ -74,6 +74,10 @@ function sync(state) {
 
 store.subscribe(sync);
 
+/** A session's sub-tiles on the board before "Show N more": two rows on a wide screen, three in a phone's column. */
+const BOARD_TILES = 6;
+const BOARD_TILES_PHONE = 3;
+
 /** Close the board: back to the conversation, or the home screen, it took the place of. */
 export const closeBoard = () => store.set({ board: false, boardAgents: null });
 
@@ -425,8 +429,13 @@ export function SubagentsBoard() {
     const [query, setQuery] = useState("");
     const [selected, setSelected] = useState(null);
     const [hovered, setHovered] = useState(null);
+    // The sessions whose every sub-tile shows, past the first few.
+    const [unfolded, setUnfolded] = useState(() => new Set());
     const [, tick] = useState(0);
     const box = useRef(null);
+    // A subagent to bring into view once its square is drawn: one a peek tile's "N more" asked for.
+    const reveal = useRef(null);
+    const { boardFocus } = store.state;
     const agents = boardAgents ?? [];
     const titles = new Map(sessions.map((session) => [session.id, session.title ?? "New session"]));
     const cwds = new Map(sessions.map((session) => [session.id, session.cwd]));
@@ -488,6 +497,29 @@ export function SubagentsBoard() {
             );
         }
     }, [grid.length > 0]);
+
+    // A peek tile's "N more" opens the board at the first it left out: selected, and in view once the board has it.
+    useEffect(() => {
+        if (boardFocus === undefined || boardFocus === null) {
+            return;
+        }
+
+        setSelected(boardFocus);
+        reveal.current = boardFocus;
+        store.set({ boardFocus: null });
+    }, [boardFocus]);
+
+    useEffect(() => {
+        const cell =
+            reveal.current === null
+                ? null
+                : box.current?.querySelector(`.board-cell[data-agent="${reveal.current}"]`);
+
+        if (cell) {
+            reveal.current = null;
+            cell.scrollIntoView({ block: "center" });
+        }
+    });
 
     // Elapsed times tick while one works.
     useEffect(() => {
@@ -638,6 +670,22 @@ export function SubagentsBoard() {
         const folder = folderColor(cwds.get(id));
         // The ones at work now, as sub-tiles: what each does, without opening any of them. The filter and search apply.
         const active = list.filter((agent) => live(boardState(agent)) && matches(agent));
+        // The first few, and the selected one wherever it is; the rest a click away.
+        const cap = phone ? BOARD_TILES_PHONE : BOARD_TILES;
+        const all = unfolded.has(id) || active.length <= cap + 1;
+        const tiles = all
+            ? active
+            : active.filter((agent, index) => index < cap || agent.conversationId === selected);
+        const toggle = () =>
+            setUnfolded((was) => {
+                const next = new Set(was);
+
+                if (!next.delete(id)) {
+                    next.add(id);
+                }
+
+                return next;
+            });
 
         return html`<div key=${id} class="board-row">
             <div class="board-row-head">
@@ -684,7 +732,7 @@ export function SubagentsBoard() {
             ${
                 active.length > 0 &&
                 html`<div class="board-live" role="group" aria-label="Subagents at work">
-                    ${active.map(
+                    ${tiles.map(
                         (agent) => html`<${AgentTile}
                             key=${agent.conversationId}
                             agent=${agent}
@@ -694,6 +742,12 @@ export function SubagentsBoard() {
                             onOpen=${() => open(agent)}
                         />`,
                     )}
+                    ${
+                        active.length > cap + 1 &&
+                        html`<button class="board-live-more" onClick=${toggle}>
+                            ${all ? "Show fewer" : `Show ${active.length - tiles.length} more`}
+                        </button>`
+                    }
                 </div>`
             }
         </div>`;
