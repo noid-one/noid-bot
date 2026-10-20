@@ -37,6 +37,7 @@ import {
 } from "./theme.js";
 import {
     APPLE,
+    apartFromViews,
     html,
     Icon,
     NoidMark,
@@ -756,7 +757,7 @@ function BotRow({ session, active, size }) {
     </button>`;
 }
 
-export function SessionList({ compact = false }) {
+function AllSessions({ compact = false }) {
     const { sessions, sessionsLoaded, server, pinned } = store.state;
     const canStart = canSteer() && !scoped();
     const [query, setQueryState] = useState(() => (compact ? "" : listKept.query));
@@ -1453,6 +1454,9 @@ export function SessionList({ compact = false }) {
     </div>`;
 }
 
+/** Not drawn again as an answer streams: it reads no conversation's view, and on a phone it stays drawn off-screen. */
+export const SessionList = apartFromViews(AllSessions);
+
 /**
  * Subagents across the sessions, by state, as the rail counts them: archived sessions only while a subagent works
  * there, as the subagents board shows them.
@@ -1519,7 +1523,7 @@ function RailTiles() {
  * home screen it does not fold, and the mark is a mark. noid: no more than that; running now, people, and providers are
  * in the launcher, peek tiles in the top bar, and Noid heads the bot list.
  */
-export function RailNav({ foldable = false, folded = false }) {
+function Rail({ foldable = false, folded = false }) {
     const { sessions, board, me } = store.state;
     const canStart = canSteer() && !scoped();
     const agents = subagentTotals(sessions);
@@ -1620,12 +1624,16 @@ export function RailNav({ foldable = false, folded = false }) {
     </nav>`;
 }
 
+/** Not drawn again as an answer streams: it reads no conversation's view. */
+export const RailNav = apartFromViews(Rail);
+
 /**
  * noid: the owner's tools, on the rail as rakazo keeps its agent computer by hand: group threads, and the shared
  * computer's terminal and desktop, each a page in the conversation's place, lit while it is open.
  */
 function ComputerRailButtons() {
-    const { tool, view } = store.state;
+    // The view is read at the click, not as the rail draws: the rail is not drawn again as an answer streams.
+    const { tool } = store.state;
     const buttons = [
         {
             id: "groups",
@@ -1644,7 +1652,7 @@ function ComputerRailButtons() {
             run: () =>
                 tool?.kind === "terminal"
                     ? closeTool()
-                    : openTool("terminal", { cwd: view.agent?.cwd }),
+                    : openTool("terminal", { cwd: store.state.view?.agent?.cwd }),
         },
         {
             id: "desktop",

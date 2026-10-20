@@ -1227,6 +1227,60 @@ export class Boundary extends Component {
     }
 }
 
+/** The parts of the store a streaming answer changes several times a second: the open conversation's, and PiP's. */
+const VIEWS = new Set(["view", "pipView"]);
+
+/**
+ * Whether the store changed between two states only in the views (`VIEWS`). Nothing changed at all is no: `store.set({})`
+ * draws everything again.
+ */
+function onlyViews(before, after) {
+    let views = false;
+
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        if (before[key] !== after[key]) {
+            if (!VIEWS.has(key)) {
+                return false;
+            }
+
+            views = true;
+        }
+    }
+
+    return views;
+}
+
+const sameProps = (a, b) =>
+    Object.keys(a).length === Object.keys(b).length &&
+    Object.keys(a).every((key) => Object.is(a[key], b[key]));
+
+class ApartFromViews extends Component {
+    shouldComponentUpdate(next) {
+        return !(
+            next.component === this.props.component &&
+            onlyViews(this.props.state, next.state) &&
+            sameProps(this.props.props, next.props)
+        );
+    }
+
+    render({ component, props }) {
+        return h(component, props);
+    }
+}
+
+/**
+ * `component`, drawn again on every change to the store but one that changes only the views (`VIEWS`), as an answer
+ * streams: for big parts that read neither, such as the session list, which stays drawn off-screen on phones. Its own
+ * state draws it again as usual.
+ */
+export function apartFromViews(component) {
+    const Wrapped = (props) => h(ApartFromViews, { component, props, state: store.state });
+
+    Wrapped.displayName = component.name;
+
+    return Wrapped;
+}
+
 /** Phones: sheets from the bottom edge, which drag back down to close, and menus that a swipe closes. */
 export const BOTTOM_SHEETS = matchMedia("(max-width: 699px)");
 
