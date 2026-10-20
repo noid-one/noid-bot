@@ -653,6 +653,13 @@ test("a session a bot started is the owner's as the bot is: hidden from guests, 
         { bot?: unknown; worksFor?: { name: string } } | undefined;
 
     assert.equal(listed?.bot, undefined, "not a bot of its own");
+
+    // An ordinary session working for the bot: none of the bot's own extensions (session tools, bot mail) came with
+    // it, so it does not act as the owner, and its notes are written as any session's.
+    const extensions = JSON.stringify((await app.agentState(linked))?.extensions ?? null);
+
+    assert.ok(!/noid-sessions|noid-bot-mail|noid-overseer/.test(extensions), extensions);
+    assert.equal(app.sessionTools.isBot(linked), false);
     assert.equal(listed?.worksFor?.name, "Team Lead");
 });
 

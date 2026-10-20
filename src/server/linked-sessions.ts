@@ -25,6 +25,36 @@ import { HttpError } from "./errors.ts";
 import { defang, INVISIBLE_CLASS } from "./fence.ts";
 import { isThinkingLevel, levelAtMost, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { requestFor } from "./requests.ts";
+import { SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
+import { BOT_MAIL_EXTENSION, OVERSEER_EXTENSION } from "./noid/botmail.ts";
+
+/** A bot's own extensions: the session tools and bot mail act as the owner, for the bot's own conversation only. */
+const BOT_ONLY = new Set([SESSION_TOOLS_EXTENSION, BOT_MAIL_EXTENSION, OVERSEER_EXTENSION]);
+
+/**
+ * What a linked session takes from the one that starts it, but a bot's own extensions: a session a bot starts is an
+ * ordinary session working for it (approvals take it as the bot's), not a second bot acting as the owner, whose notes
+ * would then read what it read elsewhere as its own (`noid-compact.ts` writes those for bots' own conversations).
+ */
+function withoutBotTools(agent: AgentState): AgentState {
+    const extensions = agent.extensions;
+
+    if (extensions === undefined) {
+        return agent;
+    }
+
+    return {
+        ...agent,
+        extensions: Array.isArray(extensions)
+            ? extensions.filter((name) => !BOT_ONLY.has(name))
+            : {
+                  ...extensions,
+                  ...(extensions.add === undefined
+                      ? {}
+                      : { add: extensions.add.filter((name) => !BOT_ONLY.has(name)) }),
+              },
+    };
+}
 
 const context = BACKGROUND_CONTEXT;
 
@@ -685,7 +715,7 @@ export class LinkedSessions implements LinkedSessionsApi {
 
             const child = await tx.createConversation({ ownership: { kind: "ownerless" } });
 
-            Object.assign(await tx.doc(AgentDoc, child.id), inherited, {
+            Object.assign(await tx.doc(AgentDoc, child.id), withoutBotTools(inherited), {
                 cwd,
                 model,
                 thinkingLevel: thinking,
