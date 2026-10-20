@@ -128,8 +128,8 @@ export interface Client {
     sentFields?: Map<string, string>;
     /**
      * What the tab's code understands of updates (`PROTOCOL` in `web/store.js`): 2 keeps the queue an update leaves out;
-     * 3 also takes the live message as what changed (`liveMessageDelta`). Older code names none, and gets the queue and
-     * the whole live message with each update.
+     * 3 also takes the live message as what changed (`liveMessageDelta`). A tab below 3 gets the whole live message with
+     * each update; older code, which names none, also gets the queue.
      */
     readonly protocol?: number;
     /** The blocks of the live message this tab has, for protocol 3: undefined when it has none. */
@@ -527,7 +527,6 @@ export class Room {
         client.orderKey = orderKey;
         const agentState = (view.docs["pi.agent"] ?? {}) as AgentState;
         const inbox = (view.docs["pi.inbox"] ?? { items: [] }) as unknown as InboxState;
-        const live = this.#liveFor(client, view.docs["pi.live"] as LiveState | undefined);
         // These grow with the session (authors has one item per message) but rarely change: streaming sends an update
         // every 90 ms, which would repeat them all each time. Send each only when it differs from what this client has.
         const queue = this.#inbox(inbox.items);
@@ -623,7 +622,8 @@ export class Room {
             conversation: this.#app.conversationInfo(this),
             entries,
             ...(orderChanged || full ? { order } : {}),
-            live,
+            // Last, so that nothing that throws before the send leaves the server thinking the tab has these blocks.
+            live: this.#liveFor(client, view.docs["pi.live"] as LiveState | undefined),
             agent: agentInfo(
                 this.#app.models,
                 agentState,

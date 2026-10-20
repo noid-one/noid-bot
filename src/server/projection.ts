@@ -474,10 +474,10 @@ export function projectLive(live: LiveState | undefined): ClientLive {
 }
 
 /**
- * The live message for a tab that has `sent` (protocol 3): what changed, as `{ keep, blocks }`. The tab keeps its first
- * `keep` blocks and puts `blocks` after them. A first block with `from` goes on with the tab's block `keep`, whose text
- * is `from` characters long: its text is what comes after. A stream grows its newest block, so each update carries only
- * the new characters, where the whole message every 90 ms made a long answer cost its length squared.
+ * The live message for a tab of protocol 3 as what changed: the tab keeps its first `keep` blocks and puts `blocks`
+ * after them. A first block with `from` is not a whole block: it adds its text to the tab's block `keep`, which has
+ * `from` characters. A stream grows its newest block, so each update carries only the new characters, where the whole
+ * message every 90 ms made a long answer cost its length squared. `web/live.js` puts it together.
  */
 export type LiveMessageDelta = {
     keep: number;
@@ -491,6 +491,7 @@ export type ClientLiveUpdate = Omit<ClientLive, "generation"> & {
     };
 };
 
+/** What changed from the blocks a tab has, `sent`, to `blocks`. */
 export function liveMessageDelta(sent: ClientBlock[], blocks: ClientBlock[]): LiveMessageDelta {
     let keep = 0;
 

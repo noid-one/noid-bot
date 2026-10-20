@@ -526,6 +526,8 @@ function mergeView(current, data) {
     };
 }
 
+let reconnecting = false;
+
 /**
  * The live run from an update, whose message may come as what changed (`liveMessage`). One that does not fit what this
  * tab has, which should not happen, keeps the message as it was and connects again for a full view.
@@ -540,7 +542,15 @@ function mergeLive(current, live) {
 
     if (message === null) {
         message = had;
-        setTimeout(connect);
+
+        // One batch of events may hold several such updates: connect once.
+        if (!reconnecting) {
+            reconnecting = true;
+            setTimeout(() => {
+                reconnecting = false;
+                connect();
+            });
+        }
     }
 
     return { ...live, generation: { ...live.generation, message } };
@@ -647,8 +657,8 @@ const handlers = {
 
 /**
  * What this code understands of the server's updates, sent with each connection. 2: it keeps the queue when an update
- * leaves it out. 3: it takes the message being written as what changed (`mergeLive`). The server sends a tab whose code
- * names none (older code, as a tab asleep through an update keeps) the queue and the whole message with each update.
+ * leaves it out. 3: it takes the message being written as what changed (`mergeLive`). The server sends a tab below 3 the
+ * whole message with each update, and one whose code names none (as a tab asleep through an update keeps) the queue too.
  */
 const PROTOCOL = 3;
 const TRANSPORT_KEY = "pocket.transport";

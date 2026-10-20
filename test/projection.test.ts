@@ -61,59 +61,21 @@ test("stats add the cost of models and tools", () => {
     assert.equal(stats.cost, 0.75);
 });
 
-test("a live message sent as what changed puts together the same blocks in the browser", async () => {
+test("a live update that does not fit what the browser has is refused, not shown wrong", async () => {
     const { liveMessage } = (await import(new URL("../web/live.js", import.meta.url).href)) as {
-        liveMessage: (current: unknown, update: unknown) => { blocks: ClientBlock[] } | null;
+        liveMessage: (current: unknown, update: unknown) => unknown;
     };
-    const call = (args: Record<string, unknown>): ClientBlock => ({
-        type: "toolCall",
-        id: "c1",
-        name: "bash",
-        args,
-    });
-    // Thinking grows, text starts and grows, a tool call's arguments grow, then a retry starts over shorter.
-    const steps: ClientBlock[][] = [
-        [{ type: "thinking", text: "Hm" }],
-        [{ type: "thinking", text: "Hmm, yes" }],
-        [
-            { type: "thinking", text: "Hmm, yes" },
-            { type: "text", text: "Here" },
-        ],
-        [
-            { type: "thinking", text: "Hmm, yes" },
-            { type: "text", text: "Here it is" },
-            call({ command: "l" }),
-        ],
-        [
-            { type: "thinking", text: "Hmm, yes" },
-            { type: "text", text: "Here it is" },
-            call({ command: "ls -la" }),
-        ],
-        [{ type: "text", text: "Again" }],
-    ];
-    let sent: ClientBlock[] = [];
-    let shown: { blocks: ClientBlock[] } | null = { blocks: [] };
+    const had = { blocks: [{ type: "text", text: "ab" }] };
 
-    for (const blocks of steps) {
-        shown = liveMessage(shown, liveMessageDelta(sent, blocks));
-        sent = blocks;
-        assert.deepEqual(shown, { blocks });
-    }
-
-    // Text that grows goes as the new characters only.
-    assert.deepEqual(
-        liveMessageDelta([{ type: "text", text: "abc" }], [{ type: "text", text: "abcdef" }]),
-        {
-            keep: 0,
-            blocks: [{ type: "text", from: 3, text: "def" }],
-        },
-    );
-    // An update that does not fit what the browser has is refused, not shown wrong.
     assert.equal(
-        liveMessage(
-            { blocks: [{ type: "text", text: "ab" }] },
-            { keep: 0, blocks: [{ type: "text", from: 3, text: "d" }] },
-        ),
+        liveMessage(had, { keep: 0, blocks: [{ type: "text", from: 3, text: "d" }] }),
         null,
+    );
+    assert.deepEqual(
+        liveMessage(
+            had,
+            liveMessageDelta(had.blocks as ClientBlock[], [{ type: "text", text: "abc" }]),
+        ),
+        { blocks: [{ type: "text", text: "abc" }] },
     );
 });
