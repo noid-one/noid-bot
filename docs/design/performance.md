@@ -1,75 +1,89 @@
 # Performance: noid against Pi Pocket, pi-web-desktop, and rakazo
 
-Measured on 2026-10-19/20 (WSL2, Node 22, headless Chromium 141 with software WebGL), with the same seeds for each app:
-30 small sessions of 6 turns, and one of 220 turns (440 entries). Medians of 5 runs; [min–max] where shown. No real
-model was called, so streaming throughput is not measured. The shared computer's Docker tests run against a container of
-their own (`NOID_COMPUTER=noid-computer-test`) and pass, 12 of 12. rakazo needs Postgres, a worker, and an account: only its
-signed-out web shell was loaded.
+All four apps were measured in one sitting on 2026-10-20 (WSL2, Node 22, headless Chromium 141 with software WebGL),
+with the same data in each: 30 small conversations and one of 220 turns (440 entries). Figures are medians of 5 runs,
+[min–max] where shown; each API figure is itself the median of 7 calls. noid was measured at the head of the review
+branch, started directly (`node src/server/main.ts`), with and without Node's compile cache.
+
+- **rakazo** ran as its compose file runs it in production: API and worker (`tsx src/index.ts`), web (`vite preview`
+  of its build), `postgres:16` in Docker, Graphile jobs, Postgres realtime, and its `fake` sandbox (with `none`, its
+  own fallback, its thread routes answer 500: a computer kind its contracts do not list). A local test account was made
+  through its own sign-up route, and its data written with its own `createThreadMessage`.
+- **pi-web-desktop** ran `next start` on a production build.
+- **No model was called**, so streaming throughput is not compared.
+- The shared computer's Docker tests run against a container of their own (`NOID_COMPUTER=noid-computer-test`) and
+  pass, 12 of 12.
 
 ## The four apps
 
-|                                         | noid (before → after this review)            | Pi Pocket 0.16        | pi-web-desktop (Next 16, prod)          | rakazo                       |
-| --------------------------------------- | -------------------------------------------- | --------------------- | --------------------------------------- | ---------------------------- |
-| Cold start to first HTTP 200            | 661 ms [649–717] → ~465 ms (compile cache)   | 643 ms                | 409 ms (loads its agent lazily)         | not run                      |
-| RSS idle / after a session opened       | 191 / 199 MB                                 | 190 / 195 MB          | 139 / 244–257 MB                        | –                            |
-| First load: requests                    | 101                                          | 84                    | 36                                      | 26 (sign-in shell)           |
-| First load: bytes sent                  | 2.08 MB → 751 KB (gzip, 304 on reload)       | 1.94 MB               | 2.13 MB (gzip)                          | 567 KB (gzip, shell only)    |
-| Home page: first contentful paint       | 228–248 ms → ~165 ms                         | 600 ms                | 64 ms                                   | 148 ms                       |
-| Home page: script during load           | 314–322 ms → ~230 ms                         | 31 ms                 | 954 ms                                  | 80 ms                        |
-| Home page: main thread while idle       | 99–124 → ~43 ms/s, ~19 ms/s after 20 s still | 0.1 ms/s              | 1–19 ms/s                               | –                            |
-| Session list / small transcript         | 2.0 / 1.9 ms                                 | 2.1 / 1.9 ms          | 2.6 ms (384 ms first call) / 2.7 ms     | –                            |
-| 220-turn transcript (first view)        | 8.1 ms, 488 KB (polling: 15 KB gzipped now)  | 8.0 ms, 482 KB        | 9.2 ms for its last 200 entries, 247 KB | pages 100 messages at a time |
-| Installed packages / `node_modules`     | 246 / 247 MB, no build step                  | 269 / 230 MB          | 1,471 / 1.6 GB, plus a 304 MB build     | ~2,000 packages, Postgres    |
-| Lines: server / web JS / CSS (no tests) | 52.5k / 39.5k / 16.0k                        | 45.3k / 36.2k / 15.4k | ~41.7k / ~49k (client)                  | 19k API, 36k web, 106k pkgs  |
+| median [min–max]                        | noid                                                                     | Pi Pocket 0.16        | pi-web-desktop (Next 16)                  | rakazo                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------ | --------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| Cold start to first HTTP 200            | 632 ms [623–1067]; 540 [538–543] with the compile cache (the launcher's) | 586 ms [583–909]      | 360 ms [357–381] (loads its agent lazily) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
+| Memory at idle                          | 192 MB, one process                                                      | 191 MB                | 139 MB, 260 MB once pages are open        | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
+| Home, first visit: requests, sent       | 99, 749 KB (gzip)                                                        | 84, 1.99 MB           | 36, 2.13 MB                               | 67, 817 KB                                                   |
+| Home, revisit: sent                     | 32 KB (all 304)                                                          | 2.1 MB again          | –                                         | –                                                            |
+| Home: first paint                       | 180 ms [160–204]                                                         | 596 ms                | 56 ms                                     | 156 ms                                                       |
+| Home: script during load                | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94)          | 29 ms                 | 987 ms                                    | 188 ms                                                       |
+| Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still                                             | 0.2–2.6 ms/s          | 6–21 ms/s                                 | 363–372 ms/s (CSS avatars)                                   |
+| Home: main thread at idle, a real GPU   | 6–8 ms/s at rest (Chrome, Intel integrated, Direct3D 11)                 | –                     | –                                         | –                                                            |
+| Session list / small conversation       | 1.9 / 1.8 ms                                                             | 1.7 / 1.5 ms          | 2.2 (378 the first call) / 2.7 ms         | 20.4 / 14.2 ms                                               |
+| 220-turn conversation, first view       | 7.1 ms; 15 KB gzipped (488 KB raw), all 440 entries                      | 6.9 ms, 482 KB        | 8.1 ms, 247 KB, its last 200 entries      | 15.1 ms, 112 KB, 100 messages a page                         |
+| Install                                 | 246 packages, 247 MB, no build step                                      | 269 packages, 230 MB  | 1,471 packages, 1.6 GB, a 304 MB build    | 1,379 packages, 1.6 GB, plus Postgres                        |
+| Lines: server / web JS / CSS (no tests) | 52.5k / 39.5k / 16.0k                                                    | 45.3k / 36.2k / 15.4k | ~41.7k / ~49k (client)                    | 19k API, 36k web, 106k in packages                           |
 
 How each works where it matters for speed:
 
-- **noid and Pi Pocket**: Pi Durable keeps sessions in SQLite. Output streams over SSE (long polling through tunnels
-  that hold streams back), coalesced every 90 ms, sending only entries a tab has not seen. No build step: the browser
-  loads the app's modules as they are.
-- **pi-web-desktop**: pi's JSONL files, parsed whole on every transcript request; SSE that re-sends the whole message
-  on every update; the agent in the server's process; a 2.3 MB chunk with every Prism language.
+- **noid and Pi Pocket**: Pi Durable keeps sessions in SQLite; output streams over server-sent events (long polling
+  through tunnels that hold streams back), coalesced every 90 ms, sending only entries a tab has not seen. No build
+  step: the browser loads the app's modules as they are.
+- **pi-web-desktop**: pi's JSONL files, parsed whole on every transcript request; an event stream that re-sends the
+  whole message on every update; the agent in the server's process; a 2.3 MB chunk with every Prism language.
 - **rakazo**: Postgres for everything, a write per streamed delta (batched every 250 ms), LISTEN/NOTIFY to the API,
-  separate API and worker processes.
+  separate API and worker processes, an RPC layer and a web proxy in front of each call.
 
 ## Was building on Pi Pocket the right call?
 
-Yes, on the evidence:
+Yes. By dimension:
 
-- **Weight.** A sixth of pi-web-desktop's packages and no build; no database server or worker, unlike rakazo.
-  Installing, upgrading, and running noid on one machine stays simple, which a personal server needs.
-- **Architecture.** Durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
+- **Running weight**: noid is one process of about 192 MB; rakazo is four, about 1.47 GB, and a 1.6 GB install with a
+  database server. pi-web-desktop starts smaller but passes noid once used, and installs 1.6 GB with a build.
+- **Speed of what people wait for**: noid answers its API in 2–7 ms like Pi Pocket and pi-web-desktop; rakazo takes
+  9–22 ms through Postgres, its RPC layer, and its proxy.
+- **Payload**: noid now sends the least of the four on a first visit (749 KB) and almost nothing on a revisit; a
+  220-turn session's first view is 15 KB on the wire. That came from this review, not from the base, but the base made
+  it a few lines: one process serves everything.
+- **Start**: about even with Pi Pocket, faster with the compile cache; pi-web-desktop is quicker by loading its agent
+  only when needed, rakazo four to seven times slower.
+- **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
-- **Payload.** Gzipped, noid's first load is about a third of pi-web-desktop's, and its script during load a quarter.
-- **Even.** API latency is 2–9 ms in all three that ran.
-- **Where the references are better.** pi-web-desktop starts sooner (its agent loads on first use) and pages long
-  transcripts (the last 200 entries, older ones on scroll, rows with `content-visibility`); rakazo pages too. noid sends
-  a session's whole transcript when it opens: 488 KB for 220 turns, which is fine on a local network and now gzipped
-  on the polling path tunnels use. Paging it is the next step if sessions grow longer.
-- **Where noid was worse than its own base.** The WebGL faces made the home page about a thousand times busier at idle
-  than Pi Pocket's. This review cut that by about 60% while the page is in use and 83% once it is left open (below),
-  to pi-web-desktop's range; a real GPU costs much less than this test's software WebGL. The animated faces are the
-  product's look: what is left is their price, and a reduced-motion setting turns it off (faces draw only on a change).
+- **Where the references are better**: pi-web-desktop paints first sooner and starts faster; both it and rakazo page
+  long transcripts on the server, where noid sends a session's entries whole (gzipped now: 15 KB for 220 turns).
+  Paging is the next step if sessions grow much longer; it touches Find in session, jumps to pinned and older messages,
+  and export, which all read the entries a tab has.
+- **Where noid costs more than its base**: the WebGL bot faces. Headless, with software WebGL, they take about 300 ms
+  of script while the home page loads and 23–53 ms/s at idle; in Chrome on an integrated Intel GPU, 6–8 ms/s at rest
+  and 1.3 ms to add a face. They are the product's look, and Appearance → Reduced motion stops them animating.
 
-## What this review changed (commits d6dd498 and after)
+## What this review changed
 
-- Faces draw 10 frames a second while every face in sight rests (idle or asleep) and the pointer is still, 4 once
-  nothing has moved for 20 seconds, and sleep between frames; work, a change, a tap, or the pointer brings back 30 at
-  once (`web/faces/renderer.js`).
-- App files are kept in memory while unchanged on disk (checked on every request, so live edits show at once), gzipped
-  once, and answered `304` by ETag (`src/server/http/assets.ts`).
-- The launcher turns on Node's compile cache, kept in the data folder (`src/launcher/main.ts`): about 90 ms off each
-  start or restart.
-- Long-poll answers over 2 KB go gzipped (`src/server/http/events.ts`).
+- **Faces** (`web/faces/renderer.js`) draw 30 frames a second while something happens, 10 while every face in sight
+  rests and the pointer is still, and 4 once nothing has moved for 20 seconds, sleeping between frames. A change, a
+  tap, or the pointer brings back 30 at once. Before: 99–124 ms/s at idle, headless.
+- **App files** (`src/server/http/assets.ts`) are kept in memory while unchanged on disk (checked on every request, so
+  live edits show at once), gzipped once, and answered `304` by ETag. Before: 2.08 MB on every load.
+- **The event stream** (`src/server/http/events.ts`) is gzipped, each event flushed as it goes; so are long-poll
+  answers over 2 KB. A 220-turn session's first view: 503 KB → 15 KB.
+- **Start**: the launcher turns on Node's compile cache, kept in the data folder (`src/launcher/main.ts`), and the
+  server lets the variable go so what Pi runs does not cache there: about 90 ms off each start or restart.
 
-Considered and left: loading noid-only modules on demand (about 40 KB gzipped, 5% of the first load, for more
-moving parts); `content-visibility` on transcript rows (style and layout cost about 27 ms for 220 turns, and estimated
-row heights would fight the transcript's follow-scrolling); diffing the per-tick work in `room.ts` (it walks a session's
+Considered and left: loading noid-only modules on demand (about 40 KB gzipped, 5% of the first load, for more moving
+parts); `content-visibility` on transcript rows (style and layout cost about 27 ms for 220 turns, and estimated row
+heights would fight the transcript's follow-scrolling); diffing the per-tick work in `room.ts` (it walks a session's
 entries in microseconds).
 
 A note for anyone benchmarking with the test model: seeding past about 240 turns slows to 40 s a turn. That is the
 scripted model, not the app: at its 128k window Pi Durable compacts, and the echo model's "summary" is the whole
 conversation, streamed at 2,000 tokens a second, so every later turn compacts again.
 
-Tools and raw results: the benchmark scripts (`bench2.mjs`, `load.mjs`, `idle.mjs`, `seedbig.ts`) were kept outside
-the repository, in `~/.cache/noid-perf/`.
+Tools and raw results (`bench2.mjs`, `bench-pwd.mjs`, `bench-rk.mjs`, `load.mjs`, `idle2.mjs`, `seedbig.ts`, and
+`results/run3/`) were kept outside the repository, in `~/.cache/noid-perf/`.
