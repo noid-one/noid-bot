@@ -242,7 +242,11 @@ function createRenderer() {
     document.addEventListener("pointerleave", () => {
         pointer.known = false;
     });
-    document.addEventListener("visibilitychange", schedule);
+    // Shown again: no frames ran while hidden, so faces easing home settle from now, not from before.
+    document.addEventListener("visibilitychange", () => {
+        restSince = performance.now();
+        schedule();
+    });
 
     canvas.addEventListener("webglcontextlost", (event) => {
         event.preventDefault();
