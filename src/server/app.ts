@@ -83,6 +83,7 @@ import {
     createApprovals,
     AUTO_REVIEW_APPROVAL,
     NOID_APPROVAL,
+    NOT_SHOWN,
 } from "./noid/approvals.ts";
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { Bots } from "./noid/bots.ts";
@@ -1548,6 +1549,12 @@ export class PocketApp {
             return false;
         }
 
+        // The shared computer is the owner's too (its browser holds every bot's logins): someone else works in a
+        // session there only when invited to that one session.
+        if (user.role !== "owner" && user.sessions === undefined && !this.onHost(root)) {
+            return false;
+        }
+
         return user.sessions === undefined || user.sessions.includes(String(root));
     }
 
@@ -2101,6 +2108,11 @@ export class PocketApp {
     cannotAllow(user: User, request: ApprovalRequest): string | undefined {
         if (user.role === "viewer") {
             return "You can view this session but not steer Pi.";
+        }
+
+        // Part of it is not on the card: nobody says yes to what they could not read.
+        if (NOT_SHOWN.test(request.subject)) {
+            return "This call is too long to show whole: deny it, and ask for it in smaller parts.";
         }
 
         if (this.config.approvalRule !== "others" || user.role === "owner") {

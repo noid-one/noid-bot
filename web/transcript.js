@@ -1515,6 +1515,9 @@ function ApprovalCard({ approval }) {
         !approval.id.startsWith("noid:review:") &&
         !["bot_archive", "bot_update", "memory", "bot_create"].includes(approval.tool);
 
+    // The server cut a call too long to hold (the middle of it is not here): it can only be denied (app.ts cannotAllow).
+    const cut = /\n… \d+ characters not shown …\n/.test(approval.subject);
+
     const answer = (allow, always = false) => {
         setBusy(true);
         attempt(() => actions.approve(approval.id, allow, always)).finally(() => setBusy(false));
@@ -1546,12 +1549,19 @@ function ApprovalCard({ approval }) {
                           Someone else has to allow this: it came from your message. You can deny it.
                       </div>`
                   }
+                ${
+                    cut &&
+                    html`<div class="muted small">
+                        Part of this call is not shown: it can only be denied. Ask for it in smaller parts.
+                    </div>`
+                }
                 <div class="approval-actions">
                     <button class="button deny" disabled=${busy} onClick=${() => answer(false)}>
                         Deny
                     </button>
                     ${
                         !ownCall &&
+                        !cut &&
                         canAlways &&
                         html`<button
                             class="button"
@@ -1564,6 +1574,7 @@ function ApprovalCard({ approval }) {
                     }
                     ${
                         !ownCall &&
+                        !cut &&
                         html`<button
                             class="button primary"
                             disabled=${busy}

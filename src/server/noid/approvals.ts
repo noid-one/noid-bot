@@ -169,10 +169,12 @@ export function classify(
             ask: true,
             reason: "makes a bot on your machine",
             // Whole and as written: the folder the bot works in is the one the owner reads here.
+            // Its instructions too: the bot follows them, reading this machine without asking.
             subject: subjectOf("bot_create", {
                 folder: args.folder,
                 name: args.name,
                 role: args.role,
+                instructions: args.instructions,
             }),
         };
     }
@@ -199,8 +201,11 @@ export function classify(
 }
 
 /** The most of a command, or of one argument, an approval card holds: the card scrolls, so this bounds what is stored. */
-const SUBJECT_MAX = 8000;
-const FIELD_MAX = 4000;
+const SUBJECT_MAX = 64_000;
+const FIELD_MAX = 16_000;
+
+/** A subject `clipMiddle` cut: what is not shown could be anything, so such a call is never allowed, only denied. */
+export const NOT_SHOWN = /\n… \d+ characters not shown …\n/;
 
 /** Text too long to hold whole: its start and its end, and between them how much is not shown, so the card says so. */
 function clipMiddle(text: string, max: number): string {

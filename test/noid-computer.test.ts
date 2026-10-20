@@ -453,6 +453,24 @@ test("someone other than the owner reaches only the session's folder, links incl
     assert.equal(owners.kind === "text" && owners.text, "the-owner-only\n");
 });
 
+test("the computer is the owner's: a guest works there only in a session they were invited to", async () => {
+    const id = await newSession(app, `${VIRTUAL}/bots/iota`);
+    const everywhere = app.config.addUser("Everywhere guest", "guest").user;
+    const invited = app.config.addUser("Invited guest", "guest", [String(id)]).user;
+
+    assert.equal(app.canSee(everywhere, id), false);
+    assert.ok(!app.sessions(everywhere).some((session) => session.id === Number(id)));
+    await assert.rejects(
+        app.commands.submit(id, everywhere, { text: "hi", requestId: crypto.randomUUID() }),
+        /not shared with you/,
+    );
+    assert.equal(app.canSee(invited, id), true);
+    assert.equal(app.canSee(owner(app), id), true);
+
+    // Sessions on this machine stay shared as before.
+    assert.equal(app.canSee(everywhere, await newSession(app)), true);
+});
+
 // ─── The Computer's lifecycle, with a fake docker ───────────────────────────────────────────
 
 test("a computer made from an older image is made again when it next starts, never while running", async () => {

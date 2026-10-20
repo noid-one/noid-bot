@@ -79,7 +79,7 @@ Yes. By dimension:
 ## What this review changed
 
 - **Faces** (`web/faces/renderer.js`) draw 30 frames a second while something happens, 10 while every face in sight
-  rests and the pointer is still, 4 once nothing has moved for 20 seconds, and none once nobody has touched the page for
+  rests and the pointer is still, 4 once the pointer, keys, and taps have been still for 20 seconds, and none once nobody has touched the page for
   2 minutes (0 ms/s, as Pi Pocket), sleeping between frames. A change, a tap, a key, the wheel, or the pointer brings
   back 30 at once. Before: 99–124 ms/s at idle, headless.
 - **App files** (`src/server/http/assets.ts`) are kept in memory while unchanged on disk (checked on every request, so
