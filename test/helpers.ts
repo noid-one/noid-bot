@@ -1,31 +1,20 @@
 // What the server tests share: an isolated Pi install and data folder, a scripted model, and small helpers. Import
 // this before anything from src/: it points Pi's config at a temporary folder first.
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { home, root, work } from "./env.ts";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
 import { type ConversationId, UsageDoc } from "@earendil-works/pi-durable";
+import { PocketApp } from "../src/server/app.ts";
 import type { Attachment } from "../src/server/commands.ts";
 import type { User } from "../src/server/config.ts";
 import type { Client } from "../src/server/room.ts";
 
+export { home, root, work };
+
 export const context = BACKGROUND_CONTEXT;
-
-export const root = mkdtempSync(join(tmpdir(), "pi-pocket-test-"));
-// Isolate from the real Pi install: its auth, settings, skills, and Lancet Guard.
-process.env.PI_CODING_AGENT_DIR = join(root, "agent");
-process.env.PI_POCKET_GUARD = "off";
-mkdirSync(process.env.PI_CODING_AGENT_DIR, { recursive: true });
-/** The folder test sessions work in. */
-export const work = join(root, "work");
-mkdirSync(work);
-/** The home folder the app finds `~/.agents/skills` in, for the same isolation. */
-export const home = join(root, "home");
-mkdirSync(home);
-
-const { PocketApp } = await import("../src/server/app.ts");
 
 export type App = Awaited<ReturnType<typeof PocketApp.open>>;
 
