@@ -84,7 +84,7 @@ export const LinkedSessionPeersDoc = defineDoc<{ peers: Record<string, number> }
 
 /**
  * Messages between the linked sessions of one team since a person last wrote in any of them, kept on the team's top
- * session (`linked-sessions.ts`): past a limit, sessions stop messaging each other until a person writes.
+ * session (`linked-sessions.ts`). Since 0.19.0 no count stops them: before, sessions stopped past 20 until a person wrote.
  */
 export const LinkedSessionRelayDoc = defineDoc<{ sent: number }>({
     kind: "pocket.linked-session-relay",

@@ -124,9 +124,6 @@ function recordOf(
 
 /** The most linked sessions one session may start. Linked sessions start none, so a team is one level deep. */
 const MAX_STARTED = 10;
-/** The most messages linked sessions send each other before a person writes in one of them. */
-const MAX_RELAYED = 20;
-const RELAYED = `Linked sessions have sent ${String(MAX_RELAYED)} messages without a person; a person must continue.`;
 
 /** Stable across restarts, short enough that Commands.submit preserves the entire request key. */
 function callKey(source: ConversationId, key: string): string {
@@ -651,11 +648,6 @@ export class LinkedSessions implements LinkedSessionsApi {
 
         await this.#maySend(source, user, actor);
 
-        // Its first message would be one too many: make no session it could not send.
-        if ((await this.#relayed(source)) >= MAX_RELAYED) {
-            throw new HttpError(409, RELAYED);
-        }
-
         // Copy omitted settings once; an explicit override must never silently select another model.
         const agent = structuredClone((await app.agentState(source)) ?? {});
 
@@ -853,10 +845,6 @@ export class LinkedSessions implements LinkedSessionsApi {
         // Counted before it goes, so a restart between the two only ever counts one too many.
         await app.harness.commit(async (tx) => {
             const relay = await tx.doc(LinkedSessionRelayDoc, this.#top(source));
-
-            if (relay.sent >= MAX_RELAYED) {
-                throw new HttpError(409, RELAYED);
-            }
 
             relay.sent++;
 

@@ -133,7 +133,7 @@ export default function createAgentTeams(host: PocketHost, web?: ExtensionWeb) {
 
                 // What the target refused may name what not everyone here can see: say only what it can be.
                 throw new Error(
-                    "The message was not taken. The address may be unknown here (list them), or a session may be past a spend limit or in someone else's turn; or the team sent 20 messages without a person, and a person must write first. Do not work around it: tell the person.",
+                    "The message was not taken. The address may be unknown here (list them), or a session may be past a spend limit, or in someone else's turn. Do not work around it: tell the person.",
                 );
             }
 

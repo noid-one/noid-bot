@@ -111,6 +111,34 @@ test("someone who cannot see the origin learns nothing of it and cannot reach it
     await assert.rejects(send(target, origin.address), /not linked/);
 });
 
+test("linked sessions exchange more than 10 turns, and no message count stops them", async () => {
+    const id = await source();
+    const { session: target, address } = await start(id);
+
+    await until(async () => (await sent(target)) === 1, "the first message");
+    const [origin] = await app.linkedSessions.list(target);
+
+    // 12 turns each way: 25 messages with the first, past the 20 that stopped a team before 0.19.0.
+    for (let turn = 0; turn < 12; turn++) {
+        await send(target, origin!.address);
+        await send(id, address);
+    }
+
+    await until(
+        async () => (await sent(target)) === 13 && (await sent(id)) === 12,
+        "every message of the exchange",
+    );
+    assert.equal((await app.harness.snapshot(LinkedSessionRelayDoc, id, context))?.sent, 25);
+
+    // A count stored by an older Pi Pocket, at its old limit, stops nothing either.
+    await app.harness.commit(async (tx) => {
+        (await tx.doc(LinkedSessionRelayDoc, id)).sent = 20;
+    }, context);
+    await send(id, address);
+    await start(id);
+    await until(async () => (await sent(target)) === 14, "the message past the old limit");
+});
+
 test("a start or send is refused past a spend limit or without the turn", async () => {
     const id = await source();
     const { session: target, address } = await start(id);
@@ -132,12 +160,6 @@ test("a start or send is refused past a spend limit or without the turn", async 
     await app.spend.setSessionBudget(owner(app), id, 0.01);
     await refused(/spend limit/);
     await app.spend.setSessionBudget(owner(app), id, null);
-
-    // Twenty messages between the team's sessions with no person writing: no more until one does.
-    await app.harness.commit(async (tx) => {
-        (await tx.doc(LinkedSessionRelayDoc, id)).sent = 20;
-    }, context);
-    await refused(/without a person/);
 
     const driver = app.config.addUser("Driver", "guest").user;
 
