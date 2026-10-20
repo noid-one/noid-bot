@@ -1,6 +1,6 @@
 # Phase 0 results (2026-10-18)
 
-Verdict: **go**. Both spikes pass; neither fallback in PLAN.md section 8 is needed.
+Verdict: **go**. Both spikes pass; neither planned fallback is needed.
 
 Environment: WSL2 Ubuntu 26.04, Node 22.23.3 (`.nvmrc`), Docker Desktop 29.8.2 reached from WSL through Windows `docker.exe` interop (the WSL integration is not enabled; `NOID_DOCKER` names the binary). Pi Durable, pi-coding-agent, pi-ai, chord, pi-codemode, pi-mcp, and pi-env at 1.3.0.
 
