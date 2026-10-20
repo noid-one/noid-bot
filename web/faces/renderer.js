@@ -23,7 +23,10 @@ const DROWSY_AFTER_MS = 20_000;
 const ASLEEP_AFTER_MS = 120_000;
 /** How long every face in sight must have rested, unchanged, before they keep still: their poses have eased home. */
 const SETTLE_MS = 3000;
-const AT_REST = new Set(["idle", "asleep"]);
+/** How long a lost WebGL context may take to come back before faces are drawn as SVG instead. */
+const RESTORE_WAIT_MS = 5000;
+// A failed bot's face is sad and still: nothing to watch, so it rests too. Waiting asks for the owner: it stays lively.
+const AT_REST = new Set(["idle", "asleep", "error"]);
 /** How long after the pointer moves the eyes may still be following it. */
 const POINTER_SETTLE_MS = 1500;
 
@@ -248,20 +251,37 @@ function createRenderer() {
         schedule();
     });
 
+    // Lost for good (not given back, or given back but unusable): every face, and every one mounted after, is drawn
+    // as SVG instead (face.js), not left as it was or blank.
+    let restoring = 0;
+
+    const giveUp = () => {
+        clearTimeout(restoring);
+        lost = true;
+        renderer = null;
+
+        for (const fallback of fallbacks) {
+            fallback();
+        }
+    };
+
     canvas.addEventListener("webglcontextlost", (event) => {
         event.preventDefault();
         lost = true;
         cancelAnimationFrame(frame);
         frame = 0;
+        clearTimeout(restoring);
+        restoring = setTimeout(giveUp, RESTORE_WAIT_MS);
     });
     canvas.addEventListener("webglcontextrestored", () => {
+        clearTimeout(restoring);
         built = createProgram(gl);
         lost = built === undefined;
 
         if (lost) {
-            for (const fallback of fallbacks) {
-                fallback();
-            }
+            giveUp();
+
+            return;
         }
 
         for (const face of faces) {
