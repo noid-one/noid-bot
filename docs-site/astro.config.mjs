@@ -1,4 +1,4 @@
-// Pi Pocket's docs: Starlight, at https://tannermidd.github.io/pi-pocket/docs/, beside the product site (site/).
+// noid's docs: Starlight, at https://noid-one.github.io/noid-bot/docs/.
 import { copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineConfig } from "astro/config";
@@ -33,8 +33,8 @@ const sidebar = SIDEBAR.map(({ label, collapsed, items }) => ({
 }));
 
 export default defineConfig({
-    site: "https://tannermidd.github.io",
-    base: "/pi-pocket/docs",
+    site: "https://noid-one.github.io",
+    base: "/noid-bot/docs",
     trailingSlash: "always",
     devToolbar: { enabled: false },
     markdown: {
@@ -47,7 +47,7 @@ export default defineConfig({
     },
     integrations: [
         {
-            // A copy of the public types beside the docs, for editors outside a Pi Pocket: /pi-pocket/docs/pocket.d.ts.
+            // A copy of the public types beside the docs, for editors outside a Pi Pocket: /noid-bot/docs/pocket.d.ts.
             name: "pocket-types",
             hooks: {
                 "astro:build:done": ({ dir }) => {
@@ -60,7 +60,7 @@ export default defineConfig({
             },
         },
         starlight({
-            title: "Pi Pocket docs",
+            title: "noid docs",
             description:
                 "Extend Pi Pocket: give Pi tools, rules, and checks, and add pages, buttons, and commands to the app.",
             logo: { src: "./public/icon.svg", alt: "" },
@@ -69,7 +69,7 @@ export default defineConfig({
                 {
                     icon: "github",
                     label: "GitHub",
-                    href: "https://github.com/TannerMidd/pi-pocket",
+                    href: "https://github.com/noid-one/noid-bot",
                 },
             ],
             components: {

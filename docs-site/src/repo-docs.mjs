@@ -20,8 +20,8 @@ import { checkReference } from "./reference-check.mjs";
 import { MOVED } from "./sidebar.mjs";
 
 export const REPO = resolve(fileURLToPath(new URL("../../", import.meta.url)));
-export const GITHUB = "https://github.com/TannerMidd/pi-pocket";
-export const BASE = "/pi-pocket/docs";
+export const GITHUB = "https://github.com/noid-one/noid-bot";
+export const BASE = "/noid-bot/docs";
 
 /** The commit code links point at: DOCS_REF, or this checkout's. */
 export const REF =

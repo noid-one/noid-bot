@@ -7,7 +7,7 @@ import { html, Icon, Loader, Sheet, shortPath, Switch } from "../ui.js";
 import { ACCESS_WORDS, galleryApi, galleryAvailable } from "./gallery.js";
 
 /** The guide for people who write extensions: its first page, on the docs site, which describes the latest release. */
-const GUIDE = "https://tannermidd.github.io/pi-pocket/docs/extensions/first-extension/";
+const GUIDE = "https://github.com/noid-one/noid-bot/blob/main/docs/extensions/first-extension.md";
 
 /** What Lancet Guard does here, given the module's switch and Pi's own setting. */
 function guardNote(module, guard) {

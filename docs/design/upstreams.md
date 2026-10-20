@@ -16,7 +16,7 @@ matching, so the "influence in design" row is a file-level estimate from the com
 | Influence in design     | The whole engine              | ~5.2k lines rebuilt after it: approvals, auto review, teach, desktop lease, groups, bot mail, computer, faces | ~0.9k lines plus CSS rebuilt after it: tool timeline, Settings, agent files, panes | Bots, the shared computer, routines, terminal, `claude-code` provider |
 | License                 | MIT (`LICENSE`)               | Apache-2.0 (`computer/LICENSE-rakazo`)                                                                                          | –                                                                                      | –                                                                   |
 
-Without `site/` (Pi Pocket's docs website, untouched): Pi Pocket ~81.5%, noid's own ~18.2%. By area, noid's own code
+Without `site/` (Pi Pocket's product website, untouched then and removed since): Pi Pocket ~81.5%, noid's own ~18.2%. By area, noid's own code
 is about 20% of the server, 14% of the web UI, 26% of the tests, and 74% of `computer/`.
 
 ## The four apps side by side

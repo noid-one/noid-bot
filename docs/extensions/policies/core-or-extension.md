@@ -93,7 +93,7 @@ Ask these questions in this order. The first "yes" gives the answer.
 
 When the public API cannot do what you need, ask for an extension point. Do not keep a patch to core in a fork if you can stop.
 
-1. Open an issue in [TannerMidd/pi-pocket](https://github.com/TannerMidd/pi-pocket/issues). Use the title "Extension point: <what it lets an extension do>".
+1. Open an issue in [noid-one/noid-bot](https://github.com/noid-one/noid-bot/issues). Use the title "Extension point: <what it lets an extension do>".
 2. Show the patch that your fork has today: a link to the commit, or the diff. Mark the lines that are the extension point, and the lines that are your workflow.
 3. Tell what your extension does, in one paragraph.
 4. Tell which parts of the public API you tried, and why they are not sufficient.

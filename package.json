@@ -1,18 +1,21 @@
 {
-    "name": "pi-pocket",
+    "name": "noid",
     "version": "0.16.0",
-    "description": "A durable, multiplayer, mobile-first web app for Pi agents, built on Pi Durable",
+    "description": "Persistent AI bots that share one computer: a durable, multiplayer, mobile-first web app for Pi agents, built on Pi Pocket and Pi Durable",
     "private": true,
     "type": "module",
     "license": "MIT",
-    "author": "Tanner Middleton",
+    "author": "noid contributors",
+    "contributors": [
+        "Tanner Middleton (Pi Pocket, https://github.com/TannerMidd/pi-pocket)"
+    ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/TannerMidd/pi-pocket.git"
+        "url": "git+https://github.com/noid-one/noid-bot.git"
     },
-    "homepage": "https://tannermidd.github.io/pi-pocket/",
+    "homepage": "https://github.com/noid-one/noid-bot#readme",
     "bugs": {
-        "url": "https://github.com/TannerMidd/pi-pocket/issues"
+        "url": "https://github.com/noid-one/noid-bot/issues"
     },
     "bin": {
         "pi-pocket": "bin/pi-pocket.js"

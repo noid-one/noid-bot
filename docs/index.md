@@ -44,7 +44,7 @@ A drop-in extension stays when Pi Pocket updates, and the owner can turn it off 
 - [features.md](features.md): what each feature does, as people use it.
 - [../SECURITY.md](../SECURITY.md): what Pi Pocket protects, and what it does not.
 
-The same pages are on the web, with search: https://tannermidd.github.io/pi-pocket/docs/.
+The same pages render as a site with search: see [docs-site/](../docs-site/README.md).
 
 ## Before you change anything
 
