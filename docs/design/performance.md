@@ -56,10 +56,15 @@ Yes. By dimension:
   only when needed, rakazo four to seven times slower.
 - **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
-- **Where the references are better**: pi-web-desktop paints first sooner and starts faster; both it and rakazo page
-  long transcripts on the server, where noid sends a session's entries whole (gzipped now: 15 KB for 220 turns).
-  Paging is the next step if sessions grow much longer; it touches Find in session, jumps to pinned and older messages,
-  and export, which all read the entries a tab has.
+- **Where the references are better**: pi-web-desktop paints first sooner (it renders its page on the server) and
+  starts faster (its agent loads on first use). Both page long transcripts on the server; noid sends a session's view
+  whole, but that view is only what follows its last compaction, so it is bounded by the model's context, and earlier
+  history comes a page at a time (`transcripts.history`). Measured, it is the smaller of the three anyway: the 220-turn
+  session's page transfers about 2 KB more than the home page (753 against 751 KB; 15 KB for the gzipped stream alone),
+  draws 1,588 elements (the browser shows its newest 60 rows), and runs 106 ms of script, against rakazo's 112 KB for its
+  first 100 messages, 3,735 elements, and 373 ms, and pi-web-desktop's 247 KB for its last 200 entries and 8,090
+  elements. Paging would save nothing here, and would make Find in session, jumps to pinned and older messages, and
+  export fetch what they now have.
 - **Where noid costs more than its base**: the WebGL bot faces. Headless, with software WebGL, they take about 300 ms
   of script while the home page loads and 23–53 ms/s at idle; in Chrome on an integrated Intel GPU, 6–8 ms/s at rest
   and 1.3 ms to add a face. They are the product's look, and Appearance → Reduced motion stops them animating.
