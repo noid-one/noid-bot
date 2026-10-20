@@ -1,14 +1,17 @@
 // A theme's CSS reaches only its own folder: the page's content security policy keeps every load on this server, and
 // these checks keep a theme from any other address on it (`url(/login?token=…)`, an API route), however it is written.
-import { root } from "./helpers.ts";
+import { cleanUp, root } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { test } from "node:test";
+import { after, test } from "node:test";
 import { APP_ROOT } from "../src/server/config.ts";
 import { readTheme, Themes } from "../src/server/themes.ts";
 import { cssReferences } from "../src/server/themes/css.ts";
 import { ThemeProblem } from "../src/server/themes/format.ts";
+
+// The folders made under `root` go with it.
+after(cleanUp);
 
 test("a theme's CSS may load only files in its own folder", () => {
     const dir = join(root, "themes", "mine");
