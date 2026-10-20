@@ -204,8 +204,11 @@ export function classify(
 const SUBJECT_MAX = 64_000;
 const FIELD_MAX = 16_000;
 
-/** A subject `clipMiddle` cut: what is not shown could be anything, so such a call is never allowed, only denied. */
-export const NOT_SHOWN = /\n… \d+ characters not shown …\n/;
+/**
+ * A subject `clipMiddle` cut: what is not shown could be anything, so such a call is never allowed, only denied. In a
+ * command the marker stands on lines of its own; in an argument shown as JSON its new lines are written `\n`.
+ */
+export const NOT_SHOWN = /(?:\n|\\n)… \d+ characters not shown …(?:\n|\\n)/;
 
 /** Text too long to hold whole: its start and its end, and between them how much is not shown, so the card says so. */
 function clipMiddle(text: string, max: number): string {

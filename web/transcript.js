@@ -1516,7 +1516,7 @@ function ApprovalCard({ approval }) {
         !["bot_archive", "bot_update", "memory", "bot_create"].includes(approval.tool);
 
     // The server cut a call too long to hold (the middle of it is not here): it can only be denied (app.ts cannotAllow).
-    const cut = /\n… \d+ characters not shown …\n/.test(approval.subject);
+    const cut = /(?:\n|\\n)… \d+ characters not shown …(?:\n|\\n)/.test(approval.subject);
 
     const answer = (allow, always = false) => {
         setBusy(true);
