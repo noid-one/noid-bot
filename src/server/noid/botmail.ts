@@ -13,6 +13,7 @@
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import type { ConversationId } from "@earendil-works/pi-durable";
+import { rebased } from "../docs.ts";
 import { defineDoc, defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { createHash } from "node:crypto";
 import type { PocketApp } from "../app.ts";
@@ -42,6 +43,7 @@ export const OVERSEER_EXTENSION = "noid-overseer";
 export const BotMailRelayDoc = defineDoc<{ pairs: Record<string, number> }>({
     kind: "x.noid.bot-mail-relay",
     version: 1,
+    ...rebased,
     scope: "session",
     initial: () => ({ pairs: {} }),
 });

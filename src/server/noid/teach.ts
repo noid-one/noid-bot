@@ -7,6 +7,7 @@
  */
 import type { JsonValue } from "@earendil-works/chord";
 import { defineDoc } from "@earendil-works/pi-durable";
+import { rebased } from "../docs.ts";
 import type { User } from "../config.ts";
 import { slug } from "./bots.ts";
 import { HttpError } from "../errors.ts";
@@ -157,6 +158,7 @@ export type Lesson = {
 export const LessonDoc = defineDoc<{ lesson?: Lesson }>({
     kind: "x.noid.lesson",
     version: 1,
+    ...rebased,
     scope: "session",
     initial: () => ({}),
 });

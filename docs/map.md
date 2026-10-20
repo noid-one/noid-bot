@@ -203,7 +203,7 @@ The menu in `sheets/menu.js` keeps `Sheet`'s focus, Escape, drag-to-close, and t
 
 ## Adding things
 
-- **A document:** define it in `docs.ts`. To show it live, add it to `ROOM_DOCS` and the view in `room.ts`, and read it in `store.js`.
+- **A document:** define it in `docs.ts`, with `...rebased` so its stored history stays short. To show it live, add it to `ROOM_DOCS` and the view in `room.ts`, and read it in `store.js`.
 - **A command:** a method in `commands.ts` (check access first), a route in `http/conversation-routes.ts` (or `http/api.ts` for one that is not about a conversation), an action in `store.js`, then the UI.
 - **A sheet:** a component in `web/sheets/`, a case in `sheetBody` (`web/sheets.js`), and `openSheet({ type })` where it opens.
 - **Something back should close** (a screen over the conversation, a view that takes another's place on a phone): `useBack(open, close)` from `web/back.js` in the component that shows it. Sheets already have it.

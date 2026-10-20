@@ -7,7 +7,7 @@
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { type ConversationId, defineDoc, ProviderDoc } from "@earendil-works/pi-durable";
-import { AuthorsDoc } from "../docs.ts";
+import { AuthorsDoc, rebased } from "../docs.ts";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { snippet } from "../projection.ts";
@@ -20,6 +20,7 @@ import { onlyReads } from "./read-only.ts";
 export const AutoReviewDoc = defineDoc<{ on: boolean }>({
     kind: "x.noid.auto-review",
     version: 1,
+    ...rebased,
     scope: "session",
     initial: () => ({ on: false }),
 });

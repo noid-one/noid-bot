@@ -21,6 +21,7 @@ import {
     hook,
     ToolTask,
 } from "@earendil-works/pi-durable";
+import { rebased } from "../docs.ts";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
@@ -40,6 +41,7 @@ export const ApprovalRulesDoc = defineDoc<{
 }>({
     kind: "x.noid.approval-rules",
     version: 1,
+    ...rebased,
     scope: "session",
     initial: () => ({ rules: [] }),
 });

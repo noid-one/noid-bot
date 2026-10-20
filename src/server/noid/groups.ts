@@ -20,6 +20,7 @@ import {
     type TaskRuntime,
     type Tx,
 } from "@earendil-works/pi-durable";
+import { rebased } from "../docs.ts";
 import { randomUUID } from "node:crypto";
 import type { PocketApp } from "../app.ts";
 import { followed, submittedRequest } from "../commands.ts";
@@ -77,6 +78,7 @@ export type Group = {
 export const GroupsDoc = defineDoc<{ groups: Record<string, Group> }>({
     kind: "x.noid.groups",
     version: 1,
+    ...rebased,
     scope: "session",
     initial: () => ({ groups: {} }),
 });
