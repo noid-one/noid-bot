@@ -73,7 +73,7 @@ Yes. By dimension:
   elements. Paging would save nothing here, and would make Find in session, jumps to pinned and older messages, and
   export fetch what they now have.
 - **Where noid costs more than its base**: the WebGL bot faces. Headless, with software WebGL, they take about 300 ms
-  of script while the home page loads and 23–53 ms/s at idle; in Chrome on an integrated Intel GPU, 6–8 ms/s at rest
+  of script while the home page loads and 25–55 ms/s at idle; in Chrome on an integrated Intel GPU, 6–8 ms/s at rest
   and 1.3 ms to add a face. They are the product's look, and Appearance → Reduced motion stops them animating.
 
 ## What this review changed
