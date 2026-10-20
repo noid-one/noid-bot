@@ -277,6 +277,22 @@ test("Noid starts a session on a model only when its person named it, in their o
     await say(app, id, "start a session on faux 2 for the review");
     const made = await app.sessionTools.start(id, { model: "faux/faux-2" });
 
+    // One asked for with a model gets it on the replay too, and is a session the bot knows.
+    const modelled = await app.sessionTools.start(
+        id,
+        { model: "faux/faux-2" },
+        "session-replayed-with-model",
+    );
+
+    await app.commands.configure(modelled, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+    });
+    assert.equal(
+        await app.sessionTools.start(id, { model: "faux/faux-2" }, "session-replayed-with-model"),
+        modelled,
+    );
+    assert.equal((await app.agentState(modelled))?.model?.modelId, "faux-2");
+
     assert.equal((await app.agentState(made))?.model?.modelId, "faux-2");
     await assert.rejects(
         app.sessionTools.start(id, { model: "faux/nothing" }),

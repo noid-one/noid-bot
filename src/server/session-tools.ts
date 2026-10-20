@@ -249,6 +249,17 @@ export class SessionTools {
     }
 
     /**
+     * Whether `conversationId` is a bot's own conversation (Noid's or another's), which has the session tools and reads
+     * what sessions say: not a subagent of one, nor a session one started, which `actsFor` takes as the owner's too.
+     */
+    isBot(conversationId: ConversationId): boolean {
+        return (
+            this.ownerOf(conversationId) !== undefined ||
+            this.#app.sessionMeta(conversationId)?.bot !== undefined
+        );
+    }
+
+    /**
      * The person a conversation's session tools act for: the owner, for every bot, which has the session tools
      * (`Bots.ensureTools`); undefined for every other conversation.
      */
@@ -308,8 +319,7 @@ export class SessionTools {
     ): Promise<T> {
         const app = this.#app;
         const counted =
-            user ??
-            (this.actsFor(conversationId) === undefined ? undefined : this.#person(conversationId));
+            user ?? (this.isBot(conversationId) ? this.#person(conversationId) : undefined);
 
         if (
             counted === undefined ||
@@ -880,15 +890,28 @@ export class SessionTools {
                       ([, meta]) => meta.startedBy === key,
                   )?.[0];
 
-        if (made !== undefined) {
-            return Number(made) as unknown as ConversationId;
-        }
-
         // Before anything is made: a model that is not there, or that nobody chose, leaves no session behind.
         const model =
             request.model === undefined
                 ? undefined
                 : await this.#personsModel(botId, user, request.model);
+
+        // Finished as the first run would have: the model asked for, and the session one the bot knows.
+        if (made !== undefined) {
+            const id = Number(made) as unknown as ConversationId;
+            const current = (await app.agentState(id))?.model;
+
+            if (
+                model !== undefined &&
+                (current?.provider !== model.provider || current?.modelId !== model.modelId)
+            ) {
+                await app.commands.configure(id, user, { model });
+            }
+
+            this.#looked(botId, id);
+
+            return id;
+        }
 
         await this.#requireNoModelChoice(
             botId,

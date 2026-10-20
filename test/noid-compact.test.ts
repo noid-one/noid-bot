@@ -24,7 +24,7 @@ import { after, before, test } from "node:test";
 import type { FauxResponseStep, Message } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { type ConversationId, type HookApi, LiveDoc, UsageDoc } from "@earendil-works/pi-durable";
-import { FollowsDoc, NoidCompactionDoc } from "../src/server/docs.ts";
+import { FollowsDoc, NoidCompactionDoc, SessionsDoc } from "../src/server/docs.ts";
 import { PAYLOAD_CLOSE, PAYLOAD_OPEN } from "../src/server/hooks.ts";
 import { fenced } from "../src/server/session-tools.ts";
 import {
@@ -340,6 +340,26 @@ test("a summary written twice for one compaction, as after a restart, is asked f
         await app.noidCompaction.summarize(
             compaction,
             { ...api, conversationId: session },
+            context,
+        ),
+        undefined,
+    );
+
+    // Nor a session a bot started: it works for the bot but has no session tools, and keeps its tools' results.
+    const { id: botId } = await app.bots.create(owner(app), {
+        name: "Starter bot",
+        role: "Starts",
+    });
+    const started = await newSession(app);
+
+    await app.harness.commit(async (tx) => {
+        (await tx.doc(SessionsDoc)).items[String(started)]!.linkedFrom = { id: Number(botId) };
+    }, context);
+    assert.equal(app.bots.of(started)?.name, "Starter bot");
+    assert.equal(
+        await app.noidCompaction.summarize(
+            compaction,
+            { ...api, conversationId: started },
             context,
         ),
         undefined,

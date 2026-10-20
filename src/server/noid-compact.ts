@@ -333,11 +333,14 @@ export class NoidCompaction {
         return this.#app.sessionTools.ownerOf(id) !== undefined;
     }
 
-    /** The bot whose conversation `id` is, when it has the session tools (and so reads what sessions said). */
+    /**
+     * The bot whose own conversation `id` is (it has the session tools, and reads what sessions said); undefined for
+     * any other, a bot's subagents and the sessions it started included, which Pi Durable summarizes as any session.
+     */
     #botName(id: ConversationId): string | undefined {
-        return this.#app.sessionTools.actsFor(id) === undefined
-            ? undefined
-            : (this.#app.bots.of(id)?.name ?? "Noid");
+        return this.#app.sessionTools.isBot(id)
+            ? (this.#app.sessionMeta(id)?.bot?.name ?? "Noid")
+            : undefined;
     }
 
     /**

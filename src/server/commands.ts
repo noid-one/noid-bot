@@ -2092,10 +2092,9 @@ export class Commands {
         await app.requireDriver(id, user);
         // A bot's summaries are its own (`noid-compact.ts`), written by the approvals' hook with outside text left out,
         // and one that cannot be written says why.
-        const bot =
-            app.sessionTools.actsFor(id) === undefined
-                ? undefined
-                : (app.bots.of(id)?.name ?? "Noid");
+        const bot = app.sessionTools.isBot(id)
+            ? (app.sessionMeta(id)?.bot?.name ?? "Noid")
+            : undefined;
 
         // Noid takes nothing while its session tools are off, a compaction neither.
         if (app.sessionTools.ownerOf(id) !== undefined && !app.sessionTools.available(user)) {

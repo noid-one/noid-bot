@@ -284,5 +284,4 @@ The host has more members, for Pi Pocket's built-in modules only. They are not i
 - `watches`: the pull request watches of sessions, for the `watch_pr` tool.
 - `repoWatches`: the task of repository watches, for the triggers module.
 - `sessionTools`: what Noid's session tools do, which every bot has.
-- `noidCompaction`: Noid's own summaries when its context is compacted.
 - `gallery`: the extension gallery, for its own routes.
