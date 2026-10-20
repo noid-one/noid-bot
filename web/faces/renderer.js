@@ -143,7 +143,30 @@ function createRenderer() {
 
     const faces = new Set();
     const pointer = { x: 0, y: 0, known: false, at: 0 };
-    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+    const systemReduced = matchMedia("(prefers-reduced-motion: reduce)");
+
+    // Appearance → Motion, which theme.js puts on the root (Auto follows the system's setting there); before it has,
+    // the system's.
+    const reduced = () => {
+        const motion = document.documentElement.dataset.motion;
+
+        return motion === undefined ? systemReduced.matches : motion === "reduced";
+    };
+
+    // The setting changed: each face moves, or keeps still, from now on, as it is.
+    new MutationObserver(() => {
+        const now = performance.now() / 1000;
+
+        for (const face of faces) {
+            const state = face.motion.state;
+
+            face.motion = createMotion(face.traits, { reducedMotion: reduced() });
+            face.motion.setState(state, now);
+            face.dirty = true;
+        }
+
+        schedule();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
     let frame = 0;
     /** While every face rests: the wait for the next frame, so no frame is asked for in between. */
     let resting = 0;
@@ -299,7 +322,7 @@ function createRenderer() {
         }
 
         const elapsed = now - lastDraw;
-        const still = reducedMotion.matches;
+        const still = reduced();
 
         // A face off screen that changed is drawn when it shows again: it does not lift the frame cap meanwhile.
         let dirty = false;
@@ -370,7 +393,7 @@ function createRenderer() {
         stir: () => {
             pointer.at = performance.now();
         },
-        reducedMotion: () => reducedMotion.matches,
+        reducedMotion: reduced,
         onFallback: (callback) => {
             fallbacks.add(callback);
 
