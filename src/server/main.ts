@@ -233,6 +233,18 @@ try {
 
 server.on("error", (error) => console.error("Server error:", error));
 
+// Pi's packages one at a time (most of a start), with a turn of the event loop after each: a page asked for meanwhile
+// is served between them (its own files, above), not after the whole load. The app's import then finds them loaded.
+for (const load of [
+    () => import("@earendil-works/chord"),
+    () => import("@earendil-works/pi-ai"),
+    () => import("@earendil-works/pi-durable"),
+    () => import("@earendil-works/pi-coding-agent"),
+]) {
+    await load();
+    await new Promise((resolve) => setImmediate(resolve));
+}
+
 const [{ PocketApp: App }, { createHandler: makeHandler }, { watchTree }] = await Promise.all([
     import("./app.ts"),
     import("./http.ts"),

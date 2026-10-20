@@ -18,7 +18,7 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
 
 | median [min–max]                             | noid                                                            | Pi Pocket 0.16                 | pi-web-desktop (Next 16)                    | rakazo                                                       |
 | -------------------------------------------- | --------------------------------------------------------------- | ------------------------------ | ------------------------------------------- | ------------------------------------------------------------ |
-| Cold start: first byte / first useful answer | 552 / 632 ms; 450 / 530 with the compile cache (the launcher's) | 586 ms to first byte [583–909] | 376 / 767 ms (loads its agent on first use) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
+| Cold start: first byte / first useful answer | 163 / 632 ms; 153 / 547 with the compile cache (the launcher's) | 586 ms to first byte [583–909] | 369 / 756 ms (loads its agent on first use) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
 | Memory at idle                               | 192 MB, one process                                             | 191 MB                         | 139 MB, 260 MB once pages are open          | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
 | Home, first visit: requests, sent            | 99, 749 KB (gzip)                                               | 84, 1.99 MB                    | 36, 2.13 MB                                 | 67, 817 KB                                                   |
 | Home, revisit: sent                          | 32 KB (all 304)                                                 | 2.1 MB again                   | –                                           | –                                                            |
@@ -56,13 +56,12 @@ Yes. By dimension:
 - **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
 - **Start and first paint**: measured the same way for both, from spawn to the first byte and to the first `200` of
-  the session list (`ttfu.mjs`, medians of 5): noid as its launcher runs it (compile cache) 450 / 530 ms, noid without
-  the cache 552 / 632, pi-web-desktop 376 / 767. pi-web-desktop's first byte comes sooner because its agent is not
-  loaded yet; the first answer anyone can use comes from noid about 240 ms sooner. While noid starts, its page is
-  served and other requests wait to be answered as it opens, not refused. Most of its start is loading Pi's own
-  package (`pi-coding-agent`, 272 of the app's 408 ms of imports), which Pi Pocket loads too and which offers no smaller
-  entry point. noid paints first sooner than any of them (40 ms): its boot screen, the page's own, no longer fades in
-  from nothing.
+  the session list (`ttfu.mjs`, medians of 5): noid as its launcher runs it 153 / 547 ms, without the compile cache
+  163 / 632, pi-web-desktop 369 / 756. noid takes its port at once and loads Pi's packages one at a time, answering
+  between them: its page is served while it starts, and other requests wait to be answered as it opens, not refused.
+  Most of its start is loading Pi's own package (`pi-coding-agent`, 272 of the app's 408 ms of imports), which Pi
+  Pocket loads too; pi-web-desktop defers its agent to the first request instead. noid paints first sooner than any of
+  them (40 ms): its boot screen, the page's own, no longer fades in from nothing.
 - **Long transcripts**: both references page them on the server; noid sends a session's view
   whole, but that view is only what follows its last compaction, so it is bounded by the model's context, and earlier
   history comes a page at a time (`transcripts.history`). Measured, it is the smaller of the three anyway: the 220-turn
