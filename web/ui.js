@@ -493,7 +493,7 @@ export function Markdown({
     cache = true,
     base = null,
     breaks = true,
-    conversationId,
+    conversationId = currentConversation(),
 }) {
     const live = useRef(null);
 
@@ -509,7 +509,9 @@ export function Markdown({
 
         return html`<div class=${`md ${className}`}>
             ${blocks.flatMap(({ key, parts }) =>
-                parts.map((part, index) => drawPart(part, `${key}.${index}`, true)),
+                parts
+                    .filter((part) => part.kind !== undefined || part.html.trim() !== "")
+                    .map((part, index) => drawPart(part, `${key}.${index}`, true)),
             )}
         </div>`;
     }

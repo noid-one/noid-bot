@@ -1627,7 +1627,7 @@ kbd {
 }
 
 .reply > .md > *,
-.reply > .md > .md-part > * {
+.reply > .md > :where(.md-part) > * {
     margin: 0;
 }
 
