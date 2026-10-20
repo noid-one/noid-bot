@@ -1,11 +1,13 @@
 // Peek tiles: other sessions' live work beside the open one, off until turned on (the top bar's tiles button, Alt+P,
 // /peek, the launcher, or Appearance). Wide screens show a column of tiles where the People and Browser panels dock
 // (when neither is open), narrower ones a strip under the top bar. Tiles are the sessions working, waiting for
-// approval, finished since this browser last looked, and pinned, plus the one just left. Only tiles on screen are
-// live: once scrolling settles, the tab tells the server which (`POST /api/peeks`), and the rest keep the lines they
-// last had. Their state marks stay current from the session list, which covers every session.
+// approval, with subagents at work, finished since this browser last looked, and pinned, plus the one just left. A tile
+// lists the subagents at work in its session, a sub-tile each with what it does this moment. Only tiles on screen are live:
+// once scrolling settles, the tab tells the server which (`POST /api/peeks`), subagent rows too, and the rest keep the
+// lines they last had. Their state marks stay current from the session list, which covers every session.
 import { Component } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
+import { AgentTile } from "./agent-tile.js";
 import { folderColor } from "./avatar.js";
 import { describeCall } from "./calls.js";
 import { finishedUnseen, markSeen, seenSince } from "./seen.js";
@@ -26,8 +28,8 @@ import { html, Icon, shortPath, usePresence } from "./ui.js";
 export const PEEK_WIDE = matchMedia("(min-width: 1100px)");
 /** How long the tiles on screen must stay put before the server hears of them: scrolling past is not looking. */
 const SETTLE_MS = 250;
-/** As many as the server keeps live for a tab (`MAX_PEEKS`). */
-const MAX_LIVE = 12;
+/** As many as the server keeps live for a tab (`MAX_PEEKS`): the tiles and the subagent rows in them. */
+const MAX_LIVE = 20;
 /** A call may be allowed from a tile only when its whole command shows there: this long at most, on one line. */
 const ALLOW_LENGTH = 80;
 /** Waits before sending the list again after a send failed, growing with each failure. */
@@ -65,10 +67,17 @@ store.subscribe((state) => {
     }
 });
 
+/**
+ * A session's subagents that work or wait: a tile shows them, and the session counts as working while one does.
+ * `subagents` is the session list's count by state.
+ */
+const busyAgents = (session) =>
+    (session.subagents?.working ?? 0) + (session.subagents?.waiting ?? 0);
+
 const rank = (session, state, pinned) =>
-    session.waiting
+    session.waiting || (session.subagents?.waiting ?? 0) > 0
         ? 0
-        : session.busy
+        : session.busy || (session.subagents?.working ?? 0) > 0
           ? 1
           : finishedUnseen(session, state)
             ? 2
@@ -101,6 +110,7 @@ export function peekTiles(state = store.state) {
             session.id !== state.conversationId &&
             (session.busy ||
                 session.waiting ||
+                busyAgents(session) > 0 ||
                 finishedUnseen(session, state) ||
                 pinned.has(session.id) ||
                 session.id === lastLeft),
@@ -190,17 +200,21 @@ function screenIds() {
         return [];
     }
 
-    const ids = [];
+    // The tiles first, so a tile's subagents cannot take the room a lower tile needs; the rows after them.
+    const tiles = [];
+    const agents = [];
 
     for (const [element, visible] of onScreen) {
         if (!element.isConnected) {
             onScreen.delete(element);
         } else if (visible) {
-            ids.push(Number(element.dataset.peek));
+            (element.dataset.peekKind === "agent" ? agents : tiles).push(
+                Number(element.dataset.peek),
+            );
         }
     }
 
-    return [...new Set(ids)].slice(0, MAX_LIVE);
+    return [...new Set([...tiles, ...agents])].slice(0, MAX_LIVE);
 }
 
 function settle(delay = SETTLE_MS) {
@@ -493,7 +507,39 @@ function PeekApproval({ approval, me, rule, whole }) {
     </span>`;
 }
 
-/** A tile's square, in the shape the session list gives the same state: its folder's color. */
+/**
+ * The active subagents a tile shows, each with its own peek. Rows keep their identity until one or its peek changes,
+ * so a tile renders again only when what it shows did.
+ */
+const agentRows = new Map();
+
+function agentsOf(session, peek, peeks) {
+    const list = peek?.agents ?? [];
+    const from = [peek, session.cwd, ...list.map((agent) => peeks?.[agent.conversationId])];
+    const kept = agentRows.get(session.id);
+
+    if (
+        kept !== undefined &&
+        kept.from.length === from.length &&
+        from.every((value, index) => value === kept.from[index])
+    ) {
+        return kept.rows;
+    }
+
+    const rows = list.map((agent) => ({
+        ...agent,
+        peek: peeks?.[agent.conversationId],
+        folder: folderColor(session.cwd),
+    }));
+
+    agentRows.set(session.id, { from, rows });
+
+    return rows;
+}
+
+/**
+ * A tile's square, in the shape the session list gives the same state: its folder's color.
+ */
 const SHAPES = { waiting: "waiting", working: "working", done: "fresh", idle: "seen" };
 
 /**
@@ -539,7 +585,7 @@ class PeekTile extends Component {
         }
     }
 
-    render({ session, peek, status, label, number, compact, steer, home, me, rule }) {
+    render({ session, peek, agents, status, label, number, compact, steer, home, me, rule }) {
         const title = session.title ?? "New session";
         const open = () => navigate(session.id);
         // A call answered elsewhere can stay on a tile scrolled away: the session list says whether one still waits.
@@ -579,6 +625,20 @@ class PeekTile extends Component {
                           )
                 }
             </div>
+            ${
+                agents.length > 0 &&
+                html`<div class="agent-tiles" role="group" aria-label="Subagents">
+                    ${agents.map(
+                        (agent) =>
+                            html`<${AgentTile}
+                                key=${agent.conversationId}
+                                agent=${agent}
+                                folder=${agent.folder}
+                                onActivate=${() => navigate(agent.conversationId)}
+                            />`,
+                    )}
+                </div>`
+            }
             ${
                 approval &&
                 html`<div class="peek-ask-host" onClick=${open}>
@@ -621,13 +681,15 @@ function tileProps(tiles, compact) {
     const order = new Map(workspaceOrder().map((session, index) => [session.id, index]));
 
     return tiles.map((session) => {
-        const status = session.waiting
-            ? "waiting"
-            : session.busy
-              ? "working"
-              : finishedUnseen(session, state)
-                ? "done"
-                : "idle";
+        const peek = state.peeks?.[session.id];
+        const status =
+            session.waiting || (session.subagents?.waiting ?? 0) > 0
+                ? "waiting"
+                : session.busy || (session.subagents?.working ?? 0) > 0
+                  ? "working"
+                  : finishedUnseen(session, state)
+                    ? "done"
+                    : "idle";
         const label =
             status === "waiting"
                 ? steer
@@ -644,7 +706,8 @@ function tileProps(tiles, compact) {
         return {
             key: session.id,
             session,
-            peek: state.peeks?.[session.id],
+            peek,
+            agents: agentsOf(session, peek, state.peeks),
             status,
             label,
             number: order.get(session.id),
