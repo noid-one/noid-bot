@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 // Only types from the app here: its modules load below, after the signal handlers (loading takes a moment).
 import type { AccessInfo, PocketApp } from "./app.ts";
 import { APP_ROOT, dataDir } from "./config.ts";
+import { DYNAMIC_ROOTS, serveStatic } from "./http/assets.ts";
 import type { createHandler } from "./http.ts";
 
 const RESTART_CODE = 75;
@@ -147,19 +148,61 @@ if (launcher) {
     });
 }
 
-/** Answers requests once the app is open; until then, a short "starting". */
+/** Answers requests once the app is open. */
 let handle: ReturnType<typeof createHandler> | undefined;
+/** Settles once `handle` is set: requests that came while the app opened are answered then. */
+let openedNow!: () => void;
+const ready = new Promise<void>((resolve) => {
+    openedNow = resolve;
+});
+/** How long a request waits for the app to open before it is told to come back. */
+const OPEN_WAIT_MS = 30_000;
+
 const server = createServer((request, response) => {
     if (handle !== undefined) {
         return void handle(request, response);
     }
 
-    response.writeHead(503, {
-        "content-type": "text/plain; charset=utf-8",
-        "retry-after": "2",
-        "cache-control": "no-store",
+    // While the app opens (most of a start is loading Pi's packages and resuming work): its own files at once, so a
+    // browser loads the page meanwhile, and anything else as soon as the app is open, not after a retry.
+    if (request.method === "GET" || request.method === "HEAD") {
+        let parts: string[] | undefined;
+
+        try {
+            parts = decodeURIComponent(new URL(request.url ?? "/", "http://pocket.local").pathname)
+                .split("/")
+                .filter((part) => part !== "");
+        } catch {
+            parts = undefined;
+        }
+
+        if (parts !== undefined && !DYNAMIC_ROOTS.has(parts[0] ?? "")) {
+            response.setHeader("x-content-type-options", "nosniff");
+
+            if (serveStatic(request, response, parts)) {
+                return;
+            }
+        }
+    }
+
+    const waiting = setTimeout(() => {
+        if (!response.headersSent) {
+            response.writeHead(503, {
+                "content-type": "text/plain; charset=utf-8",
+                "retry-after": "2",
+                "cache-control": "no-store",
+            });
+            response.end("noid is starting…");
+        }
+    }, OPEN_WAIT_MS);
+
+    void ready.then(() => {
+        clearTimeout(waiting);
+
+        if (!response.headersSent && !response.destroyed) {
+            void handle!(request, response);
+        }
     });
-    response.end("Pi Pocket is starting…");
 });
 
 // The whole request must arrive within this: long enough for a 50 MB upload on a slow phone connection. Event streams
@@ -213,6 +256,7 @@ handle = makeHandler({
     listen: { host: options.host, port: options.port },
     restart: () => void stop(RESTART_CODE),
 });
+openedNow();
 stopWatching = (() => {
     const stops = [watchTree(join(APP_ROOT, "web"), (file) => opened.reloadClients(file))];
 

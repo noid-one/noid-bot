@@ -55,10 +55,13 @@ Yes. By dimension:
 - **Start**: about even with Pi Pocket, faster with the compile cache; rakazo four to seven times slower.
 - **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
-- **Start and first paint**: pi-web-desktop answers its first request sooner (360 ms against 540), because it loads its
-  agent only when first needed: its first session-list call then takes 378 ms, so its first useful answer comes at
-  about 740 ms, and noid's (its list in 2 ms once up) at about 542. noid now paints first sooner than any of them
-  (40 ms): its boot screen, the page's own, no longer fades in from nothing.
+- **Start and first paint**: pi-web-desktop answers its first request sooner (360 ms) because it loads its agent only
+  when first needed: its first session-list call then takes 378 ms, so its first useful answer comes at about 740 ms.
+  noid serves its page at about 460 ms and its first answer at about 530 (with the launcher's compile cache); a request
+  that comes while it starts waits and is answered as it opens, not refused. Most of noid's start is loading Pi's own
+  package (`pi-coding-agent`, 272 of the app's 408 ms of imports), which Pi Pocket loads too and which offers no
+  smaller entry point. noid paints first sooner than any of them (40 ms): its boot screen, the page's own, no longer
+  fades in from nothing.
 - **Long transcripts**: both references page them on the server; noid sends a session's view
   whole, but that view is only what follows its last compaction, so it is bounded by the model's context, and earlier
   history comes a page at a time (`transcripts.history`). Measured, it is the smaller of the three anyway: the 220-turn

@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream, openSync, readFileSync, readSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join } from "node:path";
+import { extname, join, normalize, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import { APP_ROOT } from "../config.ts";
 import { HttpError } from "../errors.ts";
@@ -340,4 +340,58 @@ export function serveImage(request: IncomingMessage, response: ServerResponse, f
     createReadStream(file)
         .on("error", () => response.destroy())
         .pipe(response);
+}
+
+/** The first part of every path that is not the app's own files: those the app answers once it is open. */
+export const DYNAMIC_ROOTS: ReadonlySet<string> = new Set([
+    "api",
+    "hook",
+    "a",
+    "x",
+    "themes",
+    "login",
+    "join",
+    "share",
+]);
+
+/**
+ * The app's own files at a path (its parts): index.html for app routes, a module of `vendor/`, or a file of web/.
+ * False when the path is none of them (one that climbs out of web/). They need no sign-in and nothing of the app, so
+ * the server also answers them while the app is still opening (`main.ts`).
+ */
+export function serveStatic(
+    request: IncomingMessage,
+    response: ServerResponse,
+    parts: readonly string[],
+): boolean {
+    if (parts[0] === "vendor" && parts[1] !== undefined && VENDOR[parts[1]] !== undefined) {
+        serveFile(
+            request,
+            response,
+            VENDOR[parts[1]]!,
+            TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
+        );
+
+        return true;
+    }
+
+    if (parts.length === 0 || parts[0] === "s") {
+        serveApp(response);
+
+        return true;
+    }
+
+    const file = normalize(join(WEB, ...parts));
+
+    if (!file.startsWith(WEB + sep)) {
+        return false;
+    }
+
+    if (file === join(WEB, "index.html")) {
+        serveApp(response);
+    } else {
+        serveFile(request, response, file);
+    }
+
+    return true;
 }

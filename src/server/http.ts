@@ -4,14 +4,13 @@
  * throws into an answer.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join, normalize, sep } from "node:path";
 import { Auth } from "./auth.ts";
 import { describe, HttpError } from "./errors.ts";
 import { createApi } from "./http/api.ts";
 import { artifact } from "./http/artifacts.ts";
 import { extensionFile } from "./http/extension-routes.ts";
 import { hookRoute } from "./http/hook-routes.ts";
-import { serveApp, serveFile, TYPES, VENDOR, WEB } from "./http/assets.ts";
+import { serveStatic } from "./http/assets.ts";
 import { type HttpOptions, json } from "./http/io.ts";
 import { join as joinPage, login, sharePage } from "./http/sign-in.ts";
 import { themeFile } from "./http/theme-routes.ts";
@@ -66,15 +65,6 @@ export function createHandler(options: HttpOptions) {
                 return themeFile(app, request, response, parts.slice(1), auth.user(request));
             }
 
-            if (parts[0] === "vendor" && parts[1] !== undefined && VENDOR[parts[1]] !== undefined) {
-                return serveFile(
-                    request,
-                    response,
-                    VENDOR[parts[1]]!,
-                    TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
-                );
-            }
-
             if (parts[0] === "login" && (request.method === "GET" || request.method === "POST")) {
                 return await login(auth, request, response, url);
             }
@@ -89,22 +79,12 @@ export function createHandler(options: HttpOptions) {
                 return sharePage(response);
             }
 
-            // The web app: index.html for app routes, files from web/ otherwise.
-            if (parts.length === 0 || parts[0] === "s") {
-                return serveApp(response);
+            // The web app: index.html for app routes, its modules, and files from web/ otherwise.
+            if (serveStatic(request, response, parts)) {
+                return;
             }
 
-            const file = normalize(join(WEB, ...parts));
-
-            if (!file.startsWith(WEB + sep)) {
-                throw new HttpError(404, "Not found");
-            }
-
-            if (file === join(WEB, "index.html")) {
-                return serveApp(response);
-            }
-
-            return serveFile(request, response, file);
+            throw new HttpError(404, "Not found");
         } catch (error) {
             const status = error instanceof HttpError ? error.status : 500;
 
