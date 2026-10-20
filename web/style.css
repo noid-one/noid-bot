@@ -14947,7 +14947,7 @@ pre.gallery-code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .noid-face-svg .noid-face-eye {
+    :root:not([data-motion="full"]) .noid-face-svg .noid-face-eye {
         animation: none;
     }
 }

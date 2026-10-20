@@ -153,16 +153,37 @@ function createRenderer() {
         return motion === undefined ? systemReduced.matches : motion === "reduced";
     };
 
-    // The setting changed: each face moves, or keeps still, from now on, as it is.
+    // The setting changed: each face moves, or keeps still, from now on, as it is. theme.js writes the attribute with
+    // every appearance change, the same value too: only a real change starts the faces anew.
+    let wasReduced = reduced();
+
     new MutationObserver(() => {
+        const still = reduced();
+
+        if (still === wasReduced) {
+            return;
+        }
+
+        wasReduced = still;
         const now = performance.now() / 1000;
 
         for (const face of faces) {
             const state = face.motion.state;
 
-            face.motion = createMotion(face.traits, { reducedMotion: reduced() });
+            face.motion = createMotion(face.traits, { reducedMotion: still });
             face.motion.setState(state, now);
             face.dirty = true;
+
+            // Kept still, a face is drawn only on a change: one in its happy moment is drawn again as it ends.
+            if (still && state === "done") {
+                setTimeout(
+                    () => {
+                        face.dirty = true;
+                        schedule();
+                    },
+                    DONE_SECONDS * 1000 + 50,
+                );
+            }
         }
 
         schedule();
