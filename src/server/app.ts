@@ -2061,6 +2061,8 @@ export class PocketApp {
             cwd: agent.cwd ?? meta?.cwd ?? this.defaultCwd,
             archived: meta?.archived === true,
             ...(room.parent === undefined ? {} : { parent: room.parent }),
+            // A subagent's session, at any depth: whose bot it works for, for its approval cards.
+            ...(root === room.id ? {} : { root: Number(root) }),
             ...(room.subagentName === undefined ? {} : { subagentName: room.subagentName }),
             // Each browser finds the source's title in its own session list, so only people who can open it get a link.
             ...(forkedFrom === undefined ? {} : { forkedFrom }),

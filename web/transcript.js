@@ -1505,7 +1505,11 @@ function ApprovalCard({ approval }) {
     // noid: a bot's question can be answered for good (its rule), by the owner.
     // Only noid's own questions are the bot's (Lancet Guard asks with ids of its own).
     // A session a bot started (`worksFor`) asks as that bot.
-    const here = sessions.find((session) => session.id === conversationId);
+    // A subagent's card asks as the bot its session is (it is not in the list itself).
+    const rootId = store.state.view.conversation?.root;
+    const here =
+        sessions.find((session) => session.id === conversationId) ??
+        (rootId === undefined ? undefined : sessions.find((session) => session.id === rootId));
     const bot = approval.id.startsWith("noid:") ? (here?.bot ?? here?.worksFor) : undefined;
     // One auto review raised is never made a rule: that would turn auto review off for the tool for good.
     // Nor one asked every time: forgetting a memory, archiving a bot, changing another bot, making a bot here.

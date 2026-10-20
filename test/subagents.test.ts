@@ -413,6 +413,28 @@ test("an open board loses the subagents of a session no longer shared, at once",
     }
 });
 
+test("a subagent's view names its session, whose bot its approval cards ask as", async () => {
+    const parent = await orchestrate({ spawn: ["rooted"], rounds: 0, sleep: 0 });
+
+    await until(() => app.subagents().some((each) => each.name === "rooted"), "the subagent");
+
+    const sub = app.subagents().find((each) => each.name === "rooted")!.conversationId;
+    const tab = fakeTab(sub as never, owner(app));
+
+    await app.attach(tab.client);
+
+    try {
+        await until(() => tab.last("view") !== undefined, "the subagent's view");
+        const conversation = (tab.last("view") as { conversation: { kind: string; root?: number } })
+            .conversation;
+
+        assert.equal(conversation.kind, "subagent");
+        assert.equal(conversation.root, Number(parent));
+    } finally {
+        app.detach(tab.client);
+    }
+});
+
 test("a subagent's name cannot close its quotes in the activity line", () => {
     const line = (shown: string) => `dealt with the failure of subagent “\u2068${shown}\u2069”`;
 
