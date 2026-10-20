@@ -220,7 +220,7 @@ Since 0.14.0 · Experimental
 
 Makes a session linked to `source` and sends it `message` as its first message. It returns the new session's id, and the address that `source` uses for it.
 
-- The new session works in the folder of `source`. It gets a copy of the agent settings of `source`, but not its history.
+- The new session works in the folder of `source`. It gets a copy of the agent settings of `source`, except a bot's own extensions (the session tools, bot mail, the overseer, and the desktop), which stay with the bot, but not its history.
 - Without `title`, the title is the first line of `message`.
 - `model` is `provider/modelId`. It must be the model of `source`, or a model that the owner lets subagents use. Without it, the session uses the model of `source`.
 - `thinking` is a level no higher than the level of `source`. Without it, the session uses the level of `source`. Pi Pocket lowers it to the highest level that the model has.

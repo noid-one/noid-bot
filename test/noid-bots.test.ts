@@ -658,7 +658,10 @@ test("a session a bot started is the owner's as the bot is: hidden from guests, 
     // it, so it does not act as the owner, and its notes are written as any session's.
     const extensions = JSON.stringify((await app.agentState(linked))?.extensions ?? null);
 
-    assert.ok(!/noid-sessions|noid-bot-mail|noid-overseer/.test(extensions), extensions);
+    assert.ok(
+        !/noid-sessions|noid-bot-mail|noid-overseer|noid-desktop/.test(extensions),
+        extensions,
+    );
     assert.equal(app.sessionTools.isBot(linked), false);
     assert.equal(listed?.worksFor?.name, "Team Lead");
 });

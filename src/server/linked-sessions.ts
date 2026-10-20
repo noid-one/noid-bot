@@ -27,9 +27,18 @@ import { isThinkingLevel, levelAtMost, resolveModel, THINKING_LEVELS } from "./m
 import { requestFor } from "./requests.ts";
 import { SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
 import { BOT_MAIL_EXTENSION, OVERSEER_EXTENSION } from "./noid/botmail.ts";
+import { DESKTOP_EXTENSION } from "./noid/desktop.ts";
 
-/** A bot's own extensions: the session tools and bot mail act as the owner, for the bot's own conversation only. */
-const BOT_ONLY = new Set([SESSION_TOOLS_EXTENSION, BOT_MAIL_EXTENSION, OVERSEER_EXTENSION]);
+/**
+ * A bot's own extensions (`Bots.#toolsOf`): the session tools and bot mail act as the owner, and the desktop is held
+ * by the bot's own conversation, for the bot's own conversation only.
+ */
+const BOT_ONLY = new Set([
+    SESSION_TOOLS_EXTENSION,
+    BOT_MAIL_EXTENSION,
+    OVERSEER_EXTENSION,
+    DESKTOP_EXTENSION,
+]);
 
 /**
  * What a linked session takes from the one that starts it, but a bot's own extensions: a session a bot starts is an

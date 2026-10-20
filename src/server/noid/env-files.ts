@@ -140,14 +140,23 @@ export async function listFilesIn(
             context,
         );
 
-        if (listing.ok) {
-            files = listing.value.entries
-                .filter((entry) => entry.kind === "file")
-                .map((entry) => entry.path);
-            truncated = listing.value.truncated;
+        // The computer could not list (waking, or its exec failed): said, not passed off as an empty folder, so the
+        // empty list is not kept as the folder's (`FileLists` keeps only lists that were made).
+        if (!listing.ok) {
+            throw listing.error;
         }
+
+        files = listing.value.entries
+            .filter((entry) => entry.kind === "file")
+            .map((entry) => entry.path);
+        truncated = listing.value.truncated;
     }
 
+    return fileListing(files, truncated);
+}
+
+/** A list of files as the `@` list takes it: with its version, its JSON, and that gzipped once when asked. */
+export function fileListing(files: string[], truncated: boolean): FileListing {
     const version = createHash("sha256").update(files.join("\n")).digest("hex").slice(0, 16);
     const list = { files, truncated, version };
     const json = JSON.stringify(list);

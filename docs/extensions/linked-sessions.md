@@ -9,7 +9,7 @@ A tool can start a session from the session that it runs in, and send messages b
 A linked session is an ordinary session. The session list shows it under the session that started it (the source).
 
 - It works in the source's folder. It does not get a worktree of its own.
-- It starts with a copy of the source's agent settings. It does not get the source's history or budget. The source's budget covers it (see [Limits of a team](#limits-of-a-team)).
+- It starts with a copy of the source's agent settings, except a bot's own extensions (the session tools, bot mail, the overseer, and the desktop), which stay with the bot. It does not get the source's history or budget. The source's budget covers it (see [Limits of a team](#limits-of-a-team)).
 - The link (`linkedFrom` in its session entry) gives no access, and owns nothing.
 
 ## Start a session

@@ -26,7 +26,14 @@ import type { User } from "./config.ts";
 import { describe, HttpError } from "./errors.ts";
 import { gitIn, type GitPlace, HOST_GIT } from "./git.ts";
 import { FileLists, type FileListing, type FileView, viewFile } from "./files.ts";
-import { imageIn, listFilesIn, type RemoteImage, resolveIn, viewFileIn } from "./noid/env-files.ts";
+import {
+    fileListing,
+    imageIn,
+    listFilesIn,
+    type RemoteImage,
+    resolveIn,
+    viewFileIn,
+} from "./noid/env-files.ts";
 import { normalFolder } from "./noid/computer.ts";
 import { displayPath, expandHome } from "./paths.ts";
 
@@ -471,7 +478,10 @@ export class Workspace {
         if (!this.#app.onHost(id)) {
             const env = this.#app.envFor(id);
 
-            return this.#remoteFiles.get(cwd, (folder) => listFilesIn(env, folder, context));
+            // One that could not be made shows as empty now, and is made again on the next look.
+            return this.#remoteFiles
+                .get(cwd, (folder) => listFilesIn(env, folder, context))
+                .catch(() => fileListing([], false));
         }
 
         return this.#files.get(cwd);
