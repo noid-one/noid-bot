@@ -4,7 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { gzipSync } from "node:zlib";
+import { constants as zlibConstants, createGzip, gzipSync } from "node:zlib";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import type { Client } from "../room.ts";
@@ -81,9 +81,26 @@ export function createEventStreams(app: PocketApp) {
         let taken = 0;
         let tookAt = Date.now();
 
+        const send = (chunk: string | Buffer) => {
+            written += Buffer.byteLength(chunk);
+            response.write(chunk);
+        };
+
+        // Gzipped for a browser that takes it, each event flushed as it goes: a session's first view (its whole
+        // transcript) is a fraction of its size. What the stream counts as written is what went to the connection.
+        const gzip = /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))
+            ? createGzip({ level: 6, flush: zlibConstants.Z_SYNC_FLUSH })
+            : undefined;
+
+        gzip?.on("data", send);
+        gzip?.on("error", () => response.destroy());
+
         const write = (text: string) => {
-            written += Buffer.byteLength(text);
-            response.write(text);
+            if (gzip === undefined) {
+                send(text);
+            } else {
+                gzip.write(text);
+            }
         };
 
         /** Whether the stream may take more: false, and cut off, when it took nothing for long while far behind, or is too far behind. */
@@ -115,12 +132,21 @@ export function createEventStreams(app: PocketApp) {
             }
         });
 
-        client.close = () => response.end();
+        client.close = () => {
+            if (gzip === undefined) {
+                response.end();
+            } else {
+                gzip.once("end", () => response.end());
+                gzip.end();
+            }
+        };
+
         response.writeHead(200, {
             "content-type": "text/event-stream; charset=utf-8",
             "cache-control": "no-cache, no-transform",
             connection: "keep-alive",
             "x-accel-buffering": "no",
+            ...(gzip === undefined ? {} : { "content-encoding": "gzip", vary: "accept-encoding" }),
         });
         write("retry: 1500\n\n");
         // The ping checks too: a tab far behind with nothing new for it would otherwise hold its backlog until the next event.
@@ -128,6 +154,7 @@ export function createEventStreams(app: PocketApp) {
 
         request.on("close", () => {
             clearInterval(ping);
+            gzip?.destroy();
             app.detach(client);
         });
         await app.attach(client);
