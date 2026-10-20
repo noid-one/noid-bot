@@ -22,7 +22,7 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
 | Memory at idle                          | 192 MB, one process                                                      | 191 MB                | 139 MB, 260 MB once pages are open        | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
 | Home, first visit: requests, sent       | 99, 749 KB (gzip)                                                        | 84, 1.99 MB           | 36, 2.13 MB                               | 67, 817 KB                                                   |
 | Home, revisit: sent                     | 32 KB (all 304)                                                          | 2.1 MB again          | –                                         | –                                                            |
-| Home: first paint                       | 180 ms [160–204]                                                         | 596 ms                | 56 ms                                     | 156 ms                                                       |
+| Home: first paint                       | 40 ms [32–52] (180 before its boot screen stopped fading in)             | 596 ms                | 56 ms                                     | 156 ms                                                       |
 | Home: script during load                | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94)          | 29 ms                 | 987 ms                                    | 188 ms                                                       |
 | Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still                                             | 0.2–2.6 ms/s          | 6–21 ms/s                                 | 363–372 ms/s (CSS avatars)                                   |
 | Home: main thread at idle, a real GPU   | 6–8 ms/s at rest (Chrome, Intel integrated, Direct3D 11)                 | –                     | –                                         | –                                                            |
@@ -52,12 +52,14 @@ Yes. By dimension:
 - **Payload**: noid now sends the least of the four on a first visit (749 KB) and almost nothing on a revisit; a
   220-turn session's first view is 15 KB on the wire. That came from this review, not from the base, but the base made
   it a few lines: one process serves everything.
-- **Start**: about even with Pi Pocket, faster with the compile cache; pi-web-desktop is quicker by loading its agent
-  only when needed, rakazo four to seven times slower.
+- **Start**: about even with Pi Pocket, faster with the compile cache; rakazo four to seven times slower.
 - **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
-- **Where the references are better**: pi-web-desktop paints first sooner (it renders its page on the server) and
-  starts faster (its agent loads on first use). Both page long transcripts on the server; noid sends a session's view
+- **Start and first paint**: pi-web-desktop answers its first request sooner (360 ms against 540), because it loads its
+  agent only when first needed: its first session-list call then takes 378 ms, so its first useful answer comes at
+  about 740 ms, and noid's (its list in 2 ms once up) at about 542. noid now paints first sooner than any of them
+  (40 ms): its boot screen, the page's own, no longer fades in from nothing.
+- **Long transcripts**: both references page them on the server; noid sends a session's view
   whole, but that view is only what follows its last compaction, so it is bounded by the model's context, and earlier
   history comes a page at a time (`transcripts.history`). Measured, it is the smaller of the three anyway: the 220-turn
   session's page transfers about 2 KB more than the home page (753 against 751 KB; 15 KB for the gzipped stream alone),
