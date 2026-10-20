@@ -203,10 +203,12 @@ export function serveFile(
     }
 
     const type = fallbackType ?? TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
+    const compressible = COMPRESSIBLE.test(type) && entry.body.length > 1024;
     const headers: Record<string, string> = {
         "cache-control": "no-cache",
         etag: entry.etag,
-        vary: "accept-encoding",
+        // Only what may go gzipped varies by it: a Vary on a font keeps Chrome from using its preload.
+        ...(compressible ? { vary: "accept-encoding" } : {}),
     };
 
     if (request.headers["if-none-match"] === entry.etag) {
@@ -216,11 +218,7 @@ export function serveFile(
         return;
     }
 
-    if (
-        COMPRESSIBLE.test(type) &&
-        entry.body.length > 1024 &&
-        /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))
-    ) {
+    if (compressible && /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))) {
         entry.gzipped ??= gzipSync(entry.body, { level: 6 });
         headers["content-encoding"] = "gzip";
         send(response, 200, entry.gzipped, type, headers);

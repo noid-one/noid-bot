@@ -20,7 +20,7 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
 | -------------------------------------------- | --------------------------------------------------------------- | ------------------------------ | ------------------------------------------- | ------------------------------------------------------------ |
 | Cold start: first byte / first useful answer | 163 / 632 ms; 153 / 547 with the compile cache (the launcher's) | 586 ms to first byte [583–909] | 369 / 756 ms (loads its agent on first use) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
 | Memory at idle                               | 192 MB, one process                                             | 191 MB                         | 139 MB, 260 MB once pages are open          | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
-| Home, first visit: requests, sent            | 99, 749 KB (gzip)                                               | 84, 1.99 MB                    | 36, 2.13 MB                                 | 67, 817 KB                                                   |
+| Home, first visit: requests, sent (kB)       | 99, 752 kB (gzip)                                               | 84, 1.99 MB                    | 36, 2.18 MB                                 | 67, 836 kB                                                   |
 | Home, revisit (browser cache on): sent       | 32 KB (all 304)                                                 | 1.95 MB                        | 272 KB                                      | –                                                            |
 | Home: first paint                            | 40 ms [32–52] (180 before its boot screen stopped fading in)    | 596 ms                         | 56 ms                                       | 156 ms                                                       |
 | Home: script during load                     | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94) | 29 ms                          | 987 ms                                      | 188 ms                                                       |
@@ -49,7 +49,8 @@ Yes. By dimension:
   database server. pi-web-desktop starts smaller but passes noid once used, and installs 1.6 GB with a build.
 - **Speed of what people wait for**: noid answers its API in 2–7 ms like Pi Pocket and pi-web-desktop; rakazo takes
   9–22 ms through Postgres, its RPC layer, and its proxy.
-- **Payload**: noid now sends the least of the four on a first visit (749 KB) and almost nothing on a revisit; a
+- **Payload**: noid now sends the least of the four on a first visit (752 kB, against rakazo's 836 kB; the app's fonts
+  are no longer preloaded, as the browser never matched that preload and asked for each font twice) and almost nothing on a revisit; a
   220-turn session's first view is 15 KB on the wire. That came from this review, not from the base, but the base made
   it a few lines: one process serves everything.
 - **Start**: about even with Pi Pocket, faster with the compile cache; rakazo four to seven times slower.
