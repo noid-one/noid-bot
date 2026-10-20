@@ -16,20 +16,20 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
 
 ## The four apps
 
-| median [min–max]                        | noid                                                                     | Pi Pocket 0.16        | pi-web-desktop (Next 16)                  | rakazo                                                       |
-| --------------------------------------- | ------------------------------------------------------------------------ | --------------------- | ----------------------------------------- | ------------------------------------------------------------ |
-| Cold start to first HTTP 200            | 632 ms [623–1067]; 540 [538–543] with the compile cache (the launcher's) | 586 ms [583–909]      | 360 ms [357–381] (loads its agent lazily) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
-| Memory at idle                          | 192 MB, one process                                                      | 191 MB                | 139 MB, 260 MB once pages are open        | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
-| Home, first visit: requests, sent       | 99, 749 KB (gzip)                                                        | 84, 1.99 MB           | 36, 2.13 MB                               | 67, 817 KB                                                   |
-| Home, revisit: sent                     | 32 KB (all 304)                                                          | 2.1 MB again          | –                                         | –                                                            |
-| Home: first paint                       | 40 ms [32–52] (180 before its boot screen stopped fading in)             | 596 ms                | 56 ms                                     | 156 ms                                                       |
-| Home: script during load                | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94)          | 29 ms                 | 987 ms                                    | 188 ms                                                       |
-| Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still, 0 after 2 min untouched                    | 0.2–2.6 ms/s          | 6–21 ms/s                                 | 363–372 ms/s (CSS avatars)                                   |
-| Home: main thread at idle, a real GPU   | 6–8 ms/s at rest (Chrome, Intel integrated, Direct3D 11)                 | –                     | –                                         | –                                                            |
-| Session list / small conversation       | 1.9 / 1.8 ms                                                             | 1.7 / 1.5 ms          | 2.2 (378 the first call) / 2.7 ms         | 20.4 / 14.2 ms                                               |
-| 220-turn conversation, first view       | 7.1 ms; 15 KB gzipped (488 KB raw), all 440 entries                      | 6.9 ms, 482 KB        | 8.1 ms, 247 KB, its last 200 entries      | 15.1 ms, 112 KB, 100 messages a page                         |
-| Install                                 | 246 packages, 247 MB, no build step                                      | 269 packages, 230 MB  | 1,471 packages, 1.6 GB, a 304 MB build    | 1,379 packages, 1.6 GB, plus Postgres                        |
-| Lines: server / web JS / CSS (no tests) | 52.5k / 39.5k / 16.0k                                                    | 45.3k / 36.2k / 15.4k | ~41.7k / ~49k (client)                    | 19k API, 36k web, 106k in packages                           |
+| median [min–max]                        | noid                                                                     | Pi Pocket 0.16        | pi-web-desktop (Next 16)                    | rakazo                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------ | --------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| Cold start to first HTTP 200            | 632 ms [623–1067]; 540 [538–543] with the compile cache (the launcher's) | 586 ms [583–909]      | 376 / 767 ms (loads its agent on first use) | API 2587 ms [2565–2702], web 365, worker ready 2309          |
+| Memory at idle                          | 192 MB, one process                                                      | 191 MB                | 139 MB, 260 MB once pages are open          | API 576 + worker 549 + web 228 + Postgres ≈119: **≈1.47 GB** |
+| Home, first visit: requests, sent       | 99, 749 KB (gzip)                                                        | 84, 1.99 MB           | 36, 2.13 MB                                 | 67, 817 KB                                                   |
+| Home, revisit: sent                     | 32 KB (all 304)                                                          | 2.1 MB again          | –                                           | –                                                            |
+| Home: first paint                       | 40 ms [32–52] (180 before its boot screen stopped fading in)             | 596 ms                | 56 ms                                       | 156 ms                                                       |
+| Home: script during load                | 321 ms [286–333] (faces; the session page: 109, Pi Pocket's 94)          | 29 ms                 | 987 ms                                      | 188 ms                                                       |
+| Home: main thread at idle, software GL  | 53 ms/s, 23 after 20 s still, 0 after 2 min untouched                    | 0.2–2.6 ms/s          | 6–21 ms/s                                   | 363–372 ms/s (CSS avatars)                                   |
+| Home: main thread at idle, a real GPU   | 6–8 ms/s at rest (Chrome, Intel integrated, Direct3D 11)                 | –                     | –                                           | –                                                            |
+| Session list / small conversation       | 1.9 / 1.8 ms                                                             | 1.7 / 1.5 ms          | 2.2 (378 the first call) / 2.7 ms           | 20.4 / 14.2 ms                                               |
+| 220-turn conversation, first view       | 7.1 ms; 15 KB gzipped (488 KB raw), all 440 entries                      | 6.9 ms, 482 KB        | 8.1 ms, 247 KB, its last 200 entries        | 15.1 ms, 112 KB, 100 messages a page                         |
+| Install                                 | 246 packages, 247 MB, no build step                                      | 269 packages, 230 MB  | 1,471 packages, 1.6 GB, a 304 MB build      | 1,379 packages, 1.6 GB, plus Postgres                        |
+| Lines: server / web JS / CSS (no tests) | 52.5k / 39.5k / 16.0k                                                    | 45.3k / 36.2k / 15.4k | ~41.7k / ~49k (client)                      | 19k API, 36k web, 106k in packages                           |
 
 How each works where it matters for speed:
 
@@ -55,13 +55,14 @@ Yes. By dimension:
 - **Start**: about even with Pi Pocket, faster with the compile cache; rakazo four to seven times slower.
 - **Architecture**: durable SQLite with incremental streaming is a better base than re-parsing JSONL per request, or a
   database write per delta. Runs survive restarts, which the bots and routines rely on.
-- **Start and first paint**: pi-web-desktop answers its first request sooner (360 ms) because it loads its agent only
-  when first needed: its first session-list call then takes 378 ms, so its first useful answer comes at about 740 ms.
-  noid serves its page at about 460 ms and its first answer at about 530 (with the launcher's compile cache); a request
-  that comes while it starts waits and is answered as it opens, not refused. Most of noid's start is loading Pi's own
-  package (`pi-coding-agent`, 272 of the app's 408 ms of imports), which Pi Pocket loads too and which offers no
-  smaller entry point. noid paints first sooner than any of them (40 ms): its boot screen, the page's own, no longer
-  fades in from nothing.
+- **Start and first paint**: measured the same way for both, from spawn to the first byte and to the first `200` of
+  the session list (`ttfu.mjs`, medians of 5): noid as its launcher runs it (compile cache) 450 / 530 ms, noid without
+  the cache 552 / 632, pi-web-desktop 376 / 767. pi-web-desktop's first byte comes sooner because its agent is not
+  loaded yet; the first answer anyone can use comes from noid about 240 ms sooner. While noid starts, its page is
+  served and other requests wait to be answered as it opens, not refused. Most of its start is loading Pi's own
+  package (`pi-coding-agent`, 272 of the app's 408 ms of imports), which Pi Pocket loads too and which offers no smaller
+  entry point. noid paints first sooner than any of them (40 ms): its boot screen, the page's own, no longer fades in
+  from nothing.
 - **Long transcripts**: both references page them on the server; noid sends a session's view
   whole, but that view is only what follows its last compaction, so it is bounded by the model's context, and earlier
   history comes a page at a time (`transcripts.history`). Measured, it is the smaller of the three anyway: the 220-turn
