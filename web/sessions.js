@@ -633,16 +633,20 @@ function PaneTabs({ pane, onPane }) {
     </div>`;
 }
 
-/** noid: the bots, in the sidebar's Bots tab: Noid first, then by name. */
-function BotList({ compact, canStart }) {
-    const { sessions, conversationId } = store.state;
-    const bots = sessions
+/** noid: the bots' sessions, as the Bots tab and the folded rail show them: Noid first, then by name. */
+const botSessions = (sessions) =>
+    sessions
         .filter((session) => session.bot !== undefined && !session.archived)
         .sort(
             (a, b) =>
                 Number(b.bot.main === true) - Number(a.bot.main === true) ||
                 a.bot.name.localeCompare(b.bot.name),
         );
+
+/** noid: the bots, in the sidebar's Bots tab: Noid first, then by name. */
+function BotList({ compact, canStart }) {
+    const { sessions, conversationId } = store.state;
+    const bots = botSessions(sessions);
 
     if (bots.length === 0 && !canStart) {
         return null;
@@ -1487,17 +1491,56 @@ export const toggleBoard = () =>
             : { board: true, drawer: false, page: null },
     );
 
-/** The folded sidebar's sessions, numbered like Waybar's workspaces. */
+/**
+ * The folded sidebar's sessions: noid: the bots first, by their faces, as Grok's folded sidebar keeps them; then the
+ * other sessions, numbered like Waybar's workspaces (their Alt+1…9 places, which count the bots too).
+ */
 function RailTiles() {
-    const { conversationId } = store.state;
+    const { sessions, conversationId } = store.state;
     const items = useRef(null);
     const order = workspaceOrder();
+    const bots = botSessions(sessions);
     const indicator = useSlide(items, ".ws.active");
+    const unread = (session) =>
+        ((collab() && sessionUnread(session)) || isUnread(session.id)) &&
+        session.id !== conversationId;
 
     return html`<div class="rail-items" ref=${items}>
         <${Slide} box=${indicator} />
-        ${order.map(
+        ${bots.map(
             (session, index) => html`<button
+                key=${session.id}
+                class=${`ws ws-bot ${session.id === conversationId ? "active" : ""}`}
+                data-part="rail-bot"
+                data-state=${botFaceState(session)}
+                style=${`--i:${index}`}
+                title=${botDoing(session) ? `${session.bot.name}: ${botDoing(session)}` : session.bot.name}
+                aria-label=${`${session.bot.name}${botDoing(session) ? `, ${botDoing(session)}` : ""}`}
+                aria-current=${session.id === conversationId ? "page" : undefined}
+                onClick=${() => navigate(session.id)}
+            >
+                <${Face}
+                    id=${session.bot.id}
+                    color=${session.bot.color}
+                    skin=${session.bot.skin}
+                    eyes=${session.bot.eyes}
+                    shape=${session.bot.shape}
+                    state=${botFaceState(session)}
+                    size=${52}
+                    label=${session.bot.name}
+                />
+                ${unread(session) && html`<span class="unread-dot"></span>`}
+            </button>`,
+        )}
+        ${
+            bots.length > 0 &&
+            order.some((session) => session.bot === undefined) &&
+            html`<span class="ws-rule" aria-hidden="true"></span>`
+        }
+        ${order.map(
+            (session, index) =>
+                session.bot === undefined &&
+                html`<button
                 key=${session.id}
                 class=${`ws ${session.id === conversationId ? "active" : ""} ${session.busy ? "busy" : ""} ${session.waiting ? "waiting" : ""}`}
                 style=${`--i:${index}`}
@@ -1507,11 +1550,7 @@ function RailTiles() {
                 onClick=${() => navigate(session.id)}
             >
                 ${index < 9 ? index + 1 : initials(session.title ?? "New session")}
-                ${
-                    ((collab() && sessionUnread(session)) || isUnread(session.id)) &&
-                    session.id !== conversationId &&
-                    html`<span class="unread-dot"></span>`
-                }
+                ${unread(session) && html`<span class="unread-dot"></span>`}
             </button>`,
         )}
     </div>`;

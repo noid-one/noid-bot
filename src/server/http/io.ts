@@ -18,6 +18,8 @@ export interface HttpOptions {
     listen: { host: string; port: number };
     /** Restart the process (exit code 75 under the launcher). */
     restart(): void;
+    /** noid: a browser on this machine is the owner, with no sign-in (`fromThisMachine` in auth.ts). */
+    localOwner?: boolean;
 }
 
 /** A signed-in API request, as each group of routes gets it. */

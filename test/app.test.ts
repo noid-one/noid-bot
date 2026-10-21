@@ -1254,6 +1254,86 @@ test("the owner signs another device in as the owner: owner only, once, no one n
     }
 });
 
+test("noid: a browser on this machine is the owner with no sign-in; other sites, names, and tunnels are not", async () => {
+    const { createServer } = await import("node:http");
+    const { createHandler } = await import("../src/server/http.ts");
+    const servers = [true, false].map((localOwner) =>
+        createServer(
+            createHandler({
+                app,
+                listen: { host: "127.0.0.1", port: 0 },
+                restart: () => {},
+                localOwner,
+            }),
+        ),
+    );
+
+    for (const server of servers) {
+        await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    }
+
+    const [local, plain] = servers.map((server) => (server.address() as { port: number }).port);
+    const { get } = await import("node:http");
+    // node:http, not fetch, which never sends a Host of its own.
+    const me = (port: number, headers: Record<string, string> = {}) =>
+        new Promise<{ status: number; json: () => Promise<unknown> }>((resolve, reject) =>
+            get({ host: "127.0.0.1", port, path: "/api/me", headers }, (response) => {
+                let body = "";
+
+                response.on("data", (chunk) => (body += chunk));
+                response.on("end", () =>
+                    resolve({ status: response.statusCode!, json: async () => JSON.parse(body) }),
+                );
+            }).on("error", reject),
+        );
+    const guest = app.config.addUser("Gil", "guest");
+
+    try {
+        const owned = await me(local!);
+
+        assert.equal(owned.status, 200);
+        assert.equal(((await owned.json()) as { user: { id: string } }).user.id, ownerOf(app).id);
+        // Typed in the address bar, or from the app's own page, by any loopback name.
+        assert.equal((await me(local!, { "sec-fetch-site": "none" })).status, 200);
+        assert.equal(
+            (
+                await me(local!, {
+                    host: `localhost:${local}`,
+                    origin: `http://localhost:${local}`,
+                    "sec-fetch-site": "same-origin",
+                })
+            ).status,
+            200,
+        );
+        // A guest's cookie on this machine stays the guest's.
+        const guestMe = await me(local!, { cookie: `pocket_auth=${guest.token}` });
+
+        assert.equal(((await guestMe.json()) as { user: { id: string } }).user.id, guest.user.id);
+
+        // Not from another site's page, a name pointed here, a tunnel, or a server that does not let it in.
+        for (const headers of [
+            { "sec-fetch-site": "cross-site" },
+            { "sec-fetch-site": "same-site" },
+            { origin: "http://evil.example" },
+            { origin: `http://localhost:${Number(local) + 1}` },
+            { host: `evil.example:${local}` },
+            { "x-forwarded-for": "203.0.113.9" },
+            { "x-forwarded-host": "box.tail1234.ts.net" },
+        ] as Record<string, string>[]) {
+            assert.equal((await me(local!, headers)).status, 401, JSON.stringify(headers));
+        }
+
+        assert.equal((await me(plain!)).status, 401);
+    } finally {
+        app.config.removeUser(guest.user.id);
+
+        for (const server of servers) {
+            server.closeAllConnections();
+            server.close();
+        }
+    }
+});
+
 test("an invite lasts as long as asked (an owner's always 15 minutes), outlives a restart, and ends when its maker moves on", async () => {
     const { createServer } = await import("node:http");
     const { createHandler } = await import("../src/server/http.ts");

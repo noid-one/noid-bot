@@ -17,7 +17,7 @@ import { themeFile } from "./http/theme-routes.ts";
 
 export function createHandler(options: HttpOptions) {
     const { app } = options;
-    const auth = new Auth(app.config);
+    const auth = new Auth(app.config, { localOwner: options.localOwner });
     const api = createApi(options, auth);
 
     return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {

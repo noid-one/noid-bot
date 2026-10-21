@@ -831,10 +831,14 @@ kbd {
     }
     /* Folded: the rail alone, and the sidebar's border. */
     :root[data-rail="on"] .sidebar {
-        width: 57px;
+        width: calc(var(--rail-folded) + 1px);
     }
     :root[data-tiling="on"][data-rail="on"] .sidebar {
-        width: calc(56px + 2 * var(--border));
+        width: calc(var(--rail-folded) + 2 * var(--border));
+    }
+    /* noid: folded, the rail is wider, for the bots' faces, as Grok's folded sidebar shows them. */
+    :root[data-rail="on"] .rail {
+        width: var(--rail-folded);
     }
 
     :root[data-tiling="on"] .layout {
@@ -3961,6 +3965,37 @@ pre.diff .del {
     height: 2px;
     border-radius: 1px;
     background: linear-gradient(90deg, var(--accent), var(--spark));
+}
+
+/* noid: a bot's tile is its face, big; the open bot's sits on the sliding fill like a number does. */
+:root {
+    --rail-folded: 76px;
+}
+
+.ws-bot {
+    width: 60px;
+    height: 60px;
+    border-radius: var(--r-card);
+}
+
+.rail-items:has(.ws-bot.active) .slide-y {
+    width: 60px;
+    margin-left: -30px;
+    border-radius: var(--r-card);
+}
+
+.ws-bot .unread-dot {
+    top: 6px;
+    right: 6px;
+}
+
+/* The hair between the bots and the numbered sessions. */
+.ws-rule {
+    flex: none;
+    width: 32px;
+    height: 1px;
+    margin: 2px 0;
+    background: var(--hair);
 }
 
 .ws .unread-dot {

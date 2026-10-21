@@ -76,6 +76,44 @@ export function clearAuthCookie(response: ServerResponse): void {
     response.setHeader("set-cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
+const LOOPBACK_HOST = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])$/;
+
+/**
+ * noid: a request from a browser on this machine to this machine, which needs no sign-in: it comes from a loopback
+ * address, by a loopback name (not a name made to point here, nor a tunnel's, which adds forwarding headers), and not
+ * from another site's page, which must never act as the owner.
+ */
+export function fromThisMachine(request: IncomingMessage): boolean {
+    const peer = request.socket.remoteAddress ?? "";
+    const { headers } = request;
+
+    if (!/^(?:127\.|::1$|::ffff:127\.)/.test(peer)) {
+        return false;
+    }
+
+    if (
+        headers["x-forwarded-for"] !== undefined ||
+        headers["x-forwarded-host"] !== undefined ||
+        headers.forwarded !== undefined
+    ) {
+        return false;
+    }
+
+    const host = String(headers.host ?? "").toLowerCase();
+
+    if (!LOOPBACK_HOST.test(host.replace(/:\d+$/, ""))) {
+        return false;
+    }
+
+    const site = headers["sec-fetch-site"];
+
+    if (site !== undefined && site !== "same-origin" && site !== "none") {
+        return false;
+    }
+
+    return headers.origin === undefined || headers.origin.toLowerCase() === `http://${host}`;
+}
+
 /**
  * What an invite grants: a role, and optionally a single session instead of all of them. An owner invite signs a device
  * in as the owner, with the owner's token: it is never for one session.
@@ -86,25 +124,35 @@ export type InviteGrant =
 /** Invites live in `config.json` (by their codes' hashes), so one that lasts a day or a week outlives a restart. */
 export class Auth {
     readonly #config: ConfigStore;
+    readonly #localOwner: boolean;
 
-    constructor(config: ConfigStore) {
+    /** noid: `localOwner` lets a browser on this machine in as the owner, with no sign-in (`fromThisMachine`). */
+    constructor(config: ConfigStore, { localOwner = false } = {}) {
         this.#config = config;
+        this.#localOwner = localOwner;
     }
 
     user(request: IncomingMessage): User | undefined {
         const token = parseCookies(request.headers.cookie)[COOKIE];
+        let user: User | undefined;
 
         if (token === undefined || token === "") {
             const bearer = String(request.headers.authorization ?? "");
 
             if (bearer.startsWith("Bearer ")) {
-                return this.#config.userByToken(bearer.slice(7).trim());
+                user = this.#config.userByToken(bearer.slice(7).trim());
             }
-
-            return undefined;
+        } else {
+            user = this.#config.userByToken(token);
         }
 
-        return this.#config.userByToken(token);
+        // A cookie or token says who, when it is someone's (a guest's on this machine stays a guest's).
+        return (
+            user ??
+            (this.#localOwner && fromThisMachine(request)
+                ? this.#config.userByToken(this.#config.ownerToken)
+                : undefined)
+        );
     }
 
     tokenUser(token: string): User | undefined {

@@ -35,7 +35,7 @@ npm install
 npm start
 ```
 
-The launcher asks how your devices should connect, then prints the address, a sign-in link, and a QR code. Open the link once per browser; the cookie lasts a year. The link is the owner's key, so keep it private. `--rotate-token` replaces it and signs out every device that used it.
+The launcher asks how your devices should connect, then prints the address, a sign-in link, and a QR code. A browser on the same machine needs no link: open `http://localhost:<port>` and you are the owner. On other devices, open the link once per browser; the cookie lasts a year. The link is the owner's key, so keep it private. `--rotate-token` replaces it and signs out every device that used it.
 
 While it runs: **q** quit · **r** restart server · **a** change access · **o** open in browser · **s** show QR code.
 

@@ -21,7 +21,9 @@ const port = Number(process.argv[2] ?? 8899);
 const host = process.argv[3] ?? "127.0.0.2";
 // noid: with Noid, the main bot, as the real server has.
 const app = await openApp(scriptedModel(), undefined, undefined, { mainBot: true });
-const server = createServer(createHandler({ app, listen: { host, port }, restart: () => {} }));
+const server = createServer(
+    createHandler({ app, listen: { host, port }, restart: () => {}, localOwner: true }),
+);
 const stopWatching = watchTree(join(APP_ROOT, "web"), (file) => app.reloadClients(file));
 
 // Extension modules reload when saved, as in the real server (`app.close()` stops this).

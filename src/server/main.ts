@@ -267,6 +267,7 @@ handle = makeHandler({
     app: opened,
     listen: { host: options.host, port: options.port },
     restart: () => void stop(RESTART_CODE),
+    localOwner: true,
 });
 openedNow();
 stopWatching = (() => {
@@ -309,8 +310,9 @@ if (launcher) {
     console.log("\nPi Pocket is running.");
     console.log(`  data:     ${options.data}`);
     console.log(`  sessions: new sessions start in ${options.cwd}`);
+    // noid: a browser on this machine needs no sign-in; other devices do.
     console.log(
-        "  Open one of these once per browser to sign in as the owner (keep them private):",
+        `  Open http://localhost:${options.port} on this machine. Other devices sign in as the owner with one of these (keep them private):`,
     );
 
     for (const host of hosts) {
