@@ -240,6 +240,147 @@ test("local Markdown file links use the viewer", real, async () => {
     );
 });
 
+test("completed replies show stored message times across providers", real, async () => {
+    await fresh();
+    await goTo(first);
+    await until(
+        () =>
+            inPage<boolean>(`
+                return JSON.stringify((await import("/store.js")).store.state.view.conversation?.id === ${first});
+            `),
+        "the session view",
+    );
+    const expected = await inPage<{ text: string; dateTime: string; title: string }[]>(`
+        const { store } = await import("/store.js");
+        const { fromServer } = await import("/seen.js");
+        const today = new Date().setHours(10, 30, 0, 0);
+        const earlier = new Date(2020, 0, 2, 10, 30).getTime();
+        const entries = [
+            { id: 900101, kind: "assistant", provider: "anthropic", stopReason: "stop", at: today,
+                blocks: [{ type: "text", text: "Today's answer." }] },
+            { id: 900102, kind: "assistant", provider: "openai", stopReason: "stop", at: earlier,
+                blocks: [{ type: "text", text: "An older answer." }] },
+            { id: 900103, kind: "assistant", provider: "google", stopReason: "stop",
+                blocks: [{ type: "text", text: "An answer without a timestamp." }] },
+            { id: 900104, kind: "assistant", provider: "anthropic", stopReason: "toolUse", at: today,
+                blocks: [{ type: "text", text: "An intermediate step." }] },
+            { id: 900105, kind: "assistant", provider: "custom", stopReason: "stop", at: today,
+                blocks: [
+                    { type: "text", text: "Before thinking." },
+                    { type: "thinking", text: "Thinking." },
+                    { type: "text", text: "After thinking." },
+                ] },
+        ];
+
+        store.set({ view: { ...store.state.view,
+            entries: new Map(entries.map(entry => [entry.id, entry])),
+            order: entries.map(entry => entry.id),
+        } });
+
+        return JSON.stringify([today, earlier, today].map((at, index) => {
+            const date = new Date(fromServer(at));
+            const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+            return {
+                text: index === 1
+                    ? date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + time
+                    : time,
+                dateTime: date.toISOString(),
+                title: date.toLocaleString(),
+            };
+        }));
+    `);
+
+    for (const viewport of [VIEWPORTS.mobile, VIEWPORTS.desktop]) {
+        await page.setViewport(viewport);
+        await until(
+            () =>
+                inPage<boolean>(`
+                    return JSON.stringify(document.querySelectorAll(".reply").length === 6);
+                `),
+            "completed and intermediate replies rendered",
+        );
+        const shown = await inPage<typeof expected>(`
+            return JSON.stringify([...document.querySelectorAll(".reply time")].map(time => ({
+                text: time.textContent,
+                dateTime: time.dateTime,
+                title: time.title,
+            })));
+        `);
+
+        assert.deepEqual(shown, expected, "one timestamp per completed answer with a stored time");
+        assert.equal(
+            await inPage<boolean>(`
+                return JSON.stringify([...document.querySelectorAll(".reply time")].every(time => {
+                    const bounds = time.getBoundingClientRect();
+
+                    return bounds.width > 0 && bounds.right <= innerWidth && getComputedStyle(time).opacity === "1";
+                }));
+            `),
+            true,
+            "timestamps remain visible without hovering and fit the viewport",
+        );
+    }
+
+    await page.evaluate(`(await import("/store.js")).openSheet({ type: "appearance" })`);
+    await until(
+        () =>
+            inPage<boolean>(`
+                return JSON.stringify(document.querySelector('.slot-layout[data-slot="reply"]') !== null);
+            `),
+        "reply layout controls",
+    );
+
+    try {
+        assert.equal(
+            await inPage<boolean>(`
+                return JSON.stringify(document.querySelector('[aria-label="Show Message time"]') !== null);
+            `),
+            true,
+            "message time is a configurable reply-slot item",
+        );
+        await tap('[aria-label="Show Message time"]');
+        await until(
+            () =>
+                inPage<boolean>(`
+                    return JSON.stringify(document.querySelectorAll(".reply time").length === 0);
+                `),
+            "message times hidden without hiding the reply actions",
+        );
+        assert.equal(
+            await inPage<boolean>(`
+                return JSON.stringify(document.querySelector(".reply .reaction-host") !== null);
+            `),
+            true,
+        );
+        await tap('[aria-label="Show Message time"]');
+        await until(
+            () =>
+                inPage<boolean>(`
+                    return JSON.stringify(document.querySelectorAll(".reply time").length === 3);
+                `),
+            "message times restored",
+        );
+        await tap('[aria-label="Move Message time later"]');
+        await until(
+            () =>
+                inPage<boolean>(`
+                    const actions = document.querySelector(".answer-actions");
+
+                    return JSON.stringify(actions.firstElementChild.matches(".reaction-host") &&
+                        actions.children[1].tagName === "TIME" &&
+                        actions.lastElementChild.textContent.trim() === "More");
+                `),
+            "message time moved after React, with More still last",
+        );
+    } finally {
+        await page.evaluate(`
+            (await import("/slots.js")).resetSlot("reply");
+            (await import("/store.js")).closeSheet();
+        `);
+    }
+});
+
 test(
     "on a phone, an invite lasts as long as chosen, and the one it replaces ends",
     real,

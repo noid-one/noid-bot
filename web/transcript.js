@@ -1610,7 +1610,7 @@ function ApprovalCard({ approval }) {
 
 // ─── Pi's words ───────────────────────────────────────────────────────────────────────
 
-/** Under Pi's answers: reactions, and ways to talk about the answer with the people here. */
+/** Under Pi's answers: the message time, reactions, and ways to talk about the answer with the people here. */
 function AnswerActions({ entry }) {
     const { view, me, users, server } = store.state;
     const [picking, setPicking] = useState(false);
@@ -1629,7 +1629,15 @@ function AnswerActions({ entry }) {
         attempt(() => actions.react(entry.id, emoji));
     };
 
+    const at = entry.at ? new Date(fromServer(entry.at)) : null;
+
     return html`<div class=${`answer-actions ${picking ? "picking" : ""}`} data-part="reply-actions">
+        ${
+            at &&
+            html`<time class="muted" dateTime=${at.toISOString()} title=${at.toLocaleString()}>
+                ${clock(entry.at)}
+            </time>`
+        }
         ${Object.entries(reactions).map(
             ([emoji, ids]) =>
                 html`<button
