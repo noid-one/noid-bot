@@ -312,6 +312,11 @@ test("the rules: where a bot runs decides; on this machine, anything that is not
     // Any other tool that may change things asks too: a list of what only looks, not of what is dangerous.
     assert.equal(classify(computer, "host", "browser", { action: "click", ref: "e1" }).ask, true);
     assert.equal(classify(computer, "host", "browser", { action: "snapshot" }).ask, false);
+    assert.equal(
+        classify(computer, "host", "browser", { action: "upload", ref: "e1", paths: ["x"] }).ask,
+        true,
+        "an upload sends a file out",
+    );
     assert.equal(classify(computer, "host", "some_extension_tool", {}).ask, true);
     assert.equal(
         classify(computer, "host", "some_extension_tool", {}, true).ask,

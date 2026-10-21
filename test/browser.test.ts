@@ -13,7 +13,7 @@ import {
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -26,6 +26,7 @@ import { SHOT_MAX } from "../src/server/browser/page.ts";
 import { normalizeUrl } from "../src/server/browser/urls.ts";
 import { VIEWPORTS } from "../src/server/browser/viewport.ts";
 import { onlyReads } from "../src/server/noid/read-only.ts";
+import { uploadable } from "../src/server/extensions/browser.ts";
 
 /** A JPEG's size in pixels, from its first frame header. */
 function jpegSize(data: string): { width: number; height: number } {
@@ -175,6 +176,106 @@ test(
         }
     },
 );
+
+test(
+    "upload attaches files to a hidden file input, listed in the snapshot, with no file chooser",
+    real,
+    async () => {
+        const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "upload-")) });
+        const folder = mkdtempSync(join(root, "upload-files-"));
+        const file = join(folder, "resume.pdf");
+
+        writeFileSync(file, "%PDF-1.4 a resume");
+
+        try {
+            const page = await browsers.open(1);
+
+            await page.navigate(`${base}/`);
+            await page.evaluate(
+                `document.body.innerHTML = '<label class="button">Attach your resume<input type="file" accept=".pdf" style="display:none"></label>'; 1`,
+            );
+            const { lines } = await page.snapshot();
+            const ref = /\[(e\d+)\] file upload[^\n]*accepts \.pdf/.exec(lines)?.[1];
+
+            assert.ok(ref !== undefined, lines);
+            assert.match(lines, /File uploads/);
+            assert.equal(await page.upload({ ref }, [file]), "resume.pdf");
+            assert.match(
+                await page.evaluate("document.querySelector('input').files[0].name"),
+                /resume\.pdf/,
+            );
+            // The label stands for its input too.
+            assert.equal(await page.upload({ label: "Attach your resume" }, [file]), "resume.pdf");
+            assert.match((await page.snapshot()).lines, /= "resume\.pdf"/);
+        } finally {
+            await browsers.closeAll({ final: true });
+        }
+    },
+);
+
+test("upload takes regular files only, and on the computer only from the session's folder and shared", async () => {
+    const home = mkdtempSync(join(root, "upload-home-"));
+    const mine = join(home, "bots", "scout");
+    const shared = join(home, "shared");
+    const other = join(home, "bots", "other");
+
+    for (const folder of [mine, shared, other]) {
+        mkdirSync(folder, { recursive: true });
+    }
+
+    writeFileSync(join(mine, "a.txt"), "a");
+    writeFileSync(join(shared, "b.txt"), "b");
+    writeFileSync(join(other, "secret.txt"), "s");
+    symlinkSync(join(other, "secret.txt"), join(mine, "link.txt"));
+
+    // An environment as pi-durable's: results, not throws.
+    const { realpathSync, statSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+
+    const result = <T>(make: () => T) => {
+        try {
+            return { ok: true as const, value: make() };
+        } catch (error) {
+            return { ok: false as const, error: error as Error };
+        }
+    };
+
+    const env = {
+        absolutePath: async (path: string) => result(() => resolve(mine, path)),
+        canonicalPath: async (path: string) => result(() => realpathSync(path)),
+        fileInfo: async (path: string) =>
+            result(() => {
+                const info = statSync(path);
+
+                return { kind: info.isDirectory() ? "directory" : "file", size: info.size };
+            }),
+    } as never;
+    const within = [mine, shared];
+
+    assert.deepEqual(
+        await uploadable(env, ["a.txt", join(shared, "b.txt")], within, BACKGROUND_CONTEXT),
+        [realpathSync(join(mine, "a.txt")), realpathSync(join(shared, "b.txt"))],
+    );
+    await assert.rejects(
+        uploadable(env, [join(other, "secret.txt")], within, BACKGROUND_CONTEXT),
+        /outside your folder/,
+    );
+    await assert.rejects(
+        uploadable(env, ["link.txt"], within, BACKGROUND_CONTEXT),
+        /outside your folder/,
+        "a link is followed",
+    );
+    await assert.rejects(uploadable(env, ["."], within, BACKGROUND_CONTEXT), /is not a file/);
+    await assert.rejects(
+        uploadable(env, ["nope.txt"], within, BACKGROUND_CONTEXT),
+        /is not a file/,
+    );
+    // On this machine (a host session): any regular file, as Pi reads any.
+    assert.equal(
+        (await uploadable(env, [join(other, "secret.txt")], undefined, BACKGROUND_CONTEXT)).length,
+        1,
+    );
+});
 
 test("pages do not see an automated browser, on a phone or after one", real, async () => {
     const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "agent-")) });

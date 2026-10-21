@@ -82,7 +82,8 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
 			const type = el.tagName === "TEXTAREA" ? "textarea" : el.type;
 			if (type === "checkbox" || type === "radio") { if (el.checked) line += " (checked)"; }
 			else if (!["button", "submit", "reset", "image"].includes(type)) {
-				if (el.value) line += ' = "' + (type === "password" ? "••••" : clip(el.value, 60)) + '"';
+				if (type === "file") { const chosen = [...(el.files ?? [])].map((file) => file.name); if (chosen.length > 0) line += ' = "' + clip(chosen.join(", "), 80) + '"'; }
+				else if (el.value) line += ' = "' + (type === "password" ? "••••" : clip(el.value, 60)) + '"';
 				else if (el.placeholder && !name.includes(el.placeholder)) line += ' placeholder "' + clip(el.placeholder, 40) + '"';
 				if (!["text", "textarea", "search"].includes(type)) line += " [" + type + "]";
 			}
@@ -141,6 +142,21 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
 	};
 	const walk = (el, depth) => { for (const child of (el.shadowRoot ?? el).childNodes) visit(child, depth); };
 	if (document.body) walk(document.body, 0);
+	// Every file input, under its own head: a styled upload button often hides its input, and the upload action needs one
+	// (after rakazo 73a6b102). Those already listed keep their ref; open shadow roots count too.
+	const files = [];
+	const findFiles = (root) => { for (const el of root.querySelectorAll("*")) { if (el.shadowRoot) findFiles(el.shadowRoot); if (el.tagName === "INPUT" && el.type === "file") files.push(el); } };
+	findFiles(document);
+	const listed = new Set([...refs.values()].map((each) => each.deref()));
+	const fileLines = files.filter((el) => !listed.has(el) && !el.disabled).map((el) => {
+		const ref = "e" + ++count;
+		refs.set(ref, new WeakRef(el));
+		const name = clip(nameOf(el), 60);
+		const chosen = [...(el.files ?? [])].map((file) => file.name);
+		return "[" + ref + "] file upload" + (name ? ' "' + name + '"' : "") + (el.multiple ? " (multiple)" : "") + (el.accept ? " accepts " + clip(el.accept, 60) : "") + (chosen.length > 0 ? ' = "' + clip(chosen.join(", "), 80) + '"' : "");
+	});
+	// Past the size limit too, as a page's last lines: at most 20.
+	if (fileLines.length > 0) lines.push("File uploads (browser upload with this ref):", ...fileLines.slice(0, 20).map((line) => "  " + line));
 	const scrolling = document.scrollingElement ?? document.documentElement;
 	return { lines: lines.join("\n"), truncated: full, controls: count, scrollY: Math.round(scrollY), scrollHeight: Math.round(scrolling.scrollHeight), innerHeight: Math.round(innerHeight) };
 })()`;
@@ -239,3 +255,22 @@ export const DESCRIBE_FUNCTION = String.raw`function () {
 		return String(this);
 	}
 }`;
+
+/**
+ * The file input a target stands for: the input itself, the one a label is for, or the one inside the element (a styled
+ * upload button). Returns the element, for `DOM.setFileInputFiles`.
+ */
+export const FILE_INPUT_SCRIPT = String.raw`((target) => {
+	let el = target.ref ? window.__piPocketRefs?.get(target.ref)?.deref() : target.selector ? document.querySelector(target.selector) : null;
+	if (!el && target.label) {
+		const want = target.label.replace(/\s+/g, " ").trim().toLowerCase();
+		const text = (each) => (each.getAttribute("aria-label") || each.innerText || each.getAttribute("title") || "").replace(/\s+/g, " ").trim().toLowerCase();
+		el = [...document.querySelectorAll("input[type=file], label, button, [role=button]")].find((each) => text(each) === want || (each.labels && [...each.labels].some((label) => text(label) === want))) ?? null;
+	}
+	if (!el || !el.isConnected) throw new Error("No such element: take a new snapshot.");
+	const isFile = (each) => each?.tagName === "INPUT" && each.type === "file";
+	const input = isFile(el) ? el : el.tagName === "LABEL" && isFile(el.control) ? el.control : el.querySelector?.("input[type=file]") ?? el.shadowRoot?.querySelector("input[type=file]") ?? null;
+	if (!input) throw new Error("That is a " + el.tagName.toLowerCase() + ", not a file upload: use a ref listed under File uploads in the snapshot.");
+	if (input.disabled) throw new Error("That file upload is disabled.");
+	return input;
+})`;

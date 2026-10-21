@@ -6,6 +6,7 @@ import { BrowserError, type Connection, type Json } from "./cdp.ts";
 import { KEYS, keyEvents, parseKeys } from "./keys.ts";
 import {
     DESCRIBE_FUNCTION,
+    FILE_INPUT_SCRIPT,
     LOCATE_SCRIPT,
     SELECT_ALL_SCRIPT,
     SELECT_OPTION_SCRIPT,
@@ -1153,6 +1154,41 @@ export class BrowserPage {
                 `(${SELECT_OPTION_SCRIPT})(${JSON.stringify(target)}, ${JSON.stringify(value)})`,
             ),
         );
+    }
+
+    /**
+     * Attach files to a file upload, as the browser does with files a person chose: no file chooser opens (on the shared
+     * desktop one would block the window for everyone). `paths` are as this browser's machine sees them, checked by the
+     * caller. Returns the names the field now holds.
+     */
+    async upload(target: Target, paths: readonly string[]): Promise<string> {
+        this.usedAt = Date.now();
+        const found = await this.#send(
+            "Runtime.evaluate",
+            { expression: `(${FILE_INPUT_SCRIPT})(${JSON.stringify(target)})`, userGesture: true },
+            15_000,
+        );
+
+        evaluated(found);
+        const objectId = found.result?.objectId as string | undefined;
+
+        if (objectId === undefined) {
+            throw new BrowserError("No file upload there: take a new snapshot.");
+        }
+
+        try {
+            await this.#send("DOM.setFileInputFiles", { files: [...paths], objectId });
+            const names = await this.#send("Runtime.callFunctionOn", {
+                objectId,
+                functionDeclaration:
+                    "function () { return [...(this.files ?? [])].map((file) => file.name).join(', '); }",
+                returnByValue: true,
+            });
+
+            return String(evaluated(names) ?? "");
+        } finally {
+            void this.#send("Runtime.releaseObject", { objectId }).catch(() => {});
+        }
     }
 
     /** Scroll a target into view, or the page by `dy` pixels (a screen down by default). */
