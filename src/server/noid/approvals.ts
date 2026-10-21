@@ -42,6 +42,8 @@ import type { BotProfile } from "./bots.ts";
 export const NOID_APPROVAL = "noid:";
 /** The start of the id of a question auto review raised: never made into an "always allow" rule. */
 export const AUTO_REVIEW_APPROVAL = `${NOID_APPROVAL}review:`;
+/** The start of the id of a question asked every time (`Verdict.always`): never made into an "always allow" rule. */
+export const EVERY_TIME_APPROVAL = `${NOID_APPROVAL}every:`;
 
 /** Rules the owner made with "Always allow": a bot's calls of a tool that run without asking from then on. */
 export const ApprovalRulesDoc = defineDoc<{
@@ -271,11 +273,24 @@ export function subjectOf(tool: string, args: Record<string, unknown>): string {
 }
 
 /**
- * Tools whose results bring in nothing someone else wrote: the bot's own notes and plans, and the lists of its
- * sessions and bots. Any other result (a page, a file, a command's output, another session's words, a subagent's
- * report) taints the run (rakazo's `toolResultTaintsRun`).
+ * Tools whose results bring in nothing someone else wrote: the bot's own notes and plans, the lists of its sessions
+ * and bots (titles come on one line, quoted, as data), and what the session tools say they did (written by the server:
+ * a session started, a message sent, a run followed, stopped, or archived), so starting two sessions does not ask for
+ * the second. Any other result (a page, a file, a command's output, another session's words, a subagent's report,
+ * the calls waiting for approval, which hold what other bots wrote) taints the run (rakazo's `toolResultTaintsRun`).
  */
-const CLEAN_RESULTS = new Set(["memory", "schedule", "goal", "approvals", "sessions", "bots"]);
+const CLEAN_RESULTS = new Set([
+    "memory",
+    "schedule",
+    "goal",
+    "sessions",
+    "bots",
+    "session_start",
+    "session_send",
+    "session_follow",
+    "session_stop",
+    "session_archive",
+]);
 /** How many of a conversation's newest entries are looked through for the run since the owner last wrote. */
 const RUN_LOOKBACK = 500;
 
@@ -397,7 +412,10 @@ export function createApprovals(app: PocketApp) {
                         !BUILT_IN_TOOLS.has(call.name) &&
                         declared?.annotations?.readOnlyHint === true;
                     const place = app.onHost(api.conversationId) ? "host" : "computer";
-                    const site = siteOpened(call.name, args);
+                    const reviewOn = (await api.snapshot(AutoReviewDoc, context))?.on === true;
+                    // A site matters on this machine, or wherever auto review is on to judge it.
+                    const site =
+                        place === "host" || reviewOn ? siteOpened(call.name, args) : undefined;
                     // The run so far, read only for the calls it decides: Noid putting work in a session, and a site.
                     const run =
                         (bot.main === true && startsWork(call.name, args)) || site !== undefined
@@ -409,9 +427,10 @@ export function createApprovals(app: PocketApp) {
                         call.name,
                         args,
                         readOnly,
-                        run !== undefined && (run.outside || !run.byOwner),
+                        // A call inside a codemode script (`id/n`) cannot see what the script's earlier calls
+                        // brought in (stored only when it ends): it counts as having read outside text.
+                        run !== undefined && (run.outside || !run.byOwner || call.id.includes("/")),
                     );
-                    const reviewOn = (await api.snapshot(AutoReviewDoc, context))?.on === true;
                     // A site the run was not given: not named in what the bot was asked, and not opened before in this
                     // run. The page that links there could be asking for what the bot read to go along (rakazo f49e35c0).
                     const newSite =
@@ -427,7 +446,7 @@ export function createApprovals(app: PocketApp) {
                             ask: true,
                             always: true,
                             reason: "opens a site your task did not name",
-                            subject: String(args.url),
+                            subject: clipMiddle(String(args.url), FIELD_MAX),
                         };
                     }
 
@@ -504,7 +523,7 @@ export function createApprovals(app: PocketApp) {
                     if (answer === undefined) {
                         // Its own id (Lancet Guard's is the bare call): "always allow" only answers noid's own questions,
                         // and never one auto review raised (that would turn auto review off for the tool for good).
-                        const id = `${reviewed?.ask === true ? AUTO_REVIEW_APPROVAL : NOID_APPROVAL}${api.taskId}:${call.id}`;
+                        const id = `${reviewed?.ask === true ? AUTO_REVIEW_APPROVAL : verdict.always === true ? EVERY_TIME_APPROVAL : NOID_APPROVAL}${api.taskId}:${call.id}`;
                         const timer = setTimeout(
                             () => app.approvals.answer(id, { allow: false, by: "nobody, in time" }),
                             waitMs(),

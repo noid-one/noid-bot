@@ -82,6 +82,7 @@ import {
     ApprovalRulesDoc,
     createApprovals,
     AUTO_REVIEW_APPROVAL,
+    EVERY_TIME_APPROVAL,
     NOID_APPROVAL,
     NOT_SHOWN,
 } from "./noid/approvals.ts";
@@ -2202,6 +2203,7 @@ export class PocketApp {
             user.role === "owner" &&
             id.startsWith(NOID_APPROVAL) &&
             !id.startsWith(AUTO_REVIEW_APPROVAL) &&
+            !id.startsWith(EVERY_TIME_APPROVAL) &&
             !alwaysAsks(request.tool, { action: "remove" }) &&
             // Asked every time when it makes a bot on this machine (its kind is not on the request): a rule would only
             // turn auto review off for the bots it makes on the computer.

@@ -147,7 +147,9 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
 	const files = [];
 	const findFiles = (root) => { for (const el of root.querySelectorAll("*")) { if (el.shadowRoot) findFiles(el.shadowRoot); if (el.tagName === "INPUT" && el.type === "file") files.push(el); } };
 	findFiles(document);
-	const listed = new Set([...refs.values()].map((each) => each.deref()));
+	// Listed: given a ref on a line the snapshot kept (one past its size limit has a ref but no line).
+	const kept = new Set(lines.flatMap((line) => [...line.matchAll(/\[(e\d+)\]/g)].map((match) => match[1])));
+	const listed = new Set([...refs].filter(([ref]) => kept.has(ref)).map(([, each]) => each.deref()));
 	const fileLines = files.filter((el) => !listed.has(el) && !el.disabled).map((el) => {
 		const ref = "e" + ++count;
 		refs.set(ref, new WeakRef(el));

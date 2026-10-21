@@ -415,8 +415,18 @@ export default function createBrowser(host: PocketHost) {
                 case "upload": {
                     need(pointed && (args.paths?.length ?? 0) > 0, "a ref (or selector) and paths");
 
-                    if (api.env === undefined) {
-                        throw new Error("upload cannot reach this conversation's files.");
+                    // The files must be where the browser is: the bots' browser (a shared one) runs on the computer,
+                    // so a bot on this machine has none of its files there; with NOID_BROWSER=chrome it is the owner's
+                    // own Chrome, which cannot read the computer's.
+                    if (
+                        api.env === undefined ||
+                        (page.shared &&
+                            (host.onHost(api.conversationId) ||
+                                process.env.NOID_BROWSER === "chrome"))
+                    ) {
+                        throw new Error(
+                            "upload cannot attach files here: the browser runs on another machine than this conversation's files.",
+                        );
                     }
 
                     const files = await uploadable(

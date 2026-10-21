@@ -4,6 +4,7 @@
  * the public suffix list: shared hosts count each tenant as its own site, so trusting `alice.github.io` never trusts
  * `attacker.github.io`.
  */
+import { normalizeUrl } from "../browser/urls.ts";
 
 /**
  * Suffixes under which each name is its own site: country second levels, and hosts where anyone gets a name. A suffix
@@ -70,19 +71,6 @@ const SUFFIXES = new Set([
     "pipedream.net",
 ]);
 
-/** A web address as the browser opens it: with no scheme, https (as `normalizeUrl` takes `example.com`). */
-function webUrl(address: string): URL | undefined {
-    const text = address.trim();
-
-    try {
-        const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
-
-        return url.protocol === "http:" || url.protocol === "https:" ? url : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
 /** The site of a host name: an IP address or a one-label name (`localhost`) is its own. */
 export function hostSite(hostname: string): string | undefined {
     const host = hostname.trim().toLowerCase().replace(/\.$/, "");
@@ -106,11 +94,27 @@ export function hostSite(hostname: string): string | undefined {
     return labels.slice(-2).join(".");
 }
 
-/** The site a web address goes to, or undefined for one that is not http(s) (a file, say). */
+/**
+ * The site a web address goes to, read as the browser tool reads it (`normalizeUrl`: `example.com`, `host:port`,
+ * `http:evil.com`, `https:/evil.com`), or undefined for one that is not http(s) (a file, say). An http(s) address
+ * whose host cannot be read is a site of its own that nothing trusts.
+ */
 export function urlSite(address: string): string | undefined {
-    const url = webUrl(address);
+    const normal = normalizeUrl(address);
 
-    return url === undefined ? undefined : hostSite(url.hostname);
+    if (normal === undefined) {
+        return undefined;
+    }
+
+    try {
+        const url = new URL(normal);
+
+        return url.protocol === "http:" || url.protocol === "https:"
+            ? (hostSite(url.hostname) ?? `(no host) ${normal}`)
+            : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`]+/gi;

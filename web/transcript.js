@@ -1518,6 +1518,8 @@ function ApprovalCard({ approval }) {
         bot !== undefined &&
         me?.role === "owner" &&
         !approval.id.startsWith("noid:review:") &&
+        // Asked every time (a new site, Noid after reading what others wrote): no rule can answer it.
+        !approval.id.startsWith("noid:every:") &&
         !["bot_archive", "bot_update", "memory", "bot_create"].includes(approval.tool);
 
     // The server cut a call too long to hold (the middle of it is not here): it can only be denied (app.ts cannotAllow).

@@ -282,6 +282,11 @@ test("sites: a subdomain is its site, a shared host's tenant its own, and a pers
     assert.equal(urlSite("https://alice.github.io/x"), "alice.github.io");
     assert.notEqual(urlSite("https://attacker.github.io/"), urlSite("https://alice.github.io/"));
     assert.equal(urlSite("file:///etc/passwd"), undefined, "not a web address");
+    // As the browser tool reads them: no address it opens escapes its site.
+    assert.equal(urlSite("http:evil.example/?q=secret"), "evil.example");
+    assert.equal(urlSite("https:/evil.example"), "evil.example");
+    assert.equal(urlSite("https:\\\\evil.example"), "evil.example");
+    assert.equal(urlSite("evil.example:8080/?q=secret"), "evil.example");
     assert.equal(hostSite("127.0.0.1"), "127.0.0.1");
     assert.equal(hostSite("localhost"), "localhost");
     assert.deepEqual(
@@ -355,9 +360,18 @@ test("a host bot asks before it opens a site its task did not name, whatever its
 
     assert.match(asked!.reason, /Surfer opens a site your task did not name/);
     assert.match(asked!.subject, /collect\.evil\.example/);
-    assert.ok(await app.answerApproval(asked!.id, false, owner(app)));
+    assert.ok(asked!.id.startsWith("noid:every:"), "asked every time");
+    // "Always allow" on it lets this call go, and makes no rule: one for the browser would let its clicks and scripts
+    // run unasked, and would never answer this question anyway.
+    assert.ok(await app.answerApproval(asked!.id, true, owner(app), true));
     await app.harness.waitForIdle(context);
-    assert.match(await lastReply(surfer), /denied this browser call/);
+    assert.equal(
+        ((await app.harness.snapshot(ApprovalRulesDoc, context))?.rules ?? []).filter(
+            (rule) => rule.bot === botId,
+        ).length,
+        1,
+        "only the rule from before",
+    );
 
     // Auto review on: the address and the owner's words go to the check, not the question.
     await autoReview(app, owner(app), true);
