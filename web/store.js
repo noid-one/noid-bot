@@ -483,6 +483,16 @@ function mergeView(current, data) {
     const base = data.full || !same ? emptyView() : current;
     const entries = new Map(data.full && same ? current.entries : base.entries);
 
+    // A light one held from before (the tab left before the whole one came) goes: past the newest rows, the server
+    // counts it as sent, so only `loadEarlier` brings it whole, and it asks for what is missing.
+    if (data.full && same) {
+        for (const [id, entry] of entries) {
+            if (entry.partial) {
+                entries.delete(id);
+            }
+        }
+    }
+
     for (const entry of data.entries) {
         // A light one (`partial`) does not replace the whole one this tab has, as after a reconnect: it is sent whole
         // again right after.
@@ -1194,8 +1204,11 @@ export function loadEarlier({ rows, from } = {}) {
                     }
                 }
 
+                // What the tab has wins, except a light one (`partial`): the one loaded is whole.
                 for (const [id, entry] of state.view.entries) {
-                    entries.set(id, entry);
+                    if (!entry.partial || !entries.has(id)) {
+                        entries.set(id, entry);
+                    }
                 }
 
                 return { view: { ...state.view, entries } };
