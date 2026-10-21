@@ -15,6 +15,7 @@ import {
     collab,
     drafts,
     insertIntoComposer,
+    isLoaded,
     loadEarlier,
     markChatRead,
     notify,
@@ -134,9 +135,9 @@ export function jumpToEntry(entryId) {
     const { view } = store.state;
 
     // In the session but not loaded yet (a view brings only the newest): load back to it first.
-    if (!view.entries.has(entryId) && view.order.includes(entryId)) {
+    if (view.order.includes(entryId) && !isLoaded(view, entryId)) {
         void loadEarlier({ from: entryId }).then(
-            () => store.state.view.entries.has(entryId) && jumpToEntry(entryId),
+            () => isLoaded(store.state.view, entryId) && jumpToEntry(entryId),
             (error) => notify("error", error.message ?? String(error)),
         );
 

@@ -1156,6 +1156,16 @@ export function loadedFrom(view) {
     return at;
 }
 
+/**
+ * Whether the transcript can draw an entry: it is in the unbroken run of entries at the end of the order. An entry kept
+ * from before a gap (a reconnect after many new rows, or a compaction) is held but not drawn.
+ */
+export function isLoaded(view, entryId) {
+    const at = view.order.indexOf(entryId);
+
+    return at !== -1 && at >= loadedFrom(view);
+}
+
 /** One request for earlier entries at a time, per conversation: its promise, which later callers share. */
 let loading = null;
 
@@ -1173,7 +1183,7 @@ export function loadEarlier({ rows, from } = {}) {
         return Promise.resolve();
     }
 
-    if (from !== undefined && view.entries.has(from)) {
+    if (from !== undefined && isLoaded(view, from)) {
         return Promise.resolve();
     }
 
