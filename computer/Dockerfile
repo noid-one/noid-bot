@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     unzip \
     python3 \
+    python-is-python3 \
     python3-openpyxl \
     poppler-utils \
     pandoc \
