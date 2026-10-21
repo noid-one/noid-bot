@@ -957,6 +957,80 @@ test("a tab of protocol 3 gets the answer being written as what changed, an olde
     }
 });
 
+test("a tab of protocol 4 opens a long session with its newest rows, and asks for earlier ones", async () => {
+    const id = await newSession();
+
+    // 90 messages and 90 answers: more rows than a view brings.
+    for (let n = 1; n <= 90; n++) {
+        await say(id, `message ${n}`);
+    }
+
+    const tab = fakeTab(id, owner(), 4);
+    const old = fakeTab(id, owner(), 3);
+
+    type Entry = { id: number; kind: string; text?: string };
+    const view = (of: typeof tab) =>
+        of.events.find((each) => each.event === "view")!.data as {
+            entries: Entry[];
+            order: number[];
+        };
+    const isRow = (entry: Entry) => entry.kind === "user" || entry.kind === "assistant";
+
+    await app.attach(tab.client);
+    await app.attach(old.client);
+
+    try {
+        await until(
+            () => tab.last("view") !== undefined && old.last("view") !== undefined,
+            "the views",
+        );
+        const all = view(old).entries;
+        const first = view(tab).entries;
+
+        // Older code gets every entry; the new, the order of all of them and the entries of the newest 80 rows, with the
+        // turn before the oldest, which says what was open there (`turnStart`).
+        assert.equal(all.filter(isRow).length, 180);
+        assert.deepEqual(view(tab).order, view(old).order);
+        assert.equal(first.filter(isRow).length, 82);
+        assert.deepEqual(first, all.slice(-first.length));
+        assert.equal(first[0]!.kind, "user");
+
+        // Earlier ones as asked: some rows (from a message on), up to an entry, or all of them.
+        const room = await app.room(id);
+
+        try {
+            const rows = room.entriesBefore(first[0]!.id, { rows: 20 });
+
+            assert.equal(rows.filter(isRow).length, 22);
+            assert.deepEqual(rows, all.slice(-first.length - rows.length, -first.length));
+            assert.deepEqual(
+                room.entriesBefore(first[0]!.id, { from: all[3]!.id }),
+                all.slice(2, -first.length),
+            );
+            assert.deepEqual(room.entriesBefore(first[0]!.id), all.slice(0, -first.length));
+            assert.deepEqual(room.entriesBefore(-1), []);
+        } finally {
+            app.releaseRoom(room);
+        }
+
+        // An update brings only what is new, not the entries the first view left out.
+        await say(id, "one more");
+        const sent = () =>
+            tab.events
+                .filter((each) => each.event === "view")
+                .slice(1)
+                .flatMap((each) => each.data.entries as Entry[])
+                .filter(isRow)
+                .map((entry) => entry.text ?? entry.kind);
+
+        await until(() => sent().length >= 2, "the update with the answer");
+        assert.deepEqual(sent(), ["one more", "assistant"]);
+    } finally {
+        app.detach(tab.client);
+        app.detach(old.client);
+    }
+});
+
 test("a tab does not get the session list again when it did not change", async () => {
     const id = await newSession();
     const tab = fakeTab(id, owner());

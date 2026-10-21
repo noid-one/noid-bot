@@ -76,6 +76,64 @@ export type ClientEntry =
     | { id: number; kind: "fromPi"; title: string; file: string }
     | { id: number; kind: "other"; entryKind: string };
 
+/** Entry kinds that show as transcript rows: a tool's result shows in its call's card. As `isRow` in `web/store.js`. */
+const ROW_KINDS = new Set([
+    "user",
+    "assistant",
+    "compaction",
+    "reset",
+    "shell",
+    "command",
+    "note",
+    "fromPi",
+]);
+
+/** Rows a tab of protocol 4 gets the entries of when it opens a session: those it draws (`TRANSCRIPT_ROWS`), and PiP's. */
+export const FIRST_ROWS = 80;
+
+/**
+ * Where the turn the entry at `index` is in begins: the row before the answers that run up to it. A tab works out from
+ * those rows what was open there (`rowsBefore` in `web/turns.js`), so it gets them with what follows. At most
+ * `FIRST_ROWS` rows back: a run of Pi's alone can be thousands of answers.
+ */
+export function turnStart(entries: readonly ClientEntry[], index: number): number {
+    let start = index;
+    let rows = 0;
+
+    for (let at = index - 1; at >= 0 && rows <= FIRST_ROWS; at--) {
+        const entry = entries[at]!;
+
+        if (!ROW_KINDS.has(entry.kind)) {
+            continue;
+        }
+
+        start = at;
+        rows++;
+
+        if (entry.kind !== "assistant") {
+            break;
+        }
+    }
+
+    return start;
+}
+
+/**
+ * The index of the first entry a tab needs to draw the newest `rows` rows: from the row that many back, with the turn it
+ * is in, and every tool result after it.
+ */
+export function firstEntries(entries: readonly ClientEntry[], rows = FIRST_ROWS): number {
+    let seen = 0;
+
+    for (let at = entries.length - 1; at >= 0; at--) {
+        if (ROW_KINDS.has(entries[at]!.kind) && ++seen === rows) {
+            return turnStart(entries, at);
+        }
+    }
+
+    return 0;
+}
+
 export type ClientToolSlot = {
     callId: string;
     taskId?: number;

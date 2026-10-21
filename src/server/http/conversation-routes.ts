@@ -505,6 +505,39 @@ export async function conversationRoutes(
         );
     }
 
+    // Earlier entries of the active context, for a tab that got only the newest with its view (protocol 4).
+    if (third === "context" && method === "GET") {
+        const number = (name: string) => {
+            const value = url.searchParams.get(name);
+
+            return value === null ? undefined : Number(value);
+        };
+
+        const before = number("before");
+        const rows = number("rows");
+        const from = number("from");
+
+        if (
+            before === undefined ||
+            ![before, rows ?? 1, from ?? 1].every(
+                (value) => Number.isSafeInteger(value) && value > 0,
+            )
+        ) {
+            throw new HttpError(
+                400,
+                "before (an entry id), and rows or from, if given, must be positive whole numbers",
+            );
+        }
+
+        const room = await app.room(id);
+
+        try {
+            return json(response, 200, room.entriesBefore(before, { rows, from }));
+        } finally {
+            app.releaseRoom(room);
+        }
+    }
+
     if (third === "upload" && method === "POST") {
         app.requireSteer(user);
 

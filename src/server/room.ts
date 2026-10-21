@@ -50,6 +50,7 @@ import {
     type ClientEntry,
     type ClientLive,
     type ClientLiveUpdate,
+    firstEntries,
     liveMessageDelta,
     PEEK_LINES,
     type PeekLine,
@@ -57,6 +58,7 @@ import {
     projectEntry,
     projectLive,
     projectStats,
+    turnStart,
 } from "./projection.ts";
 import { describeRepeat } from "./when.ts";
 
@@ -135,8 +137,9 @@ export interface Client {
     sentFields?: Map<string, string>;
     /**
      * What the tab's code understands of updates (`PROTOCOL` in `web/store.js`): 2 keeps the queue an update leaves out;
-     * 3 also takes the live message as what changed (`liveMessageDelta`). A tab below 3 gets the whole live message with
-     * each update; older code, which names none, also gets the queue.
+     * 3 also takes the live message as what changed (`liveMessageDelta`); 4 also takes a full view with only the newest
+     * entries (`firstEntries`). A tab below 3 gets the whole live message with each update; older code, which names
+     * none, also gets the queue.
      */
     readonly protocol?: number;
     /** The blocks of the live message this tab has, for protocol 3: undefined when it has none. */
@@ -497,7 +500,11 @@ export class Room {
         return projected;
     }
 
-    /** Send this client what changed since its last update, or everything with `full`. */
+    /**
+     * Send this client what changed since its last update, or everything with `full`. A tab of protocol 4 gets the
+     * whole order but, in full, only the entries of the newest rows (`firstEntries`): it asks for earlier ones
+     * (`entriesBefore`) as it shows them. A long session's every entry, in one event, made opening it slow.
+     */
     push(client: Client, full: boolean): void {
         const view = this.#view?.value;
 
@@ -514,23 +521,21 @@ export class Room {
             client.liveBlocks = undefined;
         }
 
+        const projected = this.#projectedEntries(view.entries);
+        const order = projected.map((entry) => entry.id);
+        const from = full && (client.protocol ?? 1) >= 4 ? firstEntries(projected) : 0;
         const entries: ClientEntry[] = [];
-        const order: number[] = [];
 
-        for (const entry of view.entries) {
-            const projected = this.#entry(entry);
+        projected.forEach((entry, index) => {
+            if (!client.sentEntries.has(entry.id)) {
+                // One before the newest rows is the tab's to ask for: it is not sent with a later update either.
+                client.sentEntries.add(entry.id);
 
-            if (projected === null) {
-                continue;
+                if (index >= from) {
+                    entries.push(entry);
+                }
             }
-
-            order.push(projected.id);
-
-            if (!client.sentEntries.has(projected.id)) {
-                client.sentEntries.add(projected.id);
-                entries.push(projected);
-            }
-        }
+        });
 
         const orderKey = order.join(",");
         const orderChanged = orderKey !== client.orderKey;
@@ -645,6 +650,54 @@ export class Room {
             approvals: this.#app.approvals.forConversation(this.id),
             ...fields,
         });
+    }
+
+    /** The active context's entries as tabs get them, oldest first; the ones tabs do not show are left out. */
+    #projectedEntries(records: readonly EntryRecord[]): ClientEntry[] {
+        const out: ClientEntry[] = [];
+
+        for (const record of records) {
+            const projected = this.#entry(record);
+
+            if (projected !== null) {
+                out.push(projected);
+            }
+        }
+
+        return out;
+    }
+
+    /**
+     * The active context's entries before `before` (an entry id in it), oldest first: from entry `from`, or those of
+     * `rows` rows, with the turn the first is in (`turnStart`); all of them with neither. None when `before` (or `from`)
+     * is not in it, as after a compaction: the tab's next update has the new order.
+     */
+    entriesBefore(
+        before: number,
+        { rows, from }: { rows?: number; from?: number } = {},
+    ): ClientEntry[] {
+        const view = this.#view?.value;
+
+        if (view === undefined) {
+            return [];
+        }
+
+        const projected = this.#projectedEntries(view.entries);
+        const end = projected.findIndex((entry) => entry.id === before);
+
+        if (end === -1) {
+            return [];
+        }
+
+        const earlier = projected.slice(0, end);
+
+        if (from !== undefined) {
+            const start = earlier.findIndex((entry) => entry.id === from);
+
+            return start === -1 ? [] : earlier.slice(turnStart(earlier, start));
+        }
+
+        return rows === undefined ? earlier : earlier.slice(firstEntries(earlier, rows));
     }
 
     /** The live run as tabs get it, projected once for each state of it. */
