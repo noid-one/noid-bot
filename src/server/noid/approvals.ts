@@ -7,26 +7,34 @@
  *   the boundary. Forgetting a memory asks (rakazo's `forget_memory`).
  * - A host bot asks before anything that changes this machine: bash that is not read-only (by `read-only.ts`),
  *   write, and edit.
+ * - A bot puts work in a session (start, send, schedule, watch) only once the owner says so; Noid without asking, unless
+ *   its run took in what someone else wrote (`runSoFar`): then every time.
+ * - Opening a site the run was not given (not in the owner's words, not opened before in the run): a host bot asks
+ *   when auto review is off; when it is on, the check sees only the address and the owner's words.
  * - Sessions that are not bots are Pi's own: they never ask (Pi's way).
  *
  * "Always allow" on a card keeps a rule for that bot and tool. A question nobody answers in time is denied; time never
  * allows anything.
  */
 import type { Context } from "@earendil-works/chord";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ToolAnnotations } from "@earendil-works/pi-coding-agent";
 import {
     CompactionTask,
     defineDoc,
     defineExtension,
     hook,
+    type ConversationId,
     ToolTask,
 } from "@earendil-works/pi-durable";
-import { rebased } from "../docs.ts";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
-import { AutoReviewDoc, consequential, review } from "./auto-review.ts";
+import { AutoReviewDoc, consequential, review, taskOf } from "./auto-review.ts";
+import { AuthorsDoc, rebased } from "../docs.ts";
+import { ownerOf } from "./owner.ts";
+import { sitesInText, urlSite } from "./sites.ts";
 import { onlyReads } from "./read-only.ts";
 import type { BotProfile } from "./bots.ts";
 
@@ -46,7 +54,10 @@ export const ApprovalRulesDoc = defineDoc<{
     initial: () => ({ rules: [] }),
 });
 
-export type Verdict = { ask: false } | { ask: true; reason: string; subject: string };
+export type Verdict =
+    | { ask: false }
+    /** `always`: asked every time, as `alwaysAsks`; "Always allow" never answers it for good. */
+    | { ask: true; reason: string; subject: string; always?: true };
 
 /**
  * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot, making a bot on this
@@ -84,7 +95,7 @@ const BOT_STATE_TOOLS = new Set([
  * The session tools' calls that put work into a session: sessions run on this machine and never ask, so a bot's
  * would reach past the container (or past its own approvals) to the owner's files.
  */
-function startsWork(tool: string, args: Record<string, unknown>): boolean {
+export function startsWork(tool: string, args: Record<string, unknown>): boolean {
     return (
         tool === "session_start" ||
         tool === "session_send" ||
@@ -116,6 +127,7 @@ export function classify(
     tool: string,
     args: Record<string, unknown>,
     readOnly = false,
+    tainted = false,
 ): Verdict {
     if (bot === undefined) {
         return { ask: false };
@@ -156,6 +168,17 @@ export function classify(
         return {
             ask: true,
             reason: "puts work in a session on your machine",
+            subject: subjectOf(tool, args),
+        };
+    }
+
+    // Noid too, once its run took in what someone else wrote (rakazo f49e35c0): a page or another bot's mail could have
+    // asked for the work, and sessions run on this machine without asking. Every time: a rule cannot vouch for a page.
+    if (startsWork(tool, args) && tainted) {
+        return {
+            ask: true,
+            always: true,
+            reason: "puts work in a session on your machine after reading what someone else wrote",
             subject: subjectOf(tool, args),
         };
     }
@@ -247,6 +270,95 @@ export function subjectOf(tool: string, args: Record<string, unknown>): string {
           : JSON.stringify(shown(args), null, 1);
 }
 
+/**
+ * Tools whose results bring in nothing someone else wrote: the bot's own notes and plans, and the lists of its
+ * sessions and bots. Any other result (a page, a file, a command's output, another session's words, a subagent's
+ * report) taints the run (rakazo's `toolResultTaintsRun`).
+ */
+const CLEAN_RESULTS = new Set(["memory", "schedule", "goal", "approvals", "sessions", "bots"]);
+/** How many of a conversation's newest entries are looked through for the run since the owner last wrote. */
+const RUN_LOOKBACK = 500;
+
+/** A tool call in a stored assistant message: its id, tool, and arguments. */
+type StoredCall = {
+    type?: string;
+    id?: string;
+    name?: string;
+    arguments?: Record<string, unknown>;
+};
+
+/**
+ * A bot's run so far, back to the message it answers: whether the owner wrote that message, whether a tool brought in
+ * what someone else wrote since, and the sites its browser opened since (calls that ran, not this one). Read from the
+ * conversation, so a restart finds the same. Nothing found within the lookback counts as not the owner's.
+ */
+export async function runSoFar(
+    app: PocketApp,
+    id: ConversationId,
+    callId: string,
+): Promise<{ byOwner: boolean; outside: boolean; opened: Set<string> }> {
+    const ownerId = ownerOf(app)?.id;
+    const written = (await app.harness.snapshot(AuthorsDoc, id, BACKGROUND_CONTEXT))?.entries ?? {};
+    const conversation = await app.harness.conversation(id, BACKGROUND_CONTEXT);
+    const page = await conversation?.entries({}, RUN_LOOKBACK, undefined, BACKGROUND_CONTEXT);
+    const ran = new Set<string>();
+    const opened = new Set<string>();
+    let outside = false;
+
+    // Newest first: a call's result comes before the message that made it.
+    for (const entry of page?.items ?? []) {
+        const message = entry.model?.[0] as
+            | { toolName?: unknown; toolCallId?: unknown; isError?: unknown; content?: unknown }
+            | undefined;
+
+        if (entry.kind === "pi.user") {
+            return {
+                byOwner: ownerId !== undefined && written[String(entry.id)] === ownerId,
+                outside,
+                opened,
+            };
+        }
+
+        if (entry.kind === "pi.tool-result") {
+            outside ||= !CLEAN_RESULTS.has(String(message?.toolName ?? ""));
+
+            if (message?.isError !== true) {
+                ran.add(String(message?.toolCallId ?? ""));
+            }
+        }
+
+        if (entry.kind === "pi.assistant" && Array.isArray(message?.content)) {
+            for (const block of message.content as StoredCall[]) {
+                const url = block.arguments?.url;
+
+                if (
+                    block.type === "toolCall" &&
+                    block.name === "browser" &&
+                    block.arguments?.action === "navigate" &&
+                    typeof url === "string" &&
+                    block.id !== callId &&
+                    ran.has(String(block.id))
+                ) {
+                    const site = urlSite(url);
+
+                    if (site !== undefined) {
+                        opened.add(site);
+                    }
+                }
+            }
+        }
+    }
+
+    return { byOwner: false, outside: true, opened };
+}
+
+/** A browser call that opens a web address, and the site it goes to; undefined for any other call. */
+function siteOpened(tool: string, args: Record<string, unknown>): string | undefined {
+    return tool === "browser" && args.action === "navigate" && typeof args.url === "string"
+        ? urlSite(args.url)
+        : undefined;
+}
+
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */
 function waitMs(): number {
     const minutes = Number(process.env.NOID_APPROVAL_MINUTES ?? 60);
@@ -284,13 +396,41 @@ export function createApprovals(app: PocketApp) {
                     const readOnly =
                         !BUILT_IN_TOOLS.has(call.name) &&
                         declared?.annotations?.readOnlyHint === true;
+                    const place = app.onHost(api.conversationId) ? "host" : "computer";
+                    const site = siteOpened(call.name, args);
+                    // The run so far, read only for the calls it decides: Noid putting work in a session, and a site.
+                    const run =
+                        (bot.main === true && startsWork(call.name, args)) || site !== undefined
+                            ? await runSoFar(app, api.conversationId, call.id)
+                            : undefined;
                     let verdict = classify(
                         bot,
-                        app.onHost(api.conversationId) ? "host" : "computer",
+                        place,
                         call.name,
                         args,
                         readOnly,
+                        run !== undefined && (run.outside || !run.byOwner),
                     );
+                    const reviewOn = (await api.snapshot(AutoReviewDoc, context))?.on === true;
+                    // A site the run was not given: not named in what the bot was asked, and not opened before in this
+                    // run. The page that links there could be asking for what the bot read to go along (rakazo f49e35c0).
+                    const newSite =
+                        site !== undefined &&
+                        !run!.opened.has(site) &&
+                        !sitesInText(await taskOf(app, api.conversationId)).has(site);
+
+                    // On this machine, with no auto review to judge it, a bot asks before it opens such a site: it reads
+                    // any file without asking, and the address could carry one out. On the computer it opens it (the
+                    // container holds no file of the owner's); auto review, when on, checks it there too.
+                    if (newSite && !verdict.ask && place === "host" && !reviewOn) {
+                        verdict = {
+                            ask: true,
+                            always: true,
+                            reason: "opens a site your task did not name",
+                            subject: String(args.url),
+                        };
+                    }
+
                     // What this call was already found, or told, before a restart stands, whatever has changed since:
                     // a flagged call waiting for the owner runs only once the owner says so.
                     let answer = await api.memo<ApprovalAnswer>("noid.approval", context);
@@ -307,16 +447,21 @@ export function createApprovals(app: PocketApp) {
 
                         if (verdict.ask) {
                             // "Always allow" answers a question for good, but those asked every time.
-                            if (!alwaysAsks(call.name, args) && (await ruled())) {
+                            if (
+                                verdict.always !== true &&
+                                !alwaysAsks(call.name, args) &&
+                                (await ruled())
+                            ) {
                                 return undefined;
                             }
                         } else {
                             // Auto review looks only at calls that would run without asking and change something;
-                            // "always allow" wins over it too. Checked once per call: a replay asks no model again.
+                            // "always allow" wins over it too, but not for a new site: a rule for the browser came from
+                            // some other call, never from this address. Checked once per call: a replay asks no model again.
                             if (
                                 !consequential(call.name, args, readOnly) ||
-                                (await api.snapshot(AutoReviewDoc, context))?.on !== true ||
-                                (await ruled())
+                                !reviewOn ||
+                                (!newSite && (await ruled()))
                             ) {
                                 return undefined;
                             }
@@ -325,7 +470,16 @@ export function createApprovals(app: PocketApp) {
 
                             reviewed = await api.memo(
                                 "noid.review",
-                                await review(app, api.conversationId, bot, call.name, args, signal),
+                                // A new site is judged by its address and the owner's words alone (rakazo 3d173c66).
+                                await review(
+                                    app,
+                                    api.conversationId,
+                                    bot,
+                                    call.name,
+                                    newSite ? { action: "navigate", url: args.url } : args,
+                                    signal,
+                                    newSite,
+                                ),
                                 context,
                             );
                         }
