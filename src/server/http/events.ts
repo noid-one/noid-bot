@@ -4,10 +4,10 @@
  */
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { constants as zlibConstants, createGzip, gzipSync } from "node:zlib";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import type { Client } from "../room.ts";
+import { accepted, streamCompressor } from "./compress.ts";
 import { conversationId, json, send } from "./io.ts";
 
 /** How long a poll waits for events before answering empty, and how long an unpolled session lives. */
@@ -77,35 +77,38 @@ export function createEventStreams(app: PocketApp) {
         user: User,
     ): Promise<void> => {
         // What went to the stream, and of it what the tab took (left the stream's buffer), and when it last took some.
+        // Compressed, these count the compressed bytes: what the server holds, and what the tab takes.
         let written = 0;
         let taken = 0;
         let tookAt = Date.now();
+        const encoding = accepted(request);
+        const compressor = encoding === undefined ? undefined : streamCompressor(encoding);
 
-        const send = (chunk: string | Buffer) => {
-            written += Buffer.byteLength(chunk);
-            response.write(chunk);
-        };
-
-        // Gzipped for a browser that takes it, each event flushed as it goes: a session's first view (its whole
-        // transcript) is a fraction of its size. What the stream counts as written is what went to the connection.
-        const gzip = /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))
-            ? createGzip({ level: 6, flush: zlibConstants.Z_SYNC_FLUSH })
-            : undefined;
-
-        gzip?.on("data", send);
-        gzip?.on("error", () => response.destroy());
-
+        // One compressor for the whole stream (brotli, else gzip), flushed after each event and ping, so each goes out
+        // whole at once: a session's first view (its whole transcript) is a fraction of its size.
         const write = (text: string) => {
-            if (gzip === undefined) {
-                send(text);
+            if (compressor === undefined) {
+                written += Buffer.byteLength(text);
+                response.write(text);
             } else {
-                gzip.write(text);
+                compressor.stream.write(text);
+                compressor.stream.flush(compressor.flush);
             }
         };
 
+        compressor?.stream
+            .on("data", (chunk: Buffer) => {
+                if (!response.destroyed) {
+                    written += chunk.length;
+                    response.write(chunk);
+                }
+            })
+            .on("end", () => response.end())
+            .on("error", () => response.destroy());
+
         /** Whether the stream may take more: false, and cut off, when it took nothing for long while far behind, or is too far behind. */
         const keepsUp = (): boolean => {
-            if (response.writableEnded || response.destroyed) {
+            if (response.writableEnded || response.destroyed || compressor?.stream.writableEnded) {
                 return false;
             }
 
@@ -117,7 +120,14 @@ export function createEventStreams(app: PocketApp) {
                 tookAt = now;
             }
 
-            if (behind > MAX_BEHIND_BYTES || now - tookAt > STALLED_MS) {
+            // Text not yet compressed is not in `behind` (that counts what the tab must take), but it is held too.
+            const pending = compressor?.stream.writableLength ?? 0;
+
+            if (
+                behind > MAX_BEHIND_BYTES ||
+                pending > MAX_BEHIND_BYTES ||
+                now - tookAt > STALLED_MS
+            ) {
                 response.destroy();
 
                 return false;
@@ -132,21 +142,14 @@ export function createEventStreams(app: PocketApp) {
             }
         });
 
-        client.close = () => {
-            if (gzip === undefined) {
-                response.end();
-            } else {
-                gzip.once("end", () => response.end());
-                gzip.end();
-            }
-        };
-
+        client.close = () => (compressor === undefined ? response.end() : compressor.stream.end());
         response.writeHead(200, {
             "content-type": "text/event-stream; charset=utf-8",
             "cache-control": "no-cache, no-transform",
             connection: "keep-alive",
             "x-accel-buffering": "no",
-            ...(gzip === undefined ? {} : { "content-encoding": "gzip", vary: "accept-encoding" }),
+            ...(encoding === undefined ? {} : { "content-encoding": encoding }),
+            vary: "accept-encoding",
         });
         write("retry: 1500\n\n");
         // The ping checks too: a tab far behind with nothing new for it would otherwise hold its backlog until the next event.
@@ -154,7 +157,7 @@ export function createEventStreams(app: PocketApp) {
 
         request.on("close", () => {
             clearInterval(ping);
-            gzip?.destroy();
+            compressor?.stream.destroy();
             app.detach(client);
         });
         await app.attach(client);
@@ -177,19 +180,9 @@ export function createEventStreams(app: PocketApp) {
                 events: poller.queue.map(({ seq, event, data }) => ({ seq, event, data })),
             });
 
-            // Polling is for tunnels, where bytes are slow: a session's first view (its whole transcript) goes gzipped,
-            // a fifth of its size or less.
-            if (
-                body.length > 2048 &&
-                /\bgzip\b/.test(String(response.req?.headers["accept-encoding"] ?? ""))
-            ) {
-                send(response, 200, gzipSync(body), "application/json", {
-                    "content-encoding": "gzip",
-                    vary: "accept-encoding",
-                });
-            } else {
-                send(response, 200, body, "application/json");
-            }
+            // Polling is for tunnels, where bytes are slow: `send` compresses it (a session's first view, its whole
+            // transcript, goes at a fifth of its size or less).
+            send(response, 200, body, "application/json");
 
             // Until it polls again it takes this: a large answer on a slow link takes long, and only it knows when it is in.
             if (poller.queue.length > 0) {

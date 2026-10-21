@@ -2,10 +2,16 @@
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream, openSync, readFileSync, readSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join, normalize, sep } from "node:path";
-import { gzipSync } from "node:zlib";
+import { extname, join, normalize, posix, sep } from "node:path";
 import { APP_ROOT } from "../config.ts";
 import { HttpError } from "../errors.ts";
+import {
+    accepted,
+    compressFile,
+    compressible,
+    type Encoding,
+    MIN_COMPRESS_BYTES,
+} from "./compress.ts";
 import { send } from "./io.ts";
 
 export const WEB = join(APP_ROOT, "web");
@@ -131,7 +137,111 @@ function appPolicy(html: string): string {
     ].join("; ");
 }
 
-/** The app page, with its content security policy. */
+/** A file as last read: its bytes, a hash of them, and the same compressed once each way a browser asked for. */
+interface ReadFile {
+    /** The file's identity, size, and time of change when read: any edit changes it. */
+    stamp: string;
+    body: Buffer;
+    hash: string;
+    encoded: Map<Encoding, Promise<Buffer>>;
+    /** The addresses of the modules it imports as it stands, once asked for (`preloads`). */
+    imports?: string[];
+}
+
+/** The web app's files and the vendored modules served so far, each as last read. */
+const readFiles = new Map<string, ReadFile>();
+
+/** A file as it is now: as last read when its size and times are the same, else read again. Throws when it is not there. */
+function readNow(file: string): ReadFile {
+    const stats = statSync(file, { bigint: true });
+    const stamp = `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}:${stats.ctimeNs}`;
+    const known = readFiles.get(file);
+
+    if (known?.stamp === stamp) {
+        return known;
+    }
+
+    const body = readFileSync(file);
+    // A file changed this moment may change again within the file system's clock tick, with the same size and times: it
+    // is read again for each request until it has been still for a while.
+    const settled = Date.now() - Number(stats.mtimeNs / 1_000_000n) > 2000;
+    const read: ReadFile = {
+        stamp,
+        body,
+        hash: createHash("sha256").update(body).digest("hex").slice(0, 24),
+        encoded: new Map(),
+    };
+
+    if (settled) {
+        readFiles.set(file, read);
+    } else {
+        readFiles.delete(file);
+    }
+
+    return read;
+}
+
+/** Where a module address (`/chat.js`, `/vendor/preact.mjs`) is on disk. */
+function moduleFile(address: string): string | undefined {
+    const vendor = /^\/vendor\/([^/]+)$/.exec(address)?.[1];
+
+    if (vendor !== undefined) {
+        return VENDOR[vendor];
+    }
+
+    return address.endsWith(".js") ? join(WEB, address) : undefined;
+}
+
+/** What a module imports at its start: `import … from "x"`, `export … from "x"`, and `import "x"`, not `import(…)`. */
+const STATIC_IMPORT =
+    /(?:^|\n)\s*(?:import|export)\b[^"'`;()]*?\bfrom\s*"([^"]+)"|(?:^|\n)\s*import\s*"([^"]+)"/g;
+
+/**
+ * Every module the app loads before it runs, the app's own and the vendored ones, found from `/app.js` by the imports as
+ * the files are now. The page lists them so the browser fetches them all at once, not each as the one before it arrives.
+ */
+function preloads(imports: Record<string, string>): string[] {
+    const found = new Set<string>();
+
+    const visit = (address: string) => {
+        if (found.has(address)) {
+            return;
+        }
+
+        found.add(address);
+        const file = moduleFile(address);
+
+        if (file === undefined) {
+            return;
+        }
+
+        try {
+            const read = readNow(file);
+
+            read.imports ??= [...read.body.toString("utf8").matchAll(STATIC_IMPORT)].map(
+                (match) => match[1] ?? match[2]!,
+            );
+
+            for (const specifier of read.imports) {
+                const target = specifier.startsWith(".")
+                    ? posix.join(posix.dirname(address), specifier)
+                    : imports[specifier];
+
+                if (target !== undefined) {
+                    visit(target);
+                }
+            }
+        } catch {
+            // A file that is not there fails the page's own import, with its own error.
+        }
+    };
+
+    visit("/app.js");
+
+    return [...found];
+}
+
+/** The app page, with its content security policy, and the modules it loads listed for the browser to fetch at once. */
 export function serveApp(response: ServerResponse): void {
     let body: string;
 
@@ -143,90 +253,102 @@ export function serveApp(response: ServerResponse): void {
         return;
     }
 
+    // The policy is of the page as it is stored: links are not scripts, and add nothing to it.
+    const policy = appPolicy(body);
+
+    try {
+        const map = /<script type="importmap">([\s\S]*?)<\/script>/.exec(body)?.[1];
+        const imports = (map === undefined ? {} : JSON.parse(map).imports) as Record<
+            string,
+            string
+        >;
+        const links = preloads(imports)
+            .map((address) => `<link rel="modulepreload" href="${address}" />`)
+            .join("");
+
+        body = body.replace("</head>", () => `${links}</head>`);
+    } catch {
+        // The page as it is: the browser finds the modules as it runs them.
+    }
+
     send(response, 200, body, "text/html; charset=utf-8", {
         "cache-control": "no-cache",
-        "content-security-policy": appPolicy(body),
+        "content-security-policy": policy,
     });
 }
 
-/** The app's files as last read: sent from here while unchanged on disk, gzipped once for browsers that take it. */
-const served = new Map<
-    string,
-    { mtimeMs: number; size: number; etag: string; body: Buffer; gzipped?: Buffer }
->();
-/** How many files `served` keeps; the app has about a hundred. */
-const SERVED_MAX = 400;
-/** Types worth gzipping: text. Fonts and images are compressed already. */
-const COMPRESSIBLE = /^(text\/|application\/(javascript|json|manifest\+json|xml)|image\/svg)/;
-
 /**
- * A file of the app. Every request checks the file on disk (the app is edited live, and a reload gets the newest), but
- * one unchanged since the browser had it is answered 304 with nothing, and text goes gzipped: a reload no longer sends
- * the whole app again, and a first load sends a third of it.
+ * A file of the web app. The app is edited live, so the browser asks each time whether its copy is still the newest (`no-cache`):
+ * the answer is a short "not modified" while the file's bytes are the same (the ETag is their hash), else the file. Text
+ * goes compressed, compressed once for each edit.
  */
-export function serveFile(
+export async function serveFile(
     request: IncomingMessage,
     response: ServerResponse,
     file: string,
     fallbackType?: string,
-): void {
-    let entry = served.get(file);
+): Promise<void> {
+    let read: ReadFile;
 
     try {
-        const stat = statSync(file);
-
-        if (entry === undefined || entry.mtimeMs !== stat.mtimeMs || entry.size !== stat.size) {
-            const body = readFileSync(file);
-
-            entry = {
-                mtimeMs: stat.mtimeMs,
-                size: stat.size,
-                etag: `"${createHash("sha1").update(body).digest("base64url").slice(0, 20)}"`,
-                body,
-            };
-            served.delete(file);
-            served.set(file, entry);
-
-            for (const key of served.keys()) {
-                if (served.size <= SERVED_MAX) {
-                    break;
-                }
-
-                served.delete(key);
-            }
-        }
+        read = readNow(file);
     } catch {
-        served.delete(file);
         send(response, 404, "Not found");
 
         return;
     }
 
     const type = fallbackType ?? TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
-    const compressible = COMPRESSIBLE.test(type) && entry.body.length > 1024;
+    const encoding =
+        compressible(type) && read.body.length >= MIN_COMPRESS_BYTES
+            ? accepted(request)
+            : undefined;
     const headers: Record<string, string> = {
+        "content-type": type,
         "cache-control": "no-cache",
-        etag: entry.etag,
-        // Only what may go gzipped varies by it: a Vary on a font keeps Chrome from using its preload.
-        ...(compressible ? { vary: "accept-encoding" } : {}),
+        etag: `"${read.hash}${encoding === undefined ? "" : `-${encoding}`}"`,
+        ...(compressible(type) ? { vary: "accept-encoding" } : {}),
     };
 
-    if (request.headers["if-none-match"] === entry.etag) {
+    // Any encoding of the same bytes will do: the browser keeps them decoded.
+    const tags = String(request.headers["if-none-match"] ?? "")
+        .split(",")
+        .map((tag) =>
+            tag
+                .trim()
+                .replace(/^W\//, "")
+                .replace(/-(br|gzip)"$/, '"'),
+        );
+
+    if (tags.includes(`"${read.hash}"`)) {
         response.writeHead(304, headers);
         response.end();
 
         return;
     }
 
-    if (compressible && /\bgzip\b/.test(String(request.headers["accept-encoding"] ?? ""))) {
-        entry.gzipped ??= gzipSync(entry.body, { level: 6 });
-        headers["content-encoding"] = "gzip";
-        send(response, 200, entry.gzipped, type, headers);
+    let body = read.body;
 
-        return;
+    if (encoding !== undefined) {
+        let encoded = read.encoded.get(encoding);
+
+        if (encoded === undefined) {
+            encoded = compressFile(read.body, encoding);
+            read.encoded.set(encoding, encoded);
+        }
+
+        try {
+            body = await encoded;
+            headers["content-encoding"] = encoding;
+        } catch {
+            // Sent as it is, then; the next request tries again.
+            read.encoded.delete(encoding);
+            headers.etag = `"${read.hash}"`;
+        }
     }
 
-    send(response, 200, entry.body, type, headers);
+    response.writeHead(200, { ...headers, "content-length": String(body.length) });
+    response.end(body);
 }
 
 /**
@@ -363,12 +485,12 @@ export function serveStatic(
     parts: readonly string[],
 ): boolean {
     if (parts[0] === "vendor" && parts[1] !== undefined && VENDOR[parts[1]] !== undefined) {
-        serveFile(
+        void serveFile(
             request,
             response,
             VENDOR[parts[1]]!,
             TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
-        );
+        ).catch(() => response.destroy());
 
         return true;
     }
@@ -388,7 +510,7 @@ export function serveStatic(
     if (file === join(WEB, "index.html")) {
         serveApp(response);
     } else {
-        serveFile(request, response, file);
+        void serveFile(request, response, file).catch(() => response.destroy());
     }
 
     return true;
