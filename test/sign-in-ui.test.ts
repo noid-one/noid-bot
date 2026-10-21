@@ -95,8 +95,11 @@ async function providers(provider: string): Promise<void> {
         `return JSON.stringify((await import("/store.js")).store.state.me?.role === "owner")`,
         "signed in",
     );
+    // The store first, on its own: awaited in the same script as what follows, its import was sometimes collected
+    // ("Promise was collected") on a page still settling in, and the test failed before it began.
+    await page.evaluate(`window.signInStore = await import("/store.js"); return "true";`);
     await page.evaluate(`
-        const { openSheet, store } = await import("/store.js");
+        const { openSheet, store } = window.signInStore;
 
         window.pageErrors = [];
         addEventListener("error", (event) => window.pageErrors.push(String(event.message)));
