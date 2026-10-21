@@ -211,6 +211,11 @@ export class SessionTools {
         return this.#app.bots.list().find((each) => each.bot.main === true)?.conversationId;
     }
 
+    /** Where a session started without a folder or a repository works: the server's default folder. */
+    get defaultFolder(): string {
+        return this.#app.defaultCwd;
+    }
+
     /** Whether a conversation is Noid's. */
     isNoid(conversationId: ConversationId): boolean {
         const noid = this.noid();

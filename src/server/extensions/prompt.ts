@@ -246,13 +246,15 @@ export default function createPrompt(host: PocketHost) {
                 },
             ),
             section("environment", (input) => {
-                // The date only, so the prompt stays cache-friendly through the day.
-                const today = new Date().toISOString().slice(0, 10);
+                // The date only, so the prompt stays cache-friendly through the day: in the server's time zone, which
+                // schedules' clock times use too, not UTC's, a day off for an hour or more each night.
+                const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const today = new Date().toLocaleDateString("en-CA", { timeZone: zone });
                 const platform = onComputer(input)
                     ? "linux (the shared computer: a container that other bots use too)"
                     : process.platform;
 
-                return `Working directory: ${cwdOf(input)}\nPlatform: ${platform}\nToday: ${today}`;
+                return `Working directory: ${cwdOf(input)}\nPlatform: ${platform}\nToday: ${today}\nTime zone: ${zone}`;
             }),
         ],
     });

@@ -104,6 +104,20 @@ test("Noid has the session tools beside its own, and its prompt says that work a
     assert.ok(shown.tools.includes("bash"), "Noid keeps its own tools");
     assert.match(shown.systemPrompt, /Besides your bots, you look after/);
     assert.doesNotMatch(shown.systemPrompt, /Pi in Pocket/);
+
+    // Where session_start without a folder puts a session: the server's default folder, not Noid's own.
+    assert.ok(
+        shown.systemPrompt.includes(`New sessions start in ${app.defaultCwd} on the server's machine`),
+        "the default folder is the server's",
+    );
+    // One date, in the time zone schedules use, said once.
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: zone });
+
+    assert.equal(shown.systemPrompt.match(/Today: /g)?.length, 1, "one date");
+    assert.ok(shown.systemPrompt.includes(`Today: ${today}\nTime zone: ${zone}`));
+    // "[scheduled]" messages are the schedules section's: said there only.
+    assert.equal(shown.systemPrompt.match(/start with "\[scheduled\]"/g)?.length, 1);
 });
 
 test("Noid acts as the owner, so only the owner sees it", () => {

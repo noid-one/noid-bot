@@ -278,6 +278,7 @@ export interface PocketHost {
         | "ownerOf"
         | "ownerName"
         | "isNoid"
+        | "defaultFolder"
         | "task"
         | "sessions"
         | "read"
