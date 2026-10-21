@@ -65,6 +65,7 @@ const MAX_WATCHED = 64;
 export const BUILT_IN_COMMANDS: ReadonlySet<string> = new Set([
     "compact",
     "reset",
+    "clear",
     "instructions",
     "model",
     "thinking",

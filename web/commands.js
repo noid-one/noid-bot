@@ -250,6 +250,14 @@ const COMMANDS = [
         run: (arg) => actions.reset(arg || undefined),
     },
     {
+        name: "clear",
+        description: "Clear Pi's context: a new context with no handoff note, history stays",
+        run: async () => {
+            await actions.reset();
+            notify("info", "Context cleared. Pi starts fresh from the next message.");
+        },
+    },
+    {
         name: "instructions",
         args: "[text]",
         description: "Set what Pi is told with every message here",
