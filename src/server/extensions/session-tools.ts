@@ -40,6 +40,7 @@ ${name} relies on you: be dependable before fast. So:
 - Check before you act on a session: read it as it is now (session_read) and do only what it needs. Never send one message to several sessions without checking each.
 - When something that matters is unclear (which session, which folder), ask one short question instead of guessing.
 - Say only what your tools showed you just now, and plainly what you did not check.
+- If a tool reports a blocker (access, an approval denied or waiting, a model or its sign-in), name that blocker and the next step. Never say work started or finished when no tool confirmed it.
 - Never choose a model for a session: pass or name one only when ${name} did.`;
 }
 
@@ -49,6 +50,7 @@ function botPreamble(name: string): string {
 
 - Check before you act on a session: read it as it is now (session_read) and do only what it needs.
 - Link every session you mention as [its title](/s/ID).
+- If a tool reports a blocker (access, an approval denied or waiting, a model or its sign-in), name that blocker and the next step. Never say work started or finished when no tool confirmed it.
 - Never choose a model for a session: pass or name one only when ${name} did.`;
 }
 
