@@ -72,8 +72,8 @@ function keysOf(event) {
 }
 
 /**
- * What the owner can open on the desktop with a tap: it has no window manager or wallpaper, so with nothing open it is
- * all black. The browser has a profile of its own, apart from the bots' browser on its own display.
+ * What the owner can open on the desktop with a tap. The browser is the computer's one, which the bots use too (a tab
+ * each): this starts it, or brings it to the front.
  */
 const PROGRAMS = [
     {
@@ -88,8 +88,7 @@ const PROGRAMS = [
     {
         label: "Browser",
         icon: "globe",
-        command:
-            "chromium --no-sandbox --test-type --no-first-run --user-data-dir=/tmp/desktop-browser --window-position=0,0 --window-size=1280,800 https://www.google.com",
+        command: "noid-browser",
     },
 ];
 
@@ -111,7 +110,8 @@ async function isBlank(source) {
 
     const pixels = context.getImageData(0, 0, 64, 40).data;
 
-    for (let at = 0; at < pixels.length; at += 4) {
+    // The taskbar along the bottom (its last rows here) is always there: the screen above it is what counts.
+    for (let at = 0; at < 64 * 37 * 4; at += 4) {
         if (pixels[at] + pixels[at + 1] + pixels[at + 2] > 24) {
             return false;
         }
@@ -136,6 +136,10 @@ export function DesktopPage() {
     const [saved, setSaved] = useState(undefined);
     // While showing: what is typed now is a secret, typed but never kept in the skill.
     const [secret, setSecret] = useState(false);
+    // Signing in for the bots: the site asked for, and where their browser opened it: on this desktop, or in the
+    // owner's own Chrome when the bots use that.
+    const [site, setSite] = useState(undefined);
+    const [signingIn, setSigningIn] = useState(null);
     const image = useRef(null);
     const frame = useRef(null);
     // The refresh loop: when the last input went out, and how to wake it for a picture now.
@@ -263,7 +267,9 @@ export function DesktopPage() {
     };
 
     const onPointerDown = (event) => {
-        if (event.button !== 0) {
+        // A button over the screen (the programs to open on an empty desktop) is the page's, not the desktop's: holding
+        // the pointer here would take its click away.
+        if (event.button !== 0 || event.target.closest?.("button")) {
             return;
         }
 
@@ -363,6 +369,17 @@ export function DesktopPage() {
         }
     };
 
+    const signIn = (event) => {
+        event.preventDefault();
+        void attempt(async () => {
+            const { where } = await api("desktop/input", { action: "signin", url: site });
+
+            setSite(undefined);
+            setSigningIn(where ?? "desktop");
+            wake.current();
+        });
+    };
+
     const restart = () =>
         attempt(async () => {
             setRestarting(true);
@@ -430,6 +447,19 @@ export function DesktopPage() {
                   </button>`
         }
         ${
+            !teaching &&
+            !signingIn &&
+            html`<button
+                class="button ghost small"
+                title="Open a site in the computer's browser and sign in by hand: the bots share its sign-ins"
+                aria-expanded=${site !== undefined}
+                onClick=${() => setSite(site === undefined ? "" : undefined)}
+            >
+                <${Icon} name="key" size=${14} />
+                Sign in for the bots
+            </button>`
+        }
+        ${
             (yours || opened) &&
             !teaching &&
             html`<button
@@ -438,6 +468,7 @@ export function DesktopPage() {
                 onClick=${() => {
                     setYours(false);
                     setOpened(false);
+                    setSigningIn(null);
                     void act({ action: "release" });
                 }}
             >
@@ -494,6 +525,41 @@ export function DesktopPage() {
                     </button>
                     <button class="button ghost" onClick=${() => setLesson(undefined)}>Cancel</button>
                 </div>
+            </div>`
+        }
+        ${
+            site !== undefined &&
+            html`<form class="row" onSubmit=${signIn}>
+                <input
+                    class="grow"
+                    placeholder="Site to sign in to, such as x.com"
+                    value=${site}
+                    onInput=${(event) => setSite(event.currentTarget.value)}
+                />
+                <button class="button primary" disabled=${site.trim() === ""}>Open</button>
+                <button class="button ghost" type="button" onClick=${() => setSite(undefined)}>
+                    Cancel
+                </button>
+            </form>`
+        }
+        ${
+            signingIn === "desktop" &&
+            html`<div class="row teach-banner">
+                <span class="grow small">
+                    It's open in the computer's browser below, which the bots use too: sign in by hand, as in any
+                    browser, and they have the sign-in as soon as you do.
+                </span>
+                <button class="button ghost small" onClick=${() => setSigningIn(null)}>OK</button>
+            </div>`
+        }
+        ${
+            signingIn === "chrome" &&
+            html`<div class="row teach-banner">
+                <span class="grow small">
+                    It opened in the bots' Chrome on your computer: sign in there, as in any browser. The bots
+                    have the sign-in as soon as you do.
+                </span>
+                <button class="button ghost small" onClick=${() => setSigningIn(null)}>OK</button>
             </div>`
         }
         ${saved && html`<p class="muted small">Saved in ${saved}. Bots find it with their skills; a routine can ask for it by name.</p>`}

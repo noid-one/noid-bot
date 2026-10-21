@@ -139,6 +139,8 @@ export class BrowserPage {
     readonly #context: string;
     readonly #shared: boolean;
     readonly #baseAgent: string;
+    readonly #ownAgent: boolean;
+    readonly #native: boolean;
     readonly #changed: () => void;
     readonly #saved: (saved: Saved) => void;
     #frameId = "";
@@ -177,6 +179,13 @@ export class BrowserPage {
         target: string;
         context: string;
         userAgent: string;
+        /** `userAgent` is the browser's own, so a desktop page needs no override (one would empty its client hints). */
+        ownAgent?: boolean;
+        /**
+         * noid: a tab in a window people see (the computer's desktop browser): at desktop size it is the window's own,
+         * as a size set here would leave the page cut off or shrunk in that window.
+         */
+        native?: boolean;
         viewport: Viewport;
         changed: () => void;
         saved: (saved: Saved) => void;
@@ -193,6 +202,8 @@ export class BrowserPage {
         this.#context = options.context;
         this.#shared = options.shared === true;
         this.#baseAgent = options.userAgent;
+        this.#ownAgent = options.ownAgent === true;
+        this.#native = options.native === true;
         this.#viewport = options.viewport;
         this.#changed = options.changed;
         this.#saved = options.saved;
@@ -969,20 +980,26 @@ export class BrowserPage {
         const viewport = this.#viewport;
         const agent = viewport.mobile
             ? `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${/Chrome\/([\d.]+)/.exec(this.#baseAgent)?.[1] ?? "130.0.0.0"} Mobile Safari/537.36`
-            : this.#baseAgent;
+            : this.#ownAgent
+              ? ""
+              : this.#baseAgent;
 
         await Promise.all([
-            this.#send("Emulation.setDeviceMetricsOverride", {
-                width: viewport.width,
-                height: viewport.height,
-                deviceScaleFactor: viewport.scale,
-                mobile: viewport.mobile,
-            }),
+            this.#native && !viewport.mobile
+                ? this.#send("Emulation.clearDeviceMetricsOverride")
+                : this.#send("Emulation.setDeviceMetricsOverride", {
+                      width: viewport.width,
+                      height: viewport.height,
+                      deviceScaleFactor: viewport.scale,
+                      mobile: viewport.mobile,
+                  }),
             this.#send("Emulation.setTouchEmulationEnabled", {
                 enabled: viewport.mobile,
                 maxTouchPoints: viewport.mobile ? 5 : 1,
             }),
-            agent === ""
+            // An empty agent clears an earlier (mobile) override; any override without metadata empties
+            // navigator.userAgentData and the Sec-CH-UA headers, which sites such as X read as a bot.
+            this.#baseAgent === ""
                 ? Promise.resolve()
                 : this.#send("Emulation.setUserAgentOverride", { userAgent: agent }),
         ]);

@@ -235,7 +235,7 @@ test(
 );
 
 test(
-    "bots share the computer's one browser: a window each, one login for all, live frames",
+    "bots share the computer's one browser on its desktop: a tab each, one login for all, live frames",
     { skip },
     async () => {
         const made = async (name: string) =>
@@ -264,7 +264,7 @@ test(
         const one = await app!.browsers.open(Number(first));
         const two = await app!.browsers.open(Number(second));
 
-        assert.ok(one.shared && two.shared, "windows of the shared browser");
+        assert.ok(one.shared && two.shared, "tabs of the shared browser");
         assert.notEqual(one.targetId, two.targetId);
         assert.equal(one.contextId, two.contextId, "one context: one set of logins");
 
@@ -273,23 +273,23 @@ test(
         await two.navigate("http://127.0.0.1:8765/");
         assert.match(await two.evaluate("document.cookie"), new RegExp(`noid_login=${run}`));
 
-        // Neither window took the other for its popup.
+        // Neither tab took the other for its popup.
         assert.ok(!one.closed && !two.closed);
 
-        // People watch through the panel: frames keep coming for both, though one window covers the other.
+        // People watch through the panel: frames keep coming for both, though one tab is behind the other.
         const firstFrame = await one.frame(0);
         const secondFrame = await two.frame(0);
 
-        assert.ok(firstFrame !== undefined && secondFrame !== undefined, "frames for both windows");
+        assert.ok(firstFrame !== undefined && secondFrame !== undefined, "frames for both tabs");
 
         await app!.browsers.close(Number(first));
-        assert.ok(!two.closed, "closing one bot's window leaves the other's");
+        assert.ok(!two.closed, "closing one bot's tab leaves the other's");
         await app!.browsers.close(Number(second));
     },
 );
 
 test(
-    "the computer's browser starts on a stopped computer, and a quick restart keeps the login",
+    "the computer's browser starts on a stopped computer, and outlives the bots letting go of it",
     { skip },
     async () => {
         const id = (await app!.bots.create(owner(app!), { name: `Cold ${run}` })).id;
@@ -304,7 +304,7 @@ test(
         await page.navigate("about:blank");
         await page.evaluate("1 + 1");
 
-        // Stopped and opened again at once: the new browser waits for the old one before it takes the profile.
+        // Let go of and reached again at once: the desktop's browser kept running, its login with it.
         await docker([
             "exec",
             "-d",
@@ -512,7 +512,7 @@ test(
 );
 
 test(
-    "a link that opens a new tab, with or without noopener, opens in the bot's own window",
+    "a link that opens a new tab, with or without noopener, opens in the bot's own tab",
     { skip },
     async () => {
         const { id } = await app!.bots.create(owner(app!), { name: `Popper ${run}` });
@@ -547,7 +547,7 @@ test(
             await page.click({ selector: `#${link}` });
             await until(
                 () => page.url === `http://127.0.0.1:${port}/${link}.html`,
-                `the ${link} link to open in the bot's window`,
+                `the ${link} link to open in the bot's tab`,
                 15_000,
             );
         }

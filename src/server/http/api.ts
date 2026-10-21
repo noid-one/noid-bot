@@ -544,9 +544,12 @@ export function createApi(options: HttpOptions, auth: Auth) {
         }
 
         if (first === "desktop" && second === "input" && method === "POST") {
-            await app.desktop.act(user, await readJson<Record<string, unknown>>(request));
+            const done = await app.desktop.act(
+                user,
+                await readJson<Record<string, unknown>>(request),
+            );
 
-            return json(response, 200, { ok: true });
+            return json(response, 200, { ok: true, ...done });
         }
 
         // noid: the owner's terminals on the shared computer. Output is read by long polling from an offset.

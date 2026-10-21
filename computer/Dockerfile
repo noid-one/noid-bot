@@ -1,14 +1,21 @@
-# noid's shared computer: every computer bot works here, each in bots/<id>, with shared/ for work they share, and one
-# headful Chromium on one display (a window per bot). Pi's tools reach it through pi-env's daemon over `docker exec -i`.
+# noid's shared computer: every computer bot works here, each in bots/<id>, with shared/ for work they share, on one
+# real desktop (a window manager, a session bus) with one ordinary Chromium on it: the owner uses it there by hand, and
+# bots reach it over DevTools while they work, a tab each. Pi's tools reach the computer through pi-env's daemon over
+# `docker exec -i`.
 #
 # Adapted from rakazo's infra/sandboxes/computer/Dockerfile (Apache-2.0, see LICENSE-rakazo): its tool set, the pinned
 # and checksummed uv and gh downloads, the UTF-8 locale, uv's folders in the home, and restoring ~/.local/bin on PATH.
-# Changed for noid: no VNC/noVNC stack or fluxbox (the browser is driven over CDP; the desktop by xdotool and scrot); tini as
-# PID 1 so finished processes are reaped; pi-env's daemon (put beside this file by the build) at /opt/pi-env/pi-env.
+# Also from rakazo: fluxbox and dbus for a real desktop, WebGL on SwiftShader, and the browser's launcher (noid-browser).
+# hsetroot paints the desktop: without a wallpaper setter, fluxbox shows an error box at every start.
+# Changed for noid: no VNC/noVNC stack (the owner sees the desktop through xdotool and scrot); tini as PID 1 so finished
+# processes are reaped; pi-env's daemon (put beside this file by the build) at /opt/pi-env/pi-env.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     xvfb \
+    fluxbox \
+    dbus-x11 \
+    hsetroot \
     xdotool \
     scrot \
     xterm \
@@ -16,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-noto-cjk \
+    fonts-noto-color-emoji \
     ca-certificates \
     procps \
     bash \
@@ -59,7 +67,7 @@ RUN set -eux; \
   rm -f "$archive"; \
   gh --version
 ENV LANG=C.UTF-8 \
-    DISPLAY=:99 \
+    DISPLAY=:100 \
     HOME=/home/noid \
     PATH=/home/noid/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     UV_TOOL_DIR=/home/noid/.local/share/uv/tools \
@@ -68,8 +76,11 @@ ENV LANG=C.UTF-8 \
     UV_CACHE_DIR=/home/noid/.cache/uv
 COPY --chmod=755 pi-env /opt/pi-env/pi-env
 COPY --chmod=755 start.sh /opt/noid/start.sh
+COPY --chmod=755 cdp-bridge.py /opt/noid/cdp-bridge.py
+COPY --chmod=755 noid-browser /usr/local/bin/noid-browser
+COPY fluxbox/ /etc/noid/fluxbox/
 # Strip CR so the shebang works even from a CRLF checkout (rakazo does the same).
-RUN sed -i 's/\r$//' /opt/noid/start.sh
+RUN sed -i 's/\r$//' /opt/noid/start.sh /opt/noid/cdp-bridge.py /usr/local/bin/noid-browser
 USER 1000:1000
 WORKDIR /home/noid
 ENTRYPOINT ["/usr/bin/tini", "--"]

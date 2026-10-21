@@ -25,7 +25,9 @@ import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
 import { HttpError } from "../errors.ts";
 import { requireOwner } from "./owner.ts";
+import { normalizeUrl } from "../browser/urls.ts";
 import { COMPUTER_HOME, onComputer } from "./computer.ts";
+import { openInHostChrome } from "./host-chrome.ts";
 import { type Lesson, LessonDoc, playbook, skillSlug, type TaughtStep, Teaching } from "./teach.ts";
 
 export const DESKTOP_EXTENSION = "noid-desktop";
@@ -168,9 +170,10 @@ const toInt = (value: unknown, name: string, max: number): number => {
 };
 
 /**
- * Point at (x, y), first raising and focusing the window there, then run the xdotool commands after them. The desktop
- * has no window manager, so nothing else does: keys would stay with whichever program last took them, perhaps under
- * the window clicked. xwininfo lists windows topmost first; xdotool cannot tell which is under the pointer without one.
+ * Point at (x, y), first raising and focusing the window there, then run the xdotool commands after them. The desktop's
+ * window manager (fluxbox) focuses a window on a click as well; raising it here first means the keys after a click never
+ * stay with whichever program last took them. xwininfo lists windows topmost first; xdotool cannot tell which is under
+ * the pointer by itself.
  */
 const POINT_AT = `x=$1 y=$2; shift 2
 shown=" $(xdotool search --onlyvisible --name '' | tr '\\n' ' ') "
@@ -795,8 +798,11 @@ export class Desktop {
         return { folder: lesson.folder };
     }
 
-    /** The owner's own click, typing, or program: it takes the desktop from any bot, for the lease's time. */
-    act(user: User, input: Record<string, unknown>): Promise<void> {
+    /**
+     * The owner's own click, typing, or program: it takes the desktop from any bot, for the lease's time. Signing in
+     * says where the site opened: on this desktop, or in the owner's own Chrome when the bots use that.
+     */
+    act(user: User, input: Record<string, unknown>): Promise<{ where?: "desktop" | "chrome" }> {
         // One at a time, in the order they came: typing and the Enter after it must not overlap, and a lesson keeps
         // the steps in the order they were done.
         const turn = this.#ownerTurn.then(() => this.#act(user, input));
@@ -806,7 +812,10 @@ export class Desktop {
         return turn;
     }
 
-    async #act(user: User, input: Record<string, unknown>): Promise<void> {
+    async #act(
+        user: User,
+        input: Record<string, unknown>,
+    ): Promise<{ where?: "desktop" | "chrome" }> {
         this.#owner(user);
         const who = { id: `owner:${user.id}`, name: user.name };
 
@@ -814,7 +823,11 @@ export class Desktop {
             this.lease.release(who);
             this.#close("only", who.id);
 
-            return;
+            return {};
+        }
+
+        if (input.action === "signin") {
+            return { where: await this.#signIn(user, String(input.url ?? "")) };
         }
 
         let argv: string[] | undefined;
@@ -833,6 +846,52 @@ export class Desktop {
             // Parsed from JSON: a JSON value already.
             await this.teaching.record(user, input as TaughtStep);
         }
+
+        return {};
+    }
+
+    /**
+     * The owner signs in to a site for the bots: it opens in a tab of their browser, at the front of the desktop (or of
+     * the owner's own Chrome, when the bots use that), where the owner signs in by hand, as in any browser.
+     */
+    async #signIn(user: User, address: string): Promise<"desktop" | "chrome"> {
+        const who = { id: `owner:${user.id}`, name: user.name };
+        const url = normalizeUrl(address, { trusted: false });
+
+        if (url === undefined || !/^https?:/.test(url)) {
+            throw new HttpError(400, "Say which site, such as x.com.");
+        }
+
+        // The bots use the owner's own Chrome: the site opens there, on their screen, and they sign in as anywhere.
+        if (this.#app.hostChrome !== undefined) {
+            await openInHostChrome(this.#app.hostChrome, url).catch((error: unknown) => {
+                throw new HttpError(409, error instanceof Error ? error.message : String(error));
+            });
+
+            return "chrome";
+        }
+
+        // A recording keeps what is typed, and a password does not belong in a skill.
+        if (this.teaching.lesson !== undefined) {
+            throw new HttpError(409, "Finish the recording first.");
+        }
+
+        const env = this.#env();
+
+        await this.#require(env, BACKGROUND_CONTEXT);
+        this.#take(who, true);
+        // The browser is the computer's, not the owner's program: "I'm done" leaves it running (noid-browser).
+        await this.#run(
+            who,
+            commandFor({
+                action: "open",
+                command: `noid-browser '${url.replaceAll("'", "'\\''")}'`,
+            })!,
+            env,
+            BACKGROUND_CONTEXT,
+        );
+
+        return "desktop";
     }
 
     /** Pick up a lesson the server stopped in the middle of. */

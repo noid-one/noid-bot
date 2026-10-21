@@ -1110,7 +1110,7 @@ function ToolStep({
                 ${
                     watch &&
                     html`<button class="artifact-link" onClick=${() => setBrowserOpen(true)}>
-                        Watch in the browser${details?.address ? ` · ${details.address}` : ""} →
+                        Open the browser${details?.address ? ` · ${details.address}` : ""} →
                     </button>`
                 }
             </div>`

@@ -20,9 +20,11 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { Browsers } from "../src/server/browser.ts";
+import { Chromium } from "../src/server/browser/cdp.ts";
 import { findBrowser } from "../src/server/browser/discovery.ts";
 import { SHOT_MAX } from "../src/server/browser/page.ts";
 import { normalizeUrl } from "../src/server/browser/urls.ts";
+import { VIEWPORTS } from "../src/server/browser/viewport.ts";
 import { onlyReads } from "../src/server/noid/read-only.ts";
 
 /** A JPEG's size in pixels, from its first frame header. */
@@ -173,6 +175,26 @@ test(
         }
     },
 );
+
+test("pages do not see an automated browser, on a phone or after one", real, async () => {
+    const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "agent-")) });
+
+    try {
+        const page = await browsers.open(1);
+
+        await page.navigate(`${base}/`);
+        assert.match(await page.evaluate("String(navigator.webdriver)"), /false/);
+        const desktop = await page.evaluate("navigator.userAgent");
+
+        assert.doesNotMatch(desktop, /HeadlessChrome/);
+        await page.setViewport({ ...VIEWPORTS.mobile });
+        assert.match(await page.evaluate("navigator.userAgent"), /Android/);
+        await page.setViewport({ ...VIEWPORTS.desktop });
+        assert.equal(await page.evaluate("navigator.userAgent"), desktop);
+    } finally {
+        await browsers.closeAll({ final: true });
+    }
+});
 
 test("a command sent while a navigation swaps the page waits for it", real, async () => {
     const browsers = new Browsers({
@@ -336,6 +358,41 @@ test(
             server.closeAllConnections();
             server.close();
             await app.close();
+        }
+    },
+);
+
+test(
+    "in a browser people use, a bot's page is a tab of the window's own size that keeps painting",
+    real,
+    async () => {
+        const dataDir = mkdtempSync(join(root, "tabs-"));
+        const browsers = new Browsers({
+            dataDir,
+            remote: {
+                claims: () => true,
+                // Headless, its window is 800×600: a desktop page there is that wide at most, not the 1280×800 preset.
+                launch: () => Chromium.launch(chromium!, join(dataDir, "people"), []),
+                tabs: true,
+            },
+        });
+
+        try {
+            const page = await browsers.open(1);
+
+            await page.navigate(`${base}/`);
+            const [visibility, width] = (
+                await page.evaluate("document.visibilityState + ' ' + innerWidth")
+            ).split(" ");
+
+            assert.equal(visibility, "visible");
+            assert.ok(Number(width) <= 800, `the window's ${width}, not the preset's 1280`);
+            assert.ok((await page.frame(0)) !== undefined, "frames for the panel");
+            // A phone's size is still the phone's.
+            await page.setViewport({ ...VIEWPORTS.mobile });
+            assert.equal(await page.evaluate("String(innerWidth)"), String(VIEWPORTS.mobile.width));
+        } finally {
+            await browsers.closeAll({ final: true });
         }
     },
 );

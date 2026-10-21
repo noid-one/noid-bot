@@ -1,0 +1,14 @@
+session.screen0.rootCommand: hsetroot -solid black
+session.configVersion: 13
+session.screen0.toolbar.visible: true
+session.screen0.toolbar.height: 24
+session.screen0.toolbar.placement: BottomCenter
+session.screen0.toolbar.widthPercent: 100
+session.screen0.workspaces: 1
+session.screen0.workspaceNames: Desktop
+session.screen0.fullMaximization: false
+session.screen0.window.focus.alpha: 255
+session.screen0.focusModel: ClickFocus
+session.screen0.focusNewWindows: true
+session.overlay.menuDelay: 0
+session.appsFile: /etc/noid/fluxbox/apps

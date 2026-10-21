@@ -90,6 +90,7 @@ import { Bots } from "./noid/bots.ts";
 import { ownerOf } from "./noid/owner.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
+import { connectHostChrome, windowsPowerShell } from "./noid/host-chrome.ts";
 import { claudeBinary, claudeCliProvider, stopClaudeCli } from "./noid/claude-cli.ts";
 import { Desktop, DESKTOP_EXTENSION } from "./noid/desktop.ts";
 import { Groups } from "./noid/groups.ts";
@@ -335,6 +336,8 @@ export class PocketApp {
     readonly themes: Themes;
     /** Each conversation's browser page, which Pi and the people in the conversation share. */
     readonly browsers: Browsers;
+    /** noid: PowerShell on Windows, when bots use the owner's own Chrome there (NOID_BROWSER=chrome, from WSL). */
+    readonly hostChrome: string | undefined;
     /** What extension modules add to the app: their routes, browser modules, and events (`extension-web.ts`). */
     readonly webs: ExtensionWebs;
     #websTimer: NodeJS.Timeout | undefined;
@@ -414,24 +417,40 @@ export class PocketApp {
         this.config = new ConfigStore(options.dataDir);
         this.#lockFile = join(options.dataDir, "harness.lock");
         this.#log = options.log ?? ((line) => console.log(line));
+        this.hostChrome = process.env.NOID_BROWSER === "chrome" ? windowsPowerShell() : undefined;
+
+        if (process.env.NOID_BROWSER === "chrome" && this.hostChrome === undefined) {
+            this.#log(
+                "NOID_BROWSER=chrome needs Windows (from WSL): bots use the shared computer's browser.",
+            );
+        }
+
         this.browsers = new Browsers({
             dataDir: options.dataDir,
             ...(options.browser === undefined ? {} : { executable: options.browser }),
             log: (line) => this.#log(line),
-            // noid: bots, and sessions on the shared computer, use the computer's one browser: a window each, logins
-            // shared. People watch and use the same window in the Browser panel.
-            remote: {
-                claims: (id) =>
-                    this.bots.of(id as unknown as ConversationId) !== undefined ||
-                    onComputer(this.cwdOf(id as unknown as ConversationId)),
-                launch: async () =>
-                    Chromium.over(
-                        await this.computer.launchBrowser(),
-                        "the shared computer's browser",
-                    ),
-                hold: () => this.computer.hold(),
-                downloadPath: `${COMPUTER_HOME}/shared/downloads`,
-            },
+            // noid: bots, and sessions on the shared computer, use one browser, a tab each, logins shared: the one on
+            // the computer's desktop, or with NOID_BROWSER=chrome the owner's own Chrome. People watch and use a bot's
+            // tab in the Browser panel, and the whole browser on the desktop.
+            remote:
+                this.hostChrome === undefined
+                    ? {
+                          claims: (id) => this.#onComputer(id),
+                          launch: async () =>
+                              Chromium.over(
+                                  await this.computer.connectBrowser(),
+                                  "the computer's browser",
+                              ),
+                          hold: () => this.computer.hold(),
+                          downloadPath: `${COMPUTER_HOME}/shared/downloads`,
+                          tabs: true,
+                      }
+                    : {
+                          claims: (id) => this.#onComputer(id),
+                          launch: async () =>
+                              Chromium.over(connectHostChrome(this.hostChrome!), "your Chrome"),
+                          tabs: true,
+                      },
             load: async (id) =>
                 (await this.harness.snapshot(
                     BrowserDoc,
@@ -2388,6 +2407,13 @@ export class PocketApp {
     }
 
     /** The folder a conversation works in. */
+    /** noid: whether a conversation's browser is the bots' one: a bot's, or a session's on the shared computer. */
+    #onComputer(id: number): boolean {
+        const conversation = id as unknown as ConversationId;
+
+        return this.bots.of(conversation) !== undefined || onComputer(this.cwdOf(conversation));
+    }
+
     cwdOf(id: ConversationId): string {
         return this.#agents.get(id)?.cwd ?? this.#sessions[String(id)]?.cwd ?? this.defaultCwd;
     }

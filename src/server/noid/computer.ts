@@ -90,31 +90,8 @@ export function dockerCommand(binary: string): Docker {
         });
 }
 
-/** The one browser's profile on the computer: every bot's window shares it, so a login is everyone's. */
+/** The one browser's profile on the computer (noid-browser's): the owner's and every bot's tabs share it, logins too. */
 export const BROWSER_PROFILE = `${COMPUTER_HOME}/.browser-profile`;
-
-/**
- * How the computer's Chromium runs (spikes/RESULTS.md): headful on the display, its DevTools pipe on fds 3 and 4,
- * covered windows kept rendering (each bot's window is often under another's), downloads into shared/downloads.
- * `--no-sandbox`: Chromium's own sandbox needs user namespaces Docker's default seccomp profile blocks; the container
- * is the boundary.
- */
-const BROWSER_FLAGS = [
-    "--remote-debugging-pipe",
-    `--user-data-dir=${BROWSER_PROFILE}`,
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-sync",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-renderer-backgrounding",
-    "--password-store=basic",
-    "--window-size=1280,800",
-];
 
 /** A short hash of what the image is built from: the files of `computer/`, and pi-env's daemon (which goes in). */
 export function imageTag(buildContext: string): string {
@@ -438,33 +415,18 @@ export class Computer {
     }
 
     /**
-     * Start the computer's one Chromium. Returns the `docker exec` process whose stdin and stdout are its DevTools pipe
-     * (pi-pocket's `Chromium.over` speaks it); stopping that process stops Chromium, which saves its profile as it goes.
+     * A connection to the computer's one browser, an ordinary Chromium on its desktop (`noid-browser`, started if it
+     * is not running): the `docker exec` process whose stdin and stdout are its DevTools pipe (pi-pocket's
+     * `Chromium.over` speaks it), joined there to the browser's DevTools socket by `cdp-bridge.py`. Stopping it lets go
+     * of the browser, which keeps running for the people using it.
      */
-    async launchBrowser(): Promise<ChildProcess> {
+    async connectBrowser(): Promise<ChildProcess> {
         await this.start();
-
-        const script = [
-            `mkdir -p ${BROWSER_PROFILE} ${COMPUTER_HOME}/shared/downloads`,
-            // A computer just started may not have its display yet (start.sh starts it in the background).
-            "i=0; while [ ! -S /tmp/.X11-unix/X99 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done",
-            // The shared browser's processes: by name, then by profile, so a Chromium a bot opened on the desktop is left
-            // alone (a pattern on the whole command line would match this script too).
-            `shared() { for p in $(pgrep -x chromium); do grep -qaF -- "--user-data-dir=${BROWSER_PROFILE}" /proc/$p/cmdline 2>/dev/null && echo $p; done; }`,
-            // The last browser may still be saving its profile as it exits: wait for it (a while), so two never share it.
-            'i=0; while [ -n "$(shared)" ] && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done',
-            "kill -KILL $(shared) 2>/dev/null; true",
-            // Only now: a browser stopped hard leaves its profile locked (rakazo clears these too).
-            `rm -f ${BROWSER_PROFILE}/Singleton*`,
-            `exec chromium ${BROWSER_FLAGS.join(" ")} about:blank 3<&0 4>&1 1>/dev/null 2>>/tmp/chromium.log`,
-        ].join("; ");
 
         return spawn(
             this.#binary,
-            [...this.#hostArgs, "exec", "-i", this.container, "sh", "-c", script],
-            {
-                stdio: ["pipe", "pipe", "ignore"],
-            },
+            [...this.#hostArgs, "exec", "-i", this.container, "python3", "/opt/noid/cdp-bridge.py"],
+            { stdio: ["pipe", "pipe", "ignore"] },
         );
     }
 

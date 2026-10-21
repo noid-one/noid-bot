@@ -1,0 +1,65 @@
+#!/bin/sh
+# The computer's one browser: an ordinary Chromium on the desktop, which the owner uses there by hand (signing in to
+# sites as in any browser) and bots reach over DevTools on a local port while they work (cdp-bridge.py), as rakazo's
+# rakazo-browser does. `noid-browser [address]` starts it, or brings the running one to the front, with the address
+# in a new tab.
+#
+# Adapted from rakazo's infra/sandboxes/computer/rakazo-browser (Apache-2.0, see LICENSE-rakazo): its flags, and
+# clearing a stale lock and the "crashed" mark (Chromium drops session cookies, where many sign-ins live, at the next
+# start after a crash).
+set -u
+PROFILE="$HOME/.browser-profile"
+PORT="${NOID_BROWSER_PORT:-9222}"
+ADDRESS="${1:-}"
+export DISPLAY=:100
+
+# The browser is the computer's, not the program of whoever opened it: closing their programs leaves it running.
+unset NOID_DESKTOP_HOLDER
+
+running() {
+  python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$PORT/json/version', timeout=1)" 2>/dev/null
+}
+
+front() {
+  xdotool search --onlyvisible --classname '^chromium$' windowactivate >/dev/null 2>&1 || true
+}
+
+if running; then
+  if [ -n "$ADDRESS" ]; then
+    python3 - "$PORT" "$ADDRESS" <<'PY'
+import sys, urllib.parse, urllib.request
+port, address = sys.argv[1:]
+request = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?" + urllib.parse.quote(address, safe=""), method="PUT")
+urllib.request.urlopen(request, timeout=5)
+PY
+  fi
+  front
+  exit 0
+fi
+
+# A display that is still starting (start.sh starts it in the background).
+i=0
+while [ ! -S /tmp/.X11-unix/X100 ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+
+mkdir -p "$PROFILE" "$HOME/shared/downloads"
+
+# Only with no browser on the profile: a live one keeps its lock.
+if ! grep -qsaF -- "--user-data-dir=$PROFILE" /proc/[0-9]*/cmdline; then
+  rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonCookie" "$PROFILE/SingletonSocket"
+  for f in "$PROFILE/Local State" "$PROFILE"/*/Preferences; do
+    [ -f "$f" ] && sed -i -E 's/"exit_type" *: *"Crashed"/"exit_type":"Normal"/g; s/"exited_cleanly" *: *false/"exited_cleanly":true/g' "$f"
+  done
+fi
+
+[ -r /tmp/noid/dbus-session ] && . /tmp/noid/dbus-session
+
+# No GPU here: --disable-gpu keeps Chromium from probing one, and WebGL runs on SwiftShader, which current Chromium
+# allows only with --enable-unsafe-swiftshader. Covered windows and background tabs keep rendering: bots work in tabs
+# nobody looks at.
+exec chromium \
+  --test-type --no-sandbox --disable-dev-shm-usage --disable-gpu --enable-unsafe-swiftshader \
+  --no-first-run --no-default-browser-check --disable-session-crashed-bubble --hide-crash-restore-bubble \
+  --password-store=basic --start-maximized \
+  --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
+  --remote-debugging-address=127.0.0.1 --remote-debugging-port="$PORT" \
+  --user-data-dir="$PROFILE" ${ADDRESS:+"$ADDRESS"} >>/tmp/noid/chromium.log 2>&1

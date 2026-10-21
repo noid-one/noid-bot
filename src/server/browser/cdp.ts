@@ -170,6 +170,8 @@ const LAUNCH_ARGS = [
     "--password-store=basic",
     "--use-mock-keychain",
     "--force-color-profile=srgb",
+    // The DevTools pipe alone sets navigator.webdriver, which sites read as a bot; this keeps it false.
+    "--disable-blink-features=AutomationControlled",
 ];
 
 /** One Chromium process. It exits on its own when the pipe closes, so a crashed server leaves none behind. */
@@ -178,6 +180,8 @@ export class Chromium {
     readonly #child: ChildProcess;
     readonly exited: Promise<void>;
     userAgent = "";
+    /** Whether `userAgent` is the browser's own (a headless browser's says HeadlessChrome, which pages must not see). */
+    ownAgent = false;
 
     private constructor(child: ChildProcess, connection: Connection) {
         this.#child = child;
@@ -252,7 +256,10 @@ export class Chromium {
                 failed,
             ]);
 
-            this.userAgent = String(version.userAgent ?? "").replace("HeadlessChrome/", "Chrome/");
+            const agent = String(version.userAgent ?? "");
+
+            this.userAgent = agent.replace("HeadlessChrome/", "Chrome/");
+            this.ownAgent = this.userAgent === agent;
             await this.connection.send("Target.setDiscoverTargets", { discover: true });
         } catch (error) {
             this.kill();

@@ -48,6 +48,11 @@ export interface BrowsersOptions {
         launch(): Promise<Chromium>;
         hold?(): () => void;
         downloadPath?: string;
+        /**
+         * Pages as background tabs of a browser people use too (the computer's desktop browser, the owner's own
+         * Chrome), not windows of their own: a window would pop up over theirs. Such a page is the window's own size.
+         */
+        tabs?: boolean;
     };
 }
 
@@ -62,6 +67,11 @@ export class Browsers {
     /** noid: the shared computer's browser, when one runs, and how to let its computer stop again. */
     #remote: Promise<Chromium> | undefined;
     #remoteRelease: (() => void) | undefined;
+    /**
+     * noid: the tabs opened in the owner's own Chrome (`remote.tabs`). It keeps running when the bots let go of it, so
+     * they are closed then, or they would pile up there.
+     */
+    readonly #remoteTabs = new Set<string>();
     #remoteIdleSince = Date.now();
     readonly #pages = new Map<number, BrowserPage>();
     readonly #opening = new Map<number, Promise<BrowserPage>>();
@@ -401,10 +411,12 @@ export class Browsers {
 
         try {
             if (shared) {
-                ({ targetId } = await connection.send("Target.createTarget", {
-                    url: "about:blank",
-                    newWindow: true,
-                }));
+                ({ targetId } = await connection.send(
+                    "Target.createTarget",
+                    this.#options.remote?.tabs === true
+                        ? { url: "about:blank", background: true }
+                        : { url: "about:blank", newWindow: true },
+                ));
                 browserContextId = (await connection.send("Target.getTargetInfo", { targetId }))
                     .targetInfo.browserContextId;
             } else {
@@ -422,6 +434,16 @@ export class Browsers {
                 flatten: true,
             });
 
+            // A background tab is not painted, so the Browser panel would show nothing: it paints as if in front.
+            if (shared && this.#options.remote?.tabs === true) {
+                this.#remoteTabs.add(targetId!);
+                await connection.send(
+                    "Emulation.setFocusEmulationEnabled",
+                    { enabled: true },
+                    sessionId,
+                );
+            }
+
             page = new BrowserPage({
                 conversationId,
                 connection,
@@ -430,6 +452,8 @@ export class Browsers {
                 context: browserContextId,
                 shared,
                 userAgent: chromium.userAgent,
+                ownAgent: chromium.ownAgent,
+                native: shared && this.#options.remote?.tabs === true,
                 viewport: viewportFrom(saved?.viewport) ??
                     options.viewport ?? { ...VIEWPORTS.desktop },
                 changed: () => this.#changed(conversationId),
@@ -560,6 +584,16 @@ export class Browsers {
             return;
         }
 
+        const tabs = [...this.#remoteTabs];
+
+        this.#remoteTabs.clear();
+        await Promise.all(
+            tabs.map((targetId) =>
+                chromium.connection
+                    .send("Target.closeTarget", { targetId }, undefined, 3000)
+                    .catch(() => {}),
+            ),
+        );
         chromium.kill();
         await Promise.race([chromium.exited, wait(10_000)]);
     }
