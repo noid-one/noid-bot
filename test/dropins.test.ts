@@ -23,24 +23,24 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 const dataDir = join(root, "data");
 const dropIns = join(dataDir, "extensions");
 
-/** A drop-in that imports Pi Durable and pi-ai by name, offers a tool, and blocks bash with a hook. */
+/** A drop-in that imports Pi Durable and pi-ai by name, offers a tool (with the old `content` result, which noid still reads), and blocks bash with a hook. It returns a frozen list. */
 const shout = (suffix: string) => `/** Shout offers a tool that shouts${suffix}. */
 import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, hook, ToolTask } from "@earendil-works/pi-durable";
 
 export default () =>
-	defineExtension({
+	Object.freeze([defineExtension({
 		name: "shout",
 		tools: [
 			defineTool({
 				name: "shout",
 				description: "Shout",
 				parameters: Type.Object({ text: Type.String() }),
-				execute: async (args) => ({ output: [{ type: "text", text: args.text.toUpperCase() + "${suffix}" }] }),
+				execute: async (args) => ({ content: [{ type: "text", text: args.text.toUpperCase() + "${suffix}" }] }),
 			}),
 		],
 		hooks: [hook(ToolTask, { beforeTool: (call) => (call.name === "bash" ? { block: "no shell while shouting" } : undefined) })],
-	});
+	})]);
 `;
 
 const route: FauxResponseStep = (request) => {
