@@ -13,7 +13,7 @@ branch, started directly (`node src/server/main.ts`), with and without Node's co
   own fallback, its thread routes answer 500: a computer kind its contracts do not list). A local test account was made
   through its own sign-up route, and its data written with its own `createThreadMessage`.
 - **pi-web-desktop** ran `next start` on a production build.
-- **No model was called**, so streaming throughput is not compared.
+- **No model was called**, so streaming throughput is not compared here; see Streaming, after Pi Pocket 0.19, below.
 - The shared computer's Docker tests run against a container of their own (`NOID_COMPUTER=noid-computer-test`) and
   pass, 12 of 12.
 
@@ -91,6 +91,25 @@ Yes. By dimension:
   answers over 2 KB. A 220-turn session's first view: 503 KB → 15 KB.
 - **Start**: the launcher turns on Node's compile cache, kept in the data folder (`src/launcher/main.ts`), and the
   server lets the variable go so what Pi runs does not cache there: about 90 ms off each start or restart.
+
+## Streaming, after Pi Pocket 0.19 (2026-10-21)
+
+Pi Pocket 0.19 made streaming cheaper, and noid took the same changes (FORK.md, Upstream syncs). Before, every update
+of a run (every 90 ms) sent each tab the whole message being written, so an answer cost its length squared; now a tab
+that names protocol 3 gets only what changed (`liveMessageDelta`, `web/live.js`). Measured with the test model and two
+tabs on one answer (`~/.cache/noid-perf/stream-bytes.ts`; protocol 2 is what every tab got before):
+
+| A 14.8 KB answer of 40 Markdown parts | updates | sent to a tab, before | sent to a tab, now |
+| ------------------------------------- | ------- | --------------------- | ------------------ |
+| at 2,000 tokens a second (the tests)  | 20      | 128 KB                | 24.9 KB            |
+| at 100 tokens a second (a real model) | 326     | 2.59 MB               | 193 KB (13× less)  |
+
+The rest of the gain is in the browser: the session list and the rail are not drawn again when only the view changes
+(`apartFromViews`; upstream measured 30 → 8 ms an update at 4× CPU on a phone), and a streaming answer's Markdown is
+parsed block by block, the last block only. On the wire, every JSON answer of 1 KB or more now goes compressed (before,
+only long polls and the `@` list), with brotli where the browser takes it (the app's files: 464 KB against 490 KB
+gzipped, of 1.79 MB), and the app page lists its modules as `modulepreload` links, so a first load fetches them in
+one round, not one per level of imports: what counts most over Tailscale from a phone.
 
 Considered and left: loading noid-only modules on demand (about 40 KB gzipped, 5% of the first load, for more moving
 parts); `content-visibility` on transcript rows (style and layout cost about 27 ms for 220 turns, and estimated row

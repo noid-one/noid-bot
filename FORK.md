@@ -55,6 +55,19 @@ Our own features go in `src/server/extensions/noid-*.ts`, with `x.noid.*` docume
 
 Pi Pocket's PiP ("Pi in Pocket", the owner's assistant over every screen) is Noid in noid. Noid, the main bot, does what PiP did, in its own conversation: it lists, reads, starts, messages, follows, stops, archives, and schedules sessions, denies waiting calls, and watches repositories and pull requests. Those are the session tools (`src/server/session-tools.ts`, extension `noid-sessions`), and every other bot has them too, acting as the owner. There is no PiP panel and no separate PiP conversation. Upstream changes to `pip.ts`, `extensions/pip.ts`, or `pip-compact.ts` port to `session-tools.ts`, `extensions/session-tools.ts`, and `noid-compact.ts`.
 
+## Upstream syncs
+
+Ports from upstream are cherry-picked from a local remote (`git remote add pipocket ../pi-pocket && git fetch pipocket`), so each keeps its upstream message and a `(cherry picked from commit …)` line; `git log --grep "cherry picked"` lists them. `git am` without that remote fails ("sha1 information is lacking"): the blobs of upstream commits after the copy are not in this repository.
+
+**2026-10-21, Pi Pocket 0.17–0.19 (upstream `d2a3280`) and rakazo (`cc863927`).** Ported:
+
+- Streaming: the message Pi is writing goes as what changed (`web/live.js`, protocol 3); the session list goes only when it changed, and is not drawn again as an answer streams (`apartFromViews`); a streaming answer is drawn block by block; Changes reads only new entries; busy documents get a new base every 64 changes (noid's own documents too). Measured on a 15 KB answer at 100 tokens a second: 193 KB to a tab, against 2.6 MB before.
+- Compression from upstream's `http/compress.ts` (brotli or gzip for every text answer, one compressor per event stream) over noid's own gzip work, and `modulepreload` links for the app's modules.
+- Fixes: same-model resend, the home-screen swipe back, the drop-in `content` shim (a drop-in returning `content` gave the model nothing), linked-session limits removed (with the "answer once" wording), artifacts from a file (read through the session's environment), subagent sub-tiles in peeks and on the board, the memory guide's "save only when asked or sure", and the session tools' blocker line.
+- From rakazo: Noid asks before starting work once its run read what someone else wrote; new sites are gated (host bots ask when auto review is off; auto review judges them by address and the owner's words); the browser's `upload`; `python` in the computer; why a failed auto review check failed, in the log.
+
+Left for the owner to decide: Interrupt as a send mode (Pi has none), Simplified Technical English between agents, extension slots and panels (pocketApi 2), the Extensions hub redesign, the Providers dialog's two columns, the Claude subscription billing extension, and dropping "do not commit or push unless asked" from the base prompt (bots act unattended).
+
 ## Node version
 
-Use Node 22 (`.nvmrc`). On Node 26, 17 of upstream's tests fail at startup with `Cannot access 'PocketApp' before initialization`, which looks like a change in how Node 26 handles module cycles; on Node 22 everything passes.
+Use Node 26 (`.nvmrc`); the suite runs on it since the test app loads statically (`c24c937`).
