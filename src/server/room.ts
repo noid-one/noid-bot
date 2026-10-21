@@ -166,6 +166,8 @@ export type Person = {
     id: string;
     name: string;
     role: string;
+    /** noid: the face they picked (`User.face`). */
+    face?: User["face"];
     tabs: number;
     typing?: TypingPlace;
     away?: boolean;
@@ -877,6 +879,7 @@ export class Room {
                     id: client.user.id,
                     name: client.user.name,
                     role: client.user.role,
+                    ...(client.user.face === undefined ? {} : { face: client.user.face }),
                     tabs: 1,
                 });
             }

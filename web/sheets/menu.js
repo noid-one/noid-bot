@@ -654,7 +654,7 @@ export function AccountSheet() {
             class="pop-me pop-row"
             role="menuitem"
             data-row="me"
-            title="Your name"
+            title="Your name and face"
             onClick=${() => openSettings("name")}
         >
             ${me && html`<${Avatar} person=${me} size=${32} />`}

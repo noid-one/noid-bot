@@ -21,6 +21,7 @@ import {
 } from "./sheets/gallery.js";
 import { CwdSheet } from "./sheets/folder.js";
 import { MemorySheet } from "./sheets/memory.js";
+import { MeSheet } from "./sheets/me.js";
 import { AccountSheet, MenuSheet, PlacesSheet } from "./sheets/menu.js";
 import { MessageSheet } from "./sheets/message.js";
 import { ModelPicker } from "./sheets/model.js";
@@ -367,20 +368,7 @@ export function sheetBody(sheet) {
             />`;
             break;
         case "name":
-            body = html`<${TextSheet}
-                title="Your name"
-                label="Shown on your messages to others"
-                initial=${me?.name ?? ""}
-                footer=${html`<button class="button ghost wide sheet-footer signout" onClick=${signOut}>
-                    <${Icon} name="logout" size=${16} /> Sign out
-                </button>`}
-                submit=${async (value) => {
-                    await api("me", { name: value });
-                    const hello = await api("me");
-
-                    store.set({ me: hello.user, users: hello.users });
-                }}
-            />`;
+            body = html`<${MeSheet} />`;
             break;
     }
 

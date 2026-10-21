@@ -3,7 +3,7 @@
 
 import { Component } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Avatar, initials, personColor } from "./avatar.js";
+import { Avatar, personColor } from "./avatar.js";
 import {
     actions,
     attempt,
@@ -506,7 +506,7 @@ function ChatTab({ highlight, focus }) {
                         onClick=${() => pick(user)}
                     >
                         <span>
-                            <span class="avatar" style=${`--who:${personColor(user.id)};width:20px;height:20px`}>${initials(user.name)}</span> ${user.name}
+                            <${Avatar} person=${user} size=${20} /> ${user.name}
                         </span>
                         <span class="muted small">${user.online ? "online" : ""}</span>
                     </button>`,

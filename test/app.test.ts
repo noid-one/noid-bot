@@ -1254,6 +1254,68 @@ test("the owner signs another device in as the owner: owner only, once, no one n
     }
 });
 
+test("noid: people pick a face as bots do: checked, sent to everyone, and cleared back to the one from their id", async () => {
+    const { createServer } = await import("node:http");
+    const { createHandler } = await import("../src/server/http.ts");
+    const server = createServer(
+        createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
+    );
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const guest = app.config.addUser("Faced", "guest");
+    const call = (body?: unknown) =>
+        fetch(`${base}/api/me`, {
+            method: body === undefined ? "GET" : "POST",
+            headers: {
+                authorization: `Bearer ${guest.token}`,
+                "x-pocket": "1",
+                "content-type": "application/json",
+            },
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+
+    type Hello = {
+        user: { name: string; face?: unknown };
+        users: { id: string; face?: unknown }[];
+    };
+
+    try {
+        // A face alone keeps the name.
+        assert.equal(
+            (await call({ face: { skin: "clay", shape: "cat", color: "#AABBCC" } })).status,
+            200,
+        );
+        let hello = (await (await call()).json()) as Hello;
+
+        assert.equal(hello.user.name, "Faced");
+        assert.deepEqual(hello.user.face, { skin: "clay", shape: "cat", color: "#aabbcc" });
+        assert.deepEqual(
+            hello.users.find((each) => each.id === guest.user.id)?.face,
+            hello.user.face,
+        );
+
+        // Nothing odd is kept.
+        assert.equal((await call({ face: { skin: "fur" } })).status, 400);
+        assert.equal((await call({ face: { color: "red" } })).status, 400);
+        assert.equal((await call({ face: "clay" })).status, 400);
+        assert.equal((await call({})).status, 400, "a name or a face");
+
+        // Every pick from the id: no face stored.
+        assert.equal(
+            (await call({ name: "Faced", face: { skin: "", eyes: "", shape: "", color: "" } }))
+                .status,
+            200,
+        );
+        hello = (await (await call()).json()) as Hello;
+        assert.equal(hello.user.face, undefined);
+    } finally {
+        app.config.removeUser(guest.user.id);
+        server.closeAllConnections();
+        server.close();
+    }
+});
+
 test("noid: a browser on this machine is the owner with no sign-in; other sites, names, and tunnels are not", async () => {
     const { createServer } = await import("node:http");
     const { createHandler } = await import("../src/server/http.ts");

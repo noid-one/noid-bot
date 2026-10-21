@@ -3,7 +3,7 @@
  * which a form on another site cannot send. A conversation's routes are in `conversation-routes.ts`.
  */
 import { autoReview } from "../noid/auto-review.ts";
-import type { BotRequest } from "../noid/bots.ts";
+import { type BotRequest, personFace } from "../noid/bots.ts";
 import { readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { homedir, networkInterfaces } from "node:os";
@@ -154,18 +154,27 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return json(response, 200, await app.hello(user));
         }
 
+        // Your name, your face (noid), or both.
         if (first === "me" && method === "POST") {
-            const body = await readJson<{ name?: string }>(request);
-            const name = String(body.name ?? "")
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 40);
+            const body = await readJson<{ name?: string; face?: unknown }>(request);
+            const face = body.face === undefined ? undefined : personFace(body.face);
 
-            if (name === "") {
-                throw new HttpError(400, "Name is empty");
+            if (body.name !== undefined || face === undefined) {
+                const name = String(body.name ?? "")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .slice(0, 40);
+
+                if (name === "") {
+                    throw new HttpError(400, "Name is empty");
+                }
+
+                app.rename(user, name);
             }
 
-            app.rename(user, name);
+            if (face !== undefined) {
+                app.setFace(user, face);
+            }
 
             return json(response, 200, { ok: true });
         }

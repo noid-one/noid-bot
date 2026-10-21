@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { PersonFace } from "./noid/bots.ts";
 
 /** The repository root: `web/`, `src/`, and `node_modules/` live here. */
 export const APP_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -33,6 +34,8 @@ export interface User {
     tunnel?: string;
     /** The most Pi may spend for this person, in dollars; never for the owner. */
     budget?: number;
+    /** noid: the face they picked, as a bot's; absent picks are the face from their id. */
+    face?: PersonFace;
 }
 
 /** An invite not yet used, kept by its code's sha256 (the code itself is only shown to whoever made it). */
@@ -356,7 +359,9 @@ export class ConfigStore {
 
     updateUser(
         id: string,
-        patch: Partial<Pick<User, "name" | "lastSeen" | "role" | "sessions" | "tunnel" | "budget">>,
+        patch: Partial<
+            Pick<User, "name" | "lastSeen" | "role" | "sessions" | "tunnel" | "budget" | "face">
+        >,
     ): void {
         const user = this.userById(id);
 

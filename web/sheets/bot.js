@@ -110,50 +110,19 @@ export function BotSheet({ id }) {
                 size=${88}
                 label=${name || "New bot"}
             />
-            <div class="bot-face-picks">
-                <label class="bot-pick">
-                    <span class="label">Color</span>
-                    <input
-                        type="color"
-                        value=${color}
-                        aria-label="Color"
-                        onInput=${(event) => setColor(event.currentTarget.value)}
-                    />
-                </label>
-                <label class="bot-pick">
-                    <span class="label">Skin</span>
-                    <select
-                        value=${skin}
-                        aria-label="Skin"
-                        onChange=${(event) => setSkin(event.currentTarget.value)}
-                    >
-                        <option value="">From its name</option>
-                        ${SKINS.map((each) => html`<option value=${each}>${each}</option>`)}
-                    </select>
-                </label>
-                <label class="bot-pick">
-                    <span class="label">Eyes</span>
-                    <select
-                        value=${eyes}
-                        aria-label="Eyes"
-                        onChange=${(event) => setEyes(event.currentTarget.value)}
-                    >
-                        <option value="">From its name</option>
-                        ${EYES.map((each) => html`<option value=${each}>${each}</option>`)}
-                    </select>
-                </label>
-                <label class="bot-pick">
-                    <span class="label">Shape</span>
-                    <select
-                        value=${shape}
-                        aria-label="Shape"
-                        onChange=${(event) => setShape(event.currentTarget.value)}
-                    >
-                        <option value="">From its name</option>
-                        ${SHAPES.map((each) => html`<option value=${each}>${each}</option>`)}
-                    </select>
-                </label>
-            </div>
+            <${FacePicks}
+                color=${color}
+                skin=${skin}
+                eyes=${eyes}
+                shape=${shape}
+                from="From its name"
+                onPick=${(pick) => {
+                    "color" in pick && setColor(pick.color);
+                    "skin" in pick && setSkin(pick.skin);
+                    "eyes" in pick && setEyes(pick.eyes);
+                    "shape" in pick && setShape(pick.shape);
+                }}
+            />
         </div>
         ${
             file !== undefined &&
@@ -269,6 +238,38 @@ export function BotSheet({ id }) {
             </button>
         </div>
     <//>`;
+}
+
+/**
+ * A face's picks: its color, and its skin, eyes, and shape, each `""` for the one from its id (`from` says whose). `onPick`
+ * gets the one changed, as `{ skin: "clay" }`. Bots' sheet and yours (`me.js`) share it.
+ */
+export function FacePicks({ color, skin, eyes, shape, from, onPick }) {
+    const choice = (label, value, list, key) => html`<label class="bot-pick">
+        <span class="label">${label}</span>
+        <select
+            value=${value}
+            aria-label=${label}
+            onChange=${(event) => onPick({ [key]: event.currentTarget.value })}
+        >
+            <option value="">${from}</option>
+            ${list.map((each) => html`<option value=${each}>${each}</option>`)}
+        </select>
+    </label>`;
+
+    return html`<div class="bot-face-picks">
+        <label class="bot-pick">
+            <span class="label">Color</span>
+            <input
+                type="color"
+                value=${color}
+                aria-label="Color"
+                onInput=${(event) => onPick({ color: event.currentTarget.value })}
+            />
+        </label>
+        ${choice("Skin", skin, SKINS, "skin")} ${choice("Eyes", eyes, EYES, "eyes")}
+        ${choice("Shape", shape, SHAPES, "shape")}
+    </div>`;
 }
 
 /** An agent file's path from its dot folder on (`.agents/agents/x.md`): enough to find it, without the home folder. */

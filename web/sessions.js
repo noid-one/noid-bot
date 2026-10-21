@@ -1,7 +1,7 @@
 // The sidebar: the rail (Pi, the tools, and you; folded, numbered sessions too) and the session list beside it, in the
 // sidebar, the drawer, and a phone's home screen; and the order and archiving of sessions.
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { Avatar, folderColor, initials } from "./avatar.js";
+import { Avatar, FACE_SCALE, folderColor, initials } from "./avatar.js";
 import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
 import { Face } from "./faces/face.js";
@@ -545,6 +545,9 @@ const TABS = [
  * session opens, and back from the session shows it again as it was.
  */
 const listKept = { query: "", scroll: 0 };
+
+/** noid: the size of faces on the rail, bots' and yours alike. */
+const RAIL_FACE = 52;
 
 /** A bot's face shows how it is: at work, waiting for you, failed, or idle. */
 const FACE_STATES = { waiting: "waiting", working: "working", failed: "error" };
@@ -1267,7 +1270,6 @@ function AllSessions({ compact = false }) {
         data-part="session-list"
     >
         <div class="sidebar-head" data-part="sidebar-head">
-            <span class="wordmark">noid</span>
             ${tabsHead}
         </div>
         ${pane === "bots" && html`<${BotList} compact=${compact} canStart=${canStart} />`}
@@ -1526,7 +1528,7 @@ function RailTiles() {
                     eyes=${session.bot.eyes}
                     shape=${session.bot.shape}
                     state=${botFaceState(session)}
-                    size=${52}
+                    size=${RAIL_FACE}
                     label=${session.bot.name}
                 />
                 ${unread(session) && html`<span class="unread-dot"></span>`}
@@ -1658,7 +1660,7 @@ function Rail({ foldable = false, folded = false }) {
             aria-expanded=${store.state.sheet?.type === "account"}
             onClick=${() => openSheet({ type: "account" })}
         >
-            ${me && html`<${Avatar} person=${me} size=${30} />`}
+            ${me && html`<${Avatar} person=${me} size=${RAIL_FACE / FACE_SCALE} />`}
         </button>
     </nav>`;
 }

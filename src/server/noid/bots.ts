@@ -145,10 +145,34 @@ function color(value: unknown): string | undefined {
     }
 
     if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) {
-        throw new HttpError(400, "A bot's color is #rrggbb.");
+        throw new HttpError(400, "A face's color is #rrggbb.");
     }
 
     return value.toLowerCase();
+}
+
+/** A person's face, as `POST /api/me` gets it: the same picks as a bot's, each one optional; none is the face from their id. */
+export type PersonFace = {
+    color?: string;
+    skin?: (typeof SKINS)[number];
+    eyes?: (typeof EYES)[number];
+    shape?: (typeof SHAPES)[number];
+};
+
+/** A person's face from a request, checked as a bot's is: absent or "" leaves that pick to their id. */
+export function personFace(value: unknown): PersonFace {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        throw new HttpError(400, "A face is an object of color, skin, eyes, and shape.");
+    }
+
+    const request = value as Record<string, unknown>;
+
+    return {
+        ...optional("color", color(request.color)),
+        ...optional("skin", pick(request.skin, SKINS, "skin")),
+        ...optional("eyes", pick(request.eyes, EYES, "eyes")),
+        ...optional("shape", pick(request.shape, SHAPES, "shape")),
+    };
 }
 
 /** A folder name from a bot's name: lowercase letters, digits, and dashes. */

@@ -786,9 +786,6 @@ kbd {
         grid-template-rows: repeat(4, auto) minmax(0, 1fr);
         column-gap: 8px;
     }
-    .home-list > .sessions > .sidebar-head .wordmark {
-        display: none;
-    }
     .home-list > .sessions > .sidebar-head {
         height: auto;
         margin-bottom: 6px;
@@ -1006,11 +1003,6 @@ kbd {
 .topbar .online-mark {
     width: 8px;
     height: 8px;
-}
-
-.topbar .avatar,
-.rail .avatar {
-    font-size: 11px;
 }
 
 /* Below the sidebar's width the top bar leads back to the session list, each button a thumb wide. */
@@ -4086,12 +4078,6 @@ pre.diff .del {
     background: var(--accent);
 }
 
-.wordmark {
-    font: 700 16px var(--mono);
-    letter-spacing: -0.02em;
-    color: var(--text);
-}
-
 .sessions-head {
     display: flex;
     align-items: center;
@@ -4867,10 +4853,6 @@ pre.diff .del {
     border-radius: 50%;
     background: var(--accent);
     animation: pulse 1.4s ease-in-out infinite;
-}
-
-.session-side .avatar {
-    font-size: 8px;
 }
 
 .session-side .unread-dot {
@@ -7478,28 +7460,20 @@ body.plain-page {
     color: var(--muted);
 }
 
+/* noid: a person's face, as a bot's: no ring, no background; drawn bigger than its box (`FACE_SCALE`), around its middle. */
 .avatar {
-    display: inline-grid;
-    place-items: center;
+    position: relative;
+    display: inline-block;
     flex: none;
-    background: color-mix(in srgb, var(--who, var(--accent)) 20%, transparent);
-    color: var(--who, var(--accent));
-    border: 0;
-    border-radius: 50%;
-    font-size: 0.62rem;
-    font-weight: 600;
     line-height: 1;
-    letter-spacing: 0;
 }
 
-.avatar.typing {
-    animation: avatar-typing 1.2s ease-in-out infinite;
-}
-
-@keyframes avatar-typing {
-    50% {
-        background: var(--accent-soft);
-    }
+.avatar > .noid-face {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
 }
 
 .typing-line {

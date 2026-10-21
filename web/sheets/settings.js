@@ -98,8 +98,8 @@ function groupsOf() {
                 {
                     id: "name",
                     icon: "pencil",
-                    label: "Your name",
-                    about: "How people on this server see you.",
+                    label: "You",
+                    about: "Your name and face, as people on this server see you.",
                     sheet: { type: "name" },
                 },
                 {

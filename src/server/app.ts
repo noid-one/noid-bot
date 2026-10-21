@@ -87,7 +87,7 @@ import {
     NOT_SHOWN,
 } from "./noid/approvals.ts";
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
-import { Bots } from "./noid/bots.ts";
+import { Bots, type PersonFace } from "./noid/bots.ts";
 import { ownerOf } from "./noid/owner.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
@@ -1478,7 +1478,16 @@ export class PocketApp {
 
     /** Change someone's name: shown at once on their messages, in the people lists, and on their avatar. */
     rename(user: User, name: string): void {
-        this.config.updateUser(user.id, { name });
+        this.#profileChanged(user, { name });
+    }
+
+    /** noid: change someone's face: shown at once wherever their avatar is, as a bot's is when it is edited. */
+    setFace(user: User, face: PersonFace): void {
+        this.#profileChanged(user, { face: Object.keys(face).length === 0 ? undefined : face });
+    }
+
+    #profileChanged(user: User, change: Pick<User, "name"> | Pick<User, "face">): void {
+        this.config.updateUser(user.id, change);
         this.#peopleChanged();
 
         for (const pending of this.#rooms.values()) {
@@ -1518,6 +1527,7 @@ export class PocketApp {
                 id: each.id,
                 name: each.name,
                 role: each.role,
+                ...(each.face === undefined ? {} : { face: each.face }),
                 online: this.#online(each.id),
                 ...(each.lastSeen === undefined ? {} : { lastSeen: each.lastSeen }),
                 ...(each.sessions === undefined || scope !== undefined
@@ -1819,6 +1829,7 @@ export class PocketApp {
                 id: user.id,
                 name: user.name,
                 role: user.role,
+                ...(user.face === undefined ? {} : { face: user.face }),
                 ...(user.sessions === undefined ? {} : { sessions: user.sessions.map(Number) }),
             },
             users: this.people(user),

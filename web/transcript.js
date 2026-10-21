@@ -2,7 +2,7 @@
 // into one line that opens into a timeline), then Pi's reply, any approval, and the live line while Pi works.
 import { Component } from "preact";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
-import { initials, personColor } from "./avatar.js";
+import { Avatar, initials, personColor } from "./avatar.js";
 import { browserAvailable, setBrowserOpen } from "./browser.js";
 import { describersRevision } from "./calls.js";
 import { DiffBlock } from "./diff.js";
@@ -411,7 +411,11 @@ function UserEntry({ entry, view, users }) {
                               size=${20}
                               label=${sender.name}
                           /></span>`
-                        : html`<span
+                        : authorId !== undefined && name
+                          ? html`<span class="prompt-face" aria-hidden="true"
+                                ><${Avatar} person=${{ id: authorId, name }} size=${22}
+                            /></span>`
+                          : html`<span
                               class="prompt-avatar"
                               data-part="author-mark"
                               style=${`--who:${mark}`}
