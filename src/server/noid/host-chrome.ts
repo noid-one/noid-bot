@@ -8,6 +8,7 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { Connection, type Json } from "../browser/cdp.ts";
 
 /** Where Chrome's DevTools listens on the owner's computer. */
 export const HOST_CHROME_PORT = 9222;
@@ -122,4 +123,81 @@ export function openInHostChrome(
                 : reject(new Error(errors.trim() || `Chrome could not open it (${code}).`)),
         );
     });
+}
+
+/** Whether a cookie set for `domain` (".x.com", "x.com"), or a page on it, goes with `host`'s site: its own, or one above it. */
+function forSite(domain: string, host: string): boolean {
+    const own = domain.replace(/^\./, "").toLowerCase();
+    const site = host.toLowerCase().replace(/^www\./, "");
+
+    return own === site || site.endsWith(`.${own}`) || own.endsWith(`.${site}`);
+}
+
+/**
+ * Bring a site's sign-in from the owner's Chrome to another browser: its cookies, for `host` and the domains above it,
+ * read from Chrome over the bridge (`from`, connectHostChrome) and set in `to` (a DevTools pipe, such as the computer's
+ * browser's). For sites that refuse a sign-in in that browser (X does, from a container) but take one in the owner's
+ * Chrome: they sign in there, and bring it over. Nothing else of theirs moves, and the values never leave the two
+ * browsers and this process. The site's tabs already open in `to` load again, signed in, the first one in front.
+ * Resolves to how many cookies came (none: they are not signed in there), and how many tabs loaded again.
+ */
+export async function copySignIn(
+    from: Pick<ChildProcess, "stdin" | "stdout">,
+    host: string,
+    to: Pick<ChildProcess, "stdin" | "stdout">,
+): Promise<{ copied: number; reloaded: number }> {
+    const chrome = new Connection(from.stdin!, from.stdout!);
+    const browser = new Connection(to.stdin!, to.stdout!);
+
+    try {
+        const { cookies } = await chrome.send("Storage.getCookies");
+        const site = (cookies as Json[])
+            .filter((cookie) => forSite(String(cookie.domain), host))
+            // A session cookie (no expiry) stays one: `expires` -1 would set it already expired.
+            .map(({ size: _size, session, expires, ...cookie }) =>
+                session ? cookie : { ...cookie, expires },
+            );
+
+        if (site.length === 0) {
+            return { copied: 0, reloaded: 0 };
+        }
+
+        await browser.send("Storage.setCookies", { cookies: site });
+
+        const { targetInfos } = await browser.send("Target.getTargets");
+        const tabs = (targetInfos as Json[]).filter(
+            (target) => target.type === "page" && onSite(String(target.url), host),
+        );
+
+        for (const tab of tabs) {
+            const { sessionId } = await browser.send("Target.attachToTarget", {
+                targetId: tab.targetId,
+                flatten: true,
+            });
+
+            await browser.send("Page.reload", {}, sessionId);
+            await browser.send("Target.detachFromTarget", { sessionId });
+        }
+
+        if (tabs[0] !== undefined) {
+            await browser.send("Target.activateTarget", { targetId: tabs[0].targetId });
+        }
+
+        return { copied: site.length, reloaded: tabs.length };
+    } finally {
+        chrome.close("Done.");
+        browser.close("Done.");
+        from.stdin?.end();
+        to.stdin?.end();
+    }
+}
+
+function onSite(address: string, host: string): boolean {
+    try {
+        const url = new URL(address);
+
+        return /^https?:$/.test(url.protocol) && forSite(url.hostname, host);
+    } catch {
+        return false;
+    }
 }

@@ -6,12 +6,14 @@
 # Adapted from rakazo's infra/sandboxes/computer/Dockerfile (Apache-2.0, see LICENSE-rakazo): its tool set, the pinned
 # and checksummed uv and gh downloads, the UTF-8 locale, uv's folders in the home, and restoring ~/.local/bin on PATH.
 # Also from rakazo: fluxbox and dbus for a real desktop, WebGL on SwiftShader, and the browser's launcher (noid-browser).
-# hsetroot paints the desktop: without a wallpaper setter, fluxbox shows an error box at every start.
+# hsetroot paints the desktop: without a wallpaper setter, fluxbox shows an error box at every start. tzdata: the
+# computer keeps the owner's time zone (TZ, set when the container is made), its clock and its browser's both.
 # Changed for noid: no VNC/noVNC stack (the owner sees the desktop through xdotool and scrot); tini as PID 1 so finished
 # processes are reaped; pi-env's daemon (put beside this file by the build) at /opt/pi-env/pi-env.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
+    tzdata \
     xvfb \
     fluxbox \
     dbus-x11 \

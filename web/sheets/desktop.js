@@ -136,10 +136,13 @@ export function DesktopPage() {
     const [saved, setSaved] = useState(undefined);
     // While showing: what is typed now is a secret, typed but never kept in the skill.
     const [secret, setSecret] = useState(false);
-    // Signing in for the bots: the site asked for, and where their browser opened it: on this desktop, or in the
-    // owner's own Chrome when the bots use that.
+    // Signing in for the bots: the site asked for, then where it opened ({ where, url }): on this desktop
+    // ("desktop"), in the owner's own Chrome when the bots use that ("chrome"), in it to bring the sign-in here after
+    // ("bring"), or brought ("brought"). Some sites refuse a sign-in here (X does, from a container) and take one in
+    // the owner's Chrome: with it there (noid in WSL), either way is on offer, first or after trying here.
     const [site, setSite] = useState(undefined);
     const [signingIn, setSigningIn] = useState(null);
+    const [chrome, setChrome] = useState(false);
     const image = useRef(null);
     const frame = useRef(null);
     // The refresh loop: when the last input went out, and how to wake it for a picture now.
@@ -185,6 +188,7 @@ export function DesktopPage() {
                         setYours(view.yours);
                         setOpened(view.opened);
                         setTeaching(view.teaching);
+                        setChrome(view.chrome === true);
                         setError(undefined);
                     } catch (failure) {
                         setError({ status: failure.status, message: failure.message });
@@ -369,16 +373,32 @@ export function DesktopPage() {
         }
     };
 
-    const signIn = (event) => {
-        event.preventDefault();
-        void attempt(async () => {
-            const { where } = await api("desktop/input", { action: "signin", url: site });
+    const signIn = (url, inChrome) =>
+        attempt(async () => {
+            const { where } = await api("desktop/input", {
+                action: "signin",
+                url,
+                ...(inChrome ? { in: "chrome" } : {}),
+            });
 
+            setSigningIn({ where: where ?? "desktop", url: url.trim() });
             setSite(undefined);
-            setSigningIn(where ?? "desktop");
             wake.current();
         });
-    };
+
+    const bring = () =>
+        attempt(async () => {
+            const { copied } = await api("desktop/input", { action: "bring", url: signingIn.url });
+
+            if (!copied) {
+                throw new Error(
+                    `You're not signed in to ${signingIn.url} in Chrome yet: sign in there first.`,
+                );
+            }
+
+            setSigningIn({ where: "brought", url: signingIn.url });
+            wake.current();
+        });
 
     const restart = () =>
         attempt(async () => {
@@ -451,7 +471,7 @@ export function DesktopPage() {
             !signingIn &&
             html`<button
                 class="button ghost small"
-                title="Open a site in the computer's browser and sign in by hand: the bots share its sign-ins"
+                title="Sign in to a site by hand, here or in your Chrome: the bots share the computer's browser's sign-ins"
                 aria-expanded=${site !== undefined}
                 onClick=${() => setSite(site === undefined ? "" : undefined)}
             >
@@ -529,31 +549,88 @@ export function DesktopPage() {
         }
         ${
             site !== undefined &&
-            html`<form class="row" onSubmit=${signIn}>
+            html`<form
+                class="row"
+                onSubmit=${(event) => {
+                    event.preventDefault();
+                    void signIn(site, false);
+                }}
+            >
                 <input
                     class="grow"
                     placeholder="Site to sign in to, such as x.com"
                     value=${site}
                     onInput=${(event) => setSite(event.currentTarget.value)}
                 />
-                <button class="button primary" disabled=${site.trim() === ""}>Open</button>
+                <button
+                    class="button primary"
+                    disabled=${site.trim() === ""}
+                    title="Open it in the computer's browser, below, and sign in there"
+                >
+                    Open here
+                </button>
+                ${
+                    chrome &&
+                    html`<button
+                        class="button"
+                        type="button"
+                        disabled=${site.trim() === ""}
+                        title="Some sites won't let you sign in on this desktop: sign in in Chrome on your computer, then bring the sign-in here"
+                        onClick=${() => signIn(site, true)}
+                    >
+                        Use my Chrome
+                    </button>`
+                }
                 <button class="button ghost" type="button" onClick=${() => setSite(undefined)}>
                     Cancel
                 </button>
             </form>`
         }
         ${
-            signingIn === "desktop" &&
+            signingIn?.where === "desktop" &&
             html`<div class="row teach-banner">
                 <span class="grow small">
                     It's open in the computer's browser below, which the bots use too: sign in by hand, as in any
                     browser, and they have the sign-in as soon as you do.
+                    ${chrome && " Won't it let you in here? Use your Chrome instead."}
+                </span>
+                ${
+                    chrome &&
+                    html`<button
+                        class="button ghost small"
+                        title="Sign in in Chrome on your computer, then bring the sign-in here"
+                        onClick=${() => signIn(signingIn.url, true)}
+                    >
+                        Use my Chrome
+                    </button>`
+                }
+                <button class="button ghost small" onClick=${() => setSigningIn(null)}>OK</button>
+            </div>`
+        }
+        ${
+            signingIn?.where === "bring" &&
+            html`<div class="row teach-banner">
+                <span class="grow small">
+                    It opened in Chrome on your computer: sign in there, as in any browser (signed in already? Then
+                    there's nothing to do), and bring the sign-in here. Only ${signingIn.url}'s sign-in comes,
+                    nothing else of yours.
+                </span>
+                <button class="button primary small" onClick=${bring}>Bring it here</button>
+                <button class="button ghost small" onClick=${() => setSigningIn(null)}>Cancel</button>
+            </div>`
+        }
+        ${
+            signingIn?.where === "brought" &&
+            html`<div class="row teach-banner">
+                <span class="grow small">
+                    You're signed in to ${signingIn.url} here now, and the bots are too. Should it ask you to sign
+                    in again, do the same. Signing out in either browser signs out both.
                 </span>
                 <button class="button ghost small" onClick=${() => setSigningIn(null)}>OK</button>
             </div>`
         }
         ${
-            signingIn === "chrome" &&
+            signingIn?.where === "chrome" &&
             html`<div class="row teach-banner">
                 <span class="grow small">
                     It opened in the bots' Chrome on your computer: sign in there, as in any browser. The bots

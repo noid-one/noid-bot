@@ -27,7 +27,12 @@ import { HttpError } from "../errors.ts";
 import { requireOwner } from "./owner.ts";
 import { normalizeUrl } from "../browser/urls.ts";
 import { COMPUTER_HOME, onComputer } from "./computer.ts";
-import { openInHostChrome } from "./host-chrome.ts";
+import {
+    connectHostChrome,
+    copySignIn,
+    openInHostChrome,
+    windowsPowerShell,
+} from "./host-chrome.ts";
 import { type Lesson, LessonDoc, playbook, skillSlug, type TaughtStep, Teaching } from "./teach.ts";
 
 export const DESKTOP_EXTENSION = "noid-desktop";
@@ -46,6 +51,20 @@ const MAX_TYPE = 1000;
 
 /** Who holds the desktop: a bot's conversation, or the owner. */
 export type Holder = { id: string; name: string };
+
+/** What an owner's action says back: where a sign-in opened, and how many cookies a sign-in brought. */
+type Acted = { where?: "desktop" | "chrome" | "bring"; copied?: number };
+
+/** The site the owner names to sign in to, as an address: a web one only. */
+function siteUrl(address: string): string {
+    const url = normalizeUrl(address, { trusted: false });
+
+    if (url === undefined || !/^https?:/.test(url)) {
+        throw new HttpError(400, "Say which site, such as x.com.");
+    }
+
+    return url;
+}
 
 type Held = Holder & { until: number; since: number; owner: boolean };
 
@@ -364,6 +383,8 @@ export class Desktop {
     readonly teaching: Teaching;
     /** The owner's actions, one after another. */
     #ownerTurn: Promise<unknown> = Promise.resolve();
+    /** PowerShell on Windows, found the first time it is asked for (null: not WSL). */
+    #powershell: string | null | undefined;
     /** A lesson being started: a second start waits for none, it is refused. */
     #starting = false;
 
@@ -591,13 +612,14 @@ export class Desktop {
         requireOwner(user, "Only the owner can see or use the desktop.");
     }
 
-    /** The owner's view: the screen, who holds it, and the demonstration under way. */
+    /** The owner's view: the screen, who holds it, the demonstration under way, and whether their Chrome is there. */
     async view(user: User): Promise<{
         image: string;
         holder: string | null;
         yours: boolean;
         opened: boolean;
         teaching: { name: string; steps: number } | null;
+        chrome: boolean;
     }> {
         this.#owner(user);
         await this.#require(this.#env(), BACKGROUND_CONTEXT);
@@ -610,6 +632,8 @@ export class Desktop {
             opened: await this.#hasOpened(`owner:${user.id}`),
             teaching:
                 lesson === undefined ? null : { name: lesson.name, steps: lesson.steps.length },
+            // Sign in for the bots offers the owner's Chrome, to bring a sign-in from.
+            chrome: this.#canBring(),
         };
     }
 
@@ -800,9 +824,11 @@ export class Desktop {
 
     /**
      * The owner's own click, typing, or program: it takes the desktop from any bot, for the lease's time. Signing in
-     * says where the site opened: on this desktop, or in the owner's own Chrome when the bots use that.
+     * says where the site opened: on this desktop, or in the owner's own Chrome (when the bots use that, or when the
+     * owner asked, for a site that refuses this desktop), and whether their Chrome is there to ask for. Bringing a
+     * sign-in says how many cookies came.
      */
-    act(user: User, input: Record<string, unknown>): Promise<{ where?: "desktop" | "chrome" }> {
+    act(user: User, input: Record<string, unknown>): Promise<Acted> {
         // One at a time, in the order they came: typing and the Enter after it must not overlap, and a lesson keeps
         // the steps in the order they were done.
         const turn = this.#ownerTurn.then(() => this.#act(user, input));
@@ -812,10 +838,7 @@ export class Desktop {
         return turn;
     }
 
-    async #act(
-        user: User,
-        input: Record<string, unknown>,
-    ): Promise<{ where?: "desktop" | "chrome" }> {
+    async #act(user: User, input: Record<string, unknown>): Promise<Acted> {
         this.#owner(user);
         const who = { id: `owner:${user.id}`, name: user.name };
 
@@ -827,7 +850,13 @@ export class Desktop {
         }
 
         if (input.action === "signin") {
-            return { where: await this.#signIn(user, String(input.url ?? "")) };
+            return {
+                where: await this.#signIn(user, String(input.url ?? ""), input.in === "chrome"),
+            };
+        }
+
+        if (input.action === "bring") {
+            return { copied: await this.#bring(user, String(input.url ?? "")) };
         }
 
         let argv: string[] | undefined;
@@ -851,25 +880,91 @@ export class Desktop {
     }
 
     /**
-     * The owner signs in to a site for the bots: it opens in a tab of their browser, at the front of the desktop (or of
-     * the owner's own Chrome, when the bots use that), where the owner signs in by hand, as in any browser.
+     * The owner signs in to a site for the bots, by hand, as in any browser. The site opens in a tab of the desktop's
+     * browser, at the front ("desktop"), or in the owner's own Chrome when the bots use that ("chrome"). Or, when the
+     * owner asks (`inChrome`), in their Chrome to bring the sign-in here after ("bring"): some sites refuse a sign-in
+     * in the desktop's browser (X does, from a container) but take one there.
      */
-    async #signIn(user: User, address: string): Promise<"desktop" | "chrome"> {
-        const who = { id: `owner:${user.id}`, name: user.name };
-        const url = normalizeUrl(address, { trusted: false });
+    async #signIn(
+        user: User,
+        address: string,
+        inChrome: boolean,
+    ): Promise<"desktop" | "chrome" | "bring"> {
+        const url = siteUrl(address);
 
-        if (url === undefined || !/^https?:/.test(url)) {
-            throw new HttpError(400, "Say which site, such as x.com.");
-        }
-
-        // The bots use the owner's own Chrome: the site opens there, on their screen, and they sign in as anywhere.
-        if (this.#app.hostChrome !== undefined) {
-            await openInHostChrome(this.#app.hostChrome, url).catch((error: unknown) => {
+        if (this.#app.hostChrome !== undefined || inChrome) {
+            await openInHostChrome(this.#chrome(inChrome), url).catch((error: unknown) => {
                 throw new HttpError(409, error instanceof Error ? error.message : String(error));
             });
 
-            return "chrome";
+            return inChrome ? "bring" : "chrome";
         }
+
+        await this.#open(user, url);
+
+        return "desktop";
+    }
+
+    /**
+     * Bring a site's sign-in from the owner's Chrome to the desktop's browser: its cookies, nothing else of theirs. Its
+     * tabs open here load again, signed in, or it opens in one. Resolves to how many cookies came: none, when the owner
+     * is not signed in there.
+     */
+    async #bring(user: User, address: string): Promise<number> {
+        const url = siteUrl(address);
+        const chrome = this.#chrome(true);
+
+        // Opening it here would fail after the copy.
+        if (this.teaching.lesson !== undefined) {
+            throw new HttpError(409, "Finish the recording first.");
+        }
+
+        const { copied, reloaded } = await copySignIn(
+            connectHostChrome(chrome),
+            new URL(url).hostname,
+            await this.#app.computer.connectBrowser(),
+        ).catch((error: unknown) => {
+            throw new HttpError(409, error instanceof Error ? error.message : String(error));
+        });
+
+        if (copied > 0 && reloaded === 0) {
+            await this.#open(user, url);
+        }
+
+        return copied;
+    }
+
+    /**
+     * Whether the owner's own Chrome is there to bring sign-ins from: noid in WSL (PowerShell on Windows is the way
+     * there), with the bots on the desktop's browser (on that Chrome, they have its sign-ins already).
+     */
+    #canBring(): boolean {
+        this.#powershell ??= windowsPowerShell() ?? null;
+
+        return this.#app.hostChrome === undefined && this.#powershell !== null;
+    }
+
+    /** The way to the owner's Chrome: the bots' own, or (`bring`) the one to bring a sign-in from. */
+    #chrome(bring: boolean): string {
+        if (!bring) {
+            return this.#app.hostChrome!;
+        }
+
+        if (!this.#canBring()) {
+            throw new HttpError(
+                409,
+                this.#app.hostChrome === undefined
+                    ? "Chrome on your computer is only reachable when noid runs in WSL on Windows."
+                    : "The bots use your Chrome already: sign in there.",
+            );
+        }
+
+        return this.#powershell!;
+    }
+
+    /** Open a site for the owner in a tab of this desktop's browser, at the front. */
+    async #open(user: User, url: string): Promise<void> {
+        const who = { id: `owner:${user.id}`, name: user.name };
 
         // A recording keeps what is typed, and a password does not belong in a skill.
         if (this.teaching.lesson !== undefined) {
@@ -890,8 +985,6 @@ export class Desktop {
             env,
             BACKGROUND_CONTEXT,
         );
-
-        return "desktop";
     }
 
     /** Pick up a lesson the server stopped in the middle of. */

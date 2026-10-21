@@ -371,6 +371,9 @@ export class Computer {
                 "noid.computer=1",
                 "--shm-size",
                 "1g",
+                // The owner's time zone, not UTC: the desktop's clock, and what sites see in its browser.
+                "--env",
+                `TZ=${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
                 "--volume",
                 `${this.volume}:${COMPUTER_HOME}`,
                 this.image,
