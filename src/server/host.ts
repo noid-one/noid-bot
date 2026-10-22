@@ -22,6 +22,7 @@ import type { SessionTools } from "./session-tools.ts";
 import type { Schedules } from "./schedules.ts";
 import type { RepoWatches } from "./repo-watches.ts";
 import type { Watches } from "./watches.ts";
+import type { FetchPublic } from "./public-fetch.ts";
 
 /** A session linked to another, as `host.linkedSessions.list` gives it to the session that asks. */
 export interface LinkedSession {
@@ -240,6 +241,13 @@ export interface PocketHost {
      * sign-in expired), or undefined when it may. `fresh` asks the provider's sign-in again first.
      */
     modelProblem(ref: ModelRef, fresh?: boolean): Promise<string | undefined>;
+    /**
+     * Fetch for an address from outside (a model, a page, a person): it reaches only public internet addresses, checked
+     * where each connection is made and at each redirect (`public-fetch.ts`).
+     *
+     * @experimental In 0.20: it can change in a minor release (docs/extensions/policies/api-stability.md).
+     */
+    readonly fetchPublic: FetchPublic;
     /** Who Pi works for in a conversation now: whose message led to its current work. */
     requesterOf(conversationId: ConversationId): string | undefined;
     /** Report something odd to the log and the connected clients: with `conversationId`, to that session's tabs only. */

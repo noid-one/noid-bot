@@ -141,6 +141,8 @@ All public interfaces are stable, unless the docs mark them experimental or depr
 
 `host.linkedSessions` remains experimental in 0.16.0. The human-bound `linkedSessions` on a conversation route is a separate stable interface, added in 0.16.0. Other public members are stable unless marked otherwise.
 
+Since 0.20.0, `host.fetchPublic` and `PublicFetchInit` are experimental.
+
 ### Deprecated
 
 See [Deprecation](#deprecation).

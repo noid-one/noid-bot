@@ -65,3 +65,4 @@ Each member in the reference has its own Since line. These parts came together:
 | Slash commands (`web.command`)                     | 0.14.0 |
 | `pocket.toolCall`                                  | 0.14.0 |
 | `host.linkedSessions`                              | 0.14.0 |
+| `host.fetchPublic` (experimental)                  | 0.20.0 |

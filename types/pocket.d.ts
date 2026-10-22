@@ -182,6 +182,15 @@ export interface Host {
      */
     readonly text: SafeText;
     /**
+     * Fetches an address from outside (from Pi, a page, or a person) as `fetch` does, but reaches only the public
+     * internet: never this machine or its networks. It checks the address that each connection goes to, and each
+     * redirect. A refusal throws an `Error` with a `code`: `"POCKET_NOT_PUBLIC"`, `"POCKET_TOO_LARGE"`, or
+     * `"POCKET_REDIRECTS"`.
+     * @since 0.20.0
+     * @experimental
+     */
+    fetchPublic(url: string | URL, init?: PublicFetchInit): Promise<Response>;
+    /**
      * The thinking levels, lowest first, with the names that models and sessions use.
      * @since 0.14.0
      */
@@ -204,6 +213,28 @@ export interface SafeText {
      * @since 0.14.0
      */
     defang(text: string): string;
+}
+
+/**
+ * What `host.fetchPublic` takes besides the address: a part of `fetch`'s own init, and its limits.
+ * @since 0.20.0
+ * @experimental
+ */
+export interface PublicFetchInit {
+    /** `GET` by default. */
+    method?: string;
+    headers?: Record<string, string> | [string, string][] | Headers;
+    /** Kept as it is, so a 307 or 308 redirect can send it again. */
+    body?: string | Uint8Array;
+    signal?: AbortSignal;
+    /** `"follow"` (default) checks each address it goes to; `"manual"` gives the redirect; `"error"` throws on one. */
+    redirect?: "follow" | "manual" | "error";
+    /** Redirects to follow at most: 5 by default, 20 at most. */
+    maxRedirects?: number;
+    /** The body's size at most, decoded, in bytes: 10 MiB by default. A larger body errors when it is read. */
+    maxBytes?: number;
+    /** The whole request at most, body included, in milliseconds: 30 s by default. */
+    timeoutMs?: number;
 }
 
 /**

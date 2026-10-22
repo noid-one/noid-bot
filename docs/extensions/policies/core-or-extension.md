@@ -89,6 +89,11 @@ Ask these questions in this order. The first "yes" gives the answer.
 - **Why:** the tokens and the parts must be the same for every theme (C5). The look is a preference (C6). The default theme stays the one that Pi Pocket ships.
 - The theme guide and the theme surface reference tell what a theme can change.
 
+### Web access (0.20.0)
+
+- **Core: `host.fetchPublic`.** A fetch that reaches only the public internet: it checks the address of each connection and each redirect, so a name that changes its address (DNS rebinding) gets nowhere, and it stops at a size and a time.
+- **Why:** the check that keeps a fetched address off this machine and its networks protects against an attack (C4), and each module that reads a page needs the same one (C5, C9), so it is an extension point. [examples/read-page.ts](../../examples/read-page.ts) is its first user (C15).
+
 ## Ask for a new extension point
 
 When the public API cannot do what you need, ask for an extension point. Do not keep a patch to core in a fork if you can stop.

@@ -26,6 +26,7 @@ All the numbers that limit a module, in one place. Each group links to the guide
 [Using the host](../host.md)
 
 - **`host.text.quoted`:** cuts the line to 120 characters when you give no `max`.
+- **`host.fetchPublic`:** by default, 5 redirects, a body of 10 MiB after it is decoded, and 30 s for the whole request. `maxRedirects` can be 20 at most.
 
 ## Linked sessions
 

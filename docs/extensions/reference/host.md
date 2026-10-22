@@ -192,6 +192,61 @@ Since 0.14.0 · Stable
 
 Keeps the lines of the text, but leaves no closing tag in it. Use it for text that you put between tags of your own.
 
+## Public web pages
+
+### `fetchPublic`
+
+```ts
+fetchPublic(url: string | URL, init?: PublicFetchInit): Promise<Response>;
+```
+
+Since 0.20.0 · Experimental
+
+Fetches an address that came from outside (from Pi, a page, or a person) as `fetch` does, but reaches only the public internet. It never reaches this machine, its local network, or a cloud's metadata address. Use it for each address that the module did not write itself: a tool that reads a page that Pi names, a crawl, or a link from a search result.
+
+- It takes only `http` and `https` addresses, with no user or password in them.
+- It refuses an IP address that is not public: loopback, private, link-local, shared (`100.64.0.0/10`), multicast, and the ranges set apart for documentation and later use. In IPv6, only global unicast addresses (`2000::/3`) are public, less the ranges set apart in it. An IPv4-mapped IPv6 address is checked as its IPv4 address.
+- It resolves a name when it connects, and refuses the name when any of its addresses is not public. The connection goes only to an address that it checked. So a name that resolves to a public address first and to a private one later (DNS rebinding) cannot reach the private one.
+- It checks each redirect the same way. A 303, and a `POST` that a 301 or 302 sends on, become a `GET`. A redirect to another origin drops the `Authorization`, `Cookie`, and `Proxy-Authorization` headers.
+- It stops at a size, a time, and a number of redirects ([limits](limits.md#host)). Give `init` other values.
+- It uses its own connections, not the HTTP proxy in Pi's settings: a proxy resolves names itself, out of the check's reach. Behind a proxy that is the only way out, it cannot connect.
+
+A refusal throws an `Error` with a `code`:
+
+- `"POCKET_NOT_PUBLIC"`: the address, a name's address, or a redirect's address is not public.
+- `"POCKET_TOO_LARGE"`: the body is larger than `maxBytes`. An uncompressed response whose `Content-Length` is larger is refused at once. Otherwise the error comes when you read the body, as it is decoded.
+- `"POCKET_REDIRECTS"`: more redirects than `maxRedirects`, or a redirect with `redirect: "error"`.
+
+Other failures, such as a name that does not resolve, reject as `fetch` does. The response's `url` is the address of the last redirect, and `redirected` says whether it followed one.
+
+The text of a page is text from outside: give it to Pi through [`text`](#text) ([Text from other places](../host.md#text-from-other-places)). [examples/read-page.ts](../../examples/read-page.ts) is a tool that uses both.
+
+#### `PublicFetchInit`
+
+```ts
+interface PublicFetchInit {
+    method?: string;
+    headers?: Record<string, string> | [string, string][] | Headers;
+    body?: string | Uint8Array;
+    signal?: AbortSignal;
+    redirect?: "follow" | "manual" | "error";
+    maxRedirects?: number;
+    maxBytes?: number;
+    timeoutMs?: number;
+}
+```
+
+Since 0.20.0 · Experimental
+
+What `fetchPublic` takes besides the address.
+
+- `method`, `headers`, and `signal`: as for `fetch`. `method` is `GET` by default.
+- `body`: a string or bytes, which a 307 or 308 redirect sends again.
+- `redirect`: `"follow"` (the default) follows redirects and checks each address. `"manual"` gives the redirect response. `"error"` throws on a redirect.
+- `maxRedirects`: the redirects to follow at most.
+- `maxBytes`: the size of the body at most, after it is decoded.
+- `timeoutMs`: the time for the whole request at most, the body included.
+
 ## Linked sessions
 
 ### `linkedSessions`
