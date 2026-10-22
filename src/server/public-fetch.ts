@@ -1,9 +1,11 @@
-// Fetch for addresses that came from outside (a model, a page, a person): only the public internet, never this machine
-// or its networks. The address check runs where the connection is made, on the address it connects to, so a name that
-// resolves to a public address for the check and a private one for the connection (DNS rebinding) gets nowhere.
+// Fetch for addresses that came from outside (a model, a page, a person): refuses non-public ranges and this
+// machine's current interface addresses. Checks literal addresses and every DNS answer where the connection is made,
+// preventing DNS rebinding to a refused address. Public addresses that route back into the network through NAT
+// reflection or internal public ranges are not detected.
 import { lookup as dnsLookup } from "node:dns";
 import type { LookupAddress } from "node:dns";
 import { BlockList, isIP } from "node:net";
+import { networkInterfaces } from "node:os";
 import * as undici from "undici";
 
 /** What `host.fetchPublic` takes besides the address: a part of fetch's own init, and its limits. */
@@ -37,7 +39,7 @@ function refused(code: PublicFetchCode, message: string): Error {
     return Object.assign(new Error(message), { code });
 }
 
-// Addresses that are not the public internet: this machine, private networks, shared and link-local ones, and the
+// Non-public ranges: loopback, private networks, shared and link-local ones, and the
 // ranges set apart for documentation, benchmarks, multicast, and later use (IANA's special-purpose registries).
 const V4: [string, number][] = [
     ["0.0.0.0", 8],
@@ -104,7 +106,7 @@ function mappedV4(address: string): string | undefined {
     return [high >> 8, high & 255, low >> 8, low & 255].join(".");
 }
 
-/** Whether an IP address is on the public internet. Anything that is not an IP address is not. */
+/** Whether an IP address is in a public range, without checking local interfaces or routes. */
 export function isPublicAddress(address: string): boolean {
     // A zone (fe80::1%eth0) is only for link-local addresses.
     if (address.includes("%")) {
@@ -280,13 +282,37 @@ export interface PublicFetchOptions {
     resolve?: Resolve;
     /** For tests: which addresses count as public. */
     isPublic?: (address: string) => boolean;
+    /** For tests: the current network interfaces. Read fresh for each address check. */
+    networkInterfaces?: typeof networkInterfaces;
 }
 
 export type FetchPublic = (url: string | URL, init?: PublicFetchInit) => Promise<Response>;
 
-/** A fetch that reaches only public addresses, on its own connections (not the HTTP proxy, which resolves names). */
+/** A fetch that filters addresses, on its own connections (not the HTTP proxy, which resolves names). */
 export function createPublicFetch(options: PublicFetchOptions = {}): FetchPublic {
-    const isPublic = options.isPublic ?? isPublicAddress;
+    const inPublicRange = options.isPublic ?? isPublicAddress;
+    const interfaces = options.networkInterfaces ?? networkInterfaces;
+
+    const isPublic = (address: string): boolean => {
+        if (!inPublicRange(address)) {
+            return false;
+        }
+
+        // BlockList compares equivalent IPv6 spellings and IPv4-mapped addresses too.
+        const own = new BlockList();
+
+        for (const entries of Object.values(interfaces())) {
+            for (const entry of entries ?? []) {
+                own.addAddress(
+                    entry.address.split("%")[0]!,
+                    entry.family === "IPv4" ? "ipv4" : "ipv6",
+                );
+            }
+        }
+
+        return !own.check(address, isIP(address) === 4 ? "ipv4" : "ipv6");
+    };
+
     const dispatcher = new undici.Agent({
         connect: { lookup: guardedLookup(options.resolve ?? systemResolve, isPublic) },
     });

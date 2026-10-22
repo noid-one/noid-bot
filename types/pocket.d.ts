@@ -182,9 +182,10 @@ export interface Host {
      */
     readonly text: SafeText;
     /**
-     * Fetches an address from outside (from Pi, a page, or a person) as `fetch` does, but reaches only the public
-     * internet: never this machine or its networks. It checks the address that each connection goes to, and each
-     * redirect. A refusal throws an `Error` with a `code`: `"POCKET_NOT_PUBLIC"`, `"POCKET_TOO_LARGE"`, or
+     * Fetches an address from outside (from Pi, a page, or a person) as `fetch` does, but refuses non-public ranges
+     * and current local interface addresses. It checks literal addresses, every DNS answer, and each redirect.
+     * Public addresses routed back into the network (NAT reflection or internal public ranges) are not detected.
+     * A refusal throws an `Error` with a `code`: `"POCKET_NOT_PUBLIC"`, `"POCKET_TOO_LARGE"`, or
      * `"POCKET_REDIRECTS"`.
      * @since 0.20.0
      * @experimental

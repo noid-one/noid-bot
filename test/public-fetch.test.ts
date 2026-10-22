@@ -1,7 +1,8 @@
 // host.fetchPublic reaches only public addresses: literal IPs, names, and redirects are checked where they connect.
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { isIP, type AddressInfo } from "node:net";
+import type { networkInterfaces } from "node:os";
 import { after, before, test } from "node:test";
 import { gzipSync } from "node:zlib";
 import { createPublicFetch, isPublicAddress } from "../src/server/public-fetch.ts";
@@ -63,6 +64,60 @@ test("the real fetch refuses this machine and private networks without connectin
 
     for (const url of ["file:///etc/passwd", "ftp://example.com/", "http://me:pw@example.com/"]) {
         await assert.rejects(fetchPublic(url), { code: "POCKET_NOT_PUBLIC" }, url);
+    }
+});
+
+function interfaceList(addresses: string[]): ReturnType<typeof networkInterfaces> {
+    return {
+        eth0: addresses.map((address) => ({
+            address,
+            family: isIP(address) === 4 ? "IPv4" : "IPv6",
+            scopeid: 0,
+            netmask: "",
+            mac: "00:00:00:00:00:00",
+            internal: false,
+            cidr: null,
+        })),
+        absent: undefined,
+    };
+}
+
+test("public interface literals are refused, including equivalent and mapped addresses", async () => {
+    const fetchPublic = createPublicFetch({
+        networkInterfaces: () => interfaceList(["8.8.8.8", "2606:4700:4700:0:0:0:0:1111"]),
+    });
+
+    for (const host of [
+        "8.8.8.8",
+        "[::ffff:8.8.8.8]",
+        "[::ffff:808:808]",
+        "[2606:4700:4700::1111]",
+        "[2606:4700:4700:0:0:0:0:1111]",
+    ]) {
+        await assert.rejects(fetchPublic(`http://${host}/`), { code: "POCKET_NOT_PUBLIC" });
+    }
+});
+
+test("each DNS answer is checked against fresh IPv4 and IPv6 interface addresses", async () => {
+    for (const address of ["8.8.8.8", "2606:4700:4700::1111", "::ffff:808:808"]) {
+        let addresses: string[] = [];
+        const fetchPublic = createPublicFetch({
+            networkInterfaces: () => interfaceList(addresses),
+            resolve: async () => {
+                // An interface can change after the fetch was created, even while DNS resolves.
+                addresses = [address === "::ffff:808:808" ? "8.8.8.8" : address];
+
+                return [
+                    { address: "1.1.1.1", family: 4 },
+                    { address, family: isIP(address) },
+                ];
+            },
+        });
+
+        await assert.rejects(fetchPublic("http://interface.test/"), {
+            code: "POCKET_NOT_PUBLIC",
+            message: /interface\.test resolves to/,
+        });
     }
 });
 
@@ -133,6 +188,7 @@ function testFetch() {
     const lookups: string[] = [];
     const fetchPublic = createPublicFetch({
         isPublic: (address) => address === "127.0.0.1" || isPublicAddress(address),
+        networkInterfaces: () => ({}),
         resolve: async (hostname) => {
             lookups.push(hostname);
             const addresses = names[hostname];
@@ -160,6 +216,28 @@ test("a public name fetches, and its body is decoded", async () => {
     assert.equal(response.url, at("site.test", "/gzip"));
     assert.equal(response.redirected, false);
     assert.deepEqual(lookups, ["site.test"]);
+});
+
+test("interface changes are read again for literals, DNS answers, and redirects", async () => {
+    let addresses: string[] = [];
+    const fetchPublic = createPublicFetch({
+        isPublic: (address) => address === "127.0.0.1" || isPublicAddress(address),
+        networkInterfaces: () => interfaceList(addresses),
+        resolve: async () => {
+            addresses = ["127.0.0.1"];
+
+            return [{ address: "127.0.0.1", family: 4 }];
+        },
+    });
+
+    // The literal initially passes. The redirect's DNS lookup sees the changed interface list.
+    await assert.rejects(fetchPublic(at("127.0.0.1", via(at("changed.test", "/")))), {
+        code: "POCKET_NOT_PUBLIC",
+    });
+    await assert.rejects(fetchPublic(at("127.0.0.1", "/")), { code: "POCKET_NOT_PUBLIC" });
+
+    addresses = [];
+    assert.equal(await (await fetchPublic(at("127.0.0.1", "/removed"))).text(), "GET /removed");
 });
 
 test("a name with any address that is not public is refused where it connects", async () => {
