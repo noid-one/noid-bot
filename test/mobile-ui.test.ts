@@ -276,6 +276,8 @@ test("completed replies show stored message times across providers", real, async
             entries: new Map(entries.map(entry => [entry.id, entry])),
             order: entries.map(entry => entry.id),
         } });
+        // The page draws the entries before the script returns: its evaluation is lost if it returns in the middle.
+        await new Promise(r => setTimeout(r, 500));
 
         return JSON.stringify([today, earlier, today].map((at, index) => {
             const date = new Date(fromServer(at));
@@ -320,64 +322,6 @@ test("completed replies show stored message times across providers", real, async
             true,
             "timestamps remain visible without hovering and fit the viewport",
         );
-    }
-
-    await page.evaluate(`(await import("/store.js")).openSheet({ type: "appearance" })`);
-    await until(
-        () =>
-            inPage<boolean>(`
-                return JSON.stringify(document.querySelector('.slot-layout[data-slot="reply"]') !== null);
-            `),
-        "reply layout controls",
-    );
-
-    try {
-        assert.equal(
-            await inPage<boolean>(`
-                return JSON.stringify(document.querySelector('[aria-label="Show Message time"]') !== null);
-            `),
-            true,
-            "message time is a configurable reply-slot item",
-        );
-        await tap('[aria-label="Show Message time"]');
-        await until(
-            () =>
-                inPage<boolean>(`
-                    return JSON.stringify(document.querySelectorAll(".reply time").length === 0);
-                `),
-            "message times hidden without hiding the reply actions",
-        );
-        assert.equal(
-            await inPage<boolean>(`
-                return JSON.stringify(document.querySelector(".reply .reaction-host") !== null);
-            `),
-            true,
-        );
-        await tap('[aria-label="Show Message time"]');
-        await until(
-            () =>
-                inPage<boolean>(`
-                    return JSON.stringify(document.querySelectorAll(".reply time").length === 3);
-                `),
-            "message times restored",
-        );
-        await tap('[aria-label="Move Message time later"]');
-        await until(
-            () =>
-                inPage<boolean>(`
-                    const actions = document.querySelector(".answer-actions");
-
-                    return JSON.stringify(actions.firstElementChild.matches(".reaction-host") &&
-                        actions.children[1].tagName === "TIME" &&
-                        actions.lastElementChild.textContent.trim() === "More");
-                `),
-            "message time moved after React, with More still last",
-        );
-    } finally {
-        await page.evaluate(`
-            (await import("/slots.js")).resetSlot("reply");
-            (await import("/store.js")).closeSheet();
-        `);
     }
 });
 

@@ -27,7 +27,7 @@ import {
     fauxThinking,
     fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { type ConversationId, InboxDoc } from "@earendil-works/pi-durable";
+import type { ConversationId } from "@earendil-works/pi-durable";
 import type { Attachment } from "../src/server/commands.ts";
 import createArtifacts from "../src/server/extensions/artifacts.ts";
 import type { PocketHost } from "../src/server/host.ts";
