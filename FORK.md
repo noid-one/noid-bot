@@ -68,6 +68,18 @@ Ports from upstream are cherry-picked from a local remote (`git remote add pipoc
 
 Left for the owner to decide: Interrupt as a send mode (Pi has none), Simplified Technical English between agents, extension slots and panels (pocketApi 2), the Extensions hub redesign, the Providers dialog's two columns, the Claude subscription billing extension, and dropping "do not commit or push unless asked" from the base prompt (bots act unattended).
 
+**2026-10-23, Pi Pocket 0.20.0 (upstream `687a81d`).** Ported (branch `port/upstream-0.20`):
+
+- Security: undici 8.12.3 (with the npm override, so Pi's copy is patched too), DOMPurify 3.4.17, and a launcher warning when Node lacks the October 21 fixes.
+- `host.fetchPublic` (public addresses only, checked per connection and redirect) with its `read-page` example, which runs on extension API 1 here.
+- A last-seen time that cannot be saved no longer stops the server.
+- Long sessions open fast: the newest entries first in a light form, then whole; earlier ones load on demand.
+- The time under each of Pi's replies (drawn in `AnswerActions`, since noid has no `reply` slot, so it cannot be hidden or moved).
+
+Not ported: theme fonts and any text size, public artifact links, `artifact_inline` cards, session tags, the subagent model list, Docker/Podman compose, Fluid motion, the interrupt/queue changes, and the extension API 2 additions.
+
+Looked at and not needed: rakazo's fixed-gap interval routines (`6c47ea65`). Rakazo's intervals were cron steps that reset at hour and day boundaries. Noid's `every 2h` is `{ minutes }` added to the time of the last sending (`nextRepeat`), so there is no reset. The two differences: the gap runs from when a sending finishes, and `every 2d` is 48 hours, so it moves an hour across a daylight saving change (`every day 8:00` does not).
+
 ## Node version
 
 Use Node 26 (`.nvmrc`); the suite runs on it since the test app loads statically (`c24c937`).
