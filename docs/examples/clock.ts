@@ -14,6 +14,7 @@ const ClockSettings = defineDoc<{ zone?: string }>({
     scope: "conversation",
     history: "latest",
     fork: "current",
+    checkpointWhen: () => false,
     initial: () => ({}),
 });
 

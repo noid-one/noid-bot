@@ -321,6 +321,7 @@ export class LinkedSessions implements LinkedSessionsApi {
 
                 return parent.abortSignal;
             },
+            telemetry: parent.telemetry,
             value: parent.value.bind(parent),
             toString: () => parent.toString(),
         };

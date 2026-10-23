@@ -55,6 +55,7 @@ const Catalog = defineDoc({
     kind: "x.workspace.catalog",
     version: 1,
     scope: "session",
+    checkpointWhen: () => false,
     initial: () => ({ saved: 0 }),
 });
 
@@ -105,7 +106,7 @@ before(async () => {
         join(dropIns, "workspace.ts"),
         `/** Workspace: request-bound test routes. */
 import { defineDoc } from "@earendil-works/pi-durable";
-const Catalog = defineDoc({ kind: "x.workspace.catalog", version: 1, scope: "session", initial: () => ({ saved: 0 }) });
+const Catalog = defineDoc({ kind: "x.workspace.catalog", version: 1, scope: "session", checkpointWhen: () => false, initial: () => ({ saved: 0 }) });
 export default function(host, web) {
     globalThis.workspaceHost = host;
     web.route("GET", "catalog", async req => {
