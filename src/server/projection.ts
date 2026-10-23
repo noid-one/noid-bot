@@ -92,7 +92,7 @@ const ROW_KINDS = new Set([
     "fromPi",
 ]);
 
-/** Rows a tab of protocol 4 gets the entries of when it opens a session: those it draws (`TRANSCRIPT_ROWS`), and PiP's. */
+/** Rows a tab of protocol 4 gets the entries of when it opens a session: those it draws (`TRANSCRIPT_ROWS`), and some to spare. */
 export const FIRST_ROWS = 80;
 
 /**

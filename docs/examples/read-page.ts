@@ -39,7 +39,7 @@ export default function createReadPage(host: Host) {
 
             // An older server has no fetchPublic: never fall back to fetch, which reaches private addresses.
             if (typeof host.fetchPublic !== "function") {
-                return say("read_page needs Pi Pocket 0.20.0 or later.");
+                return say("read_page needs `host.fetchPublic`, which this server does not have.");
             }
 
             const max = Math.min(Math.max(Math.floor(args.maxChars ?? 20_000), 100), 100_000);

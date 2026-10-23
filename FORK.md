@@ -76,6 +76,10 @@ Left for the owner to decide: Interrupt as a send mode (Pi has none), Simplified
 - Long sessions open fast: the newest entries first in a light form, then whole; earlier ones load on demand.
 - The time under each of Pi's replies (drawn in `AnswerActions`, since noid has no `reply` slot, so it cannot be hidden or moved).
 
+Noid still reports version 0.16.0, so ported members carry upstream's `@since 0.20.0` but extensions must feature-detect (`typeof host.fetchPublic === "function"`), not compare `host.pocketVersion`.
+
+Reviewed and left as upstream has them: `loadEarlier` chaining onto a failed load, Find waiting on the whole context, a silent jump when `loadEarlier` loads nothing, and a `fetchPublic` Agent that is never closed.
+
 Not ported: theme fonts and any text size, public artifact links, `artifact_inline` cards, session tags, the subagent model list, Docker/Podman compose, Fluid motion, the interrupt/queue changes, and the extension API 2 additions.
 
 Looked at and not needed: rakazo's fixed-gap interval routines (`6c47ea65`). Rakazo's intervals were cron steps that reset at hour and day boundaries. Noid's `every 2h` is `{ minutes }` added to the time of the last sending (`nextRepeat`), so there is no reset. The two differences: the gap runs from when a sending finishes, and `every 2d` is 48 hours, so it moves an hour across a daylight saving change (`every day 8:00` does not).
