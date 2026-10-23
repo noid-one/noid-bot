@@ -23,9 +23,6 @@ function pageText(html: string): string {
         .trim();
 }
 
-// It returns `output`, so it needs version 2 of the extension API.
-export const pocketApi = 2;
-
 export default function createReadPage(host: Host) {
     const readPage = defineTool({
         name: "read_page",
