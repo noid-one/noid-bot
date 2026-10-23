@@ -535,3 +535,51 @@ test(
         assert.ok(drawn.listed > 0, "a new session list draws it");
     },
 );
+
+test(
+    "Refresh in Changes reads the diffs on screen again, even when the file list is the same",
+    real,
+    async () => {
+        await fresh();
+
+        const requests = await inPage<{ before: number; after: number }>(`
+        const { store } = await import("/store.js");
+        const { DiffReview } = await import("/diff.js");
+        const { h, render } = await import("preact");
+        const box = document.createElement("div");
+        const fetched = window.fetch;
+        let diffs = 0;
+
+        window.fetch = async (url, ...args) => {
+            if (String(url).endsWith("/changes")) {
+                return new Response(JSON.stringify({ repo: { root: "/tmp", head: "abc" }, more: 0, piOnly: [],
+                    files: [{ path: "a.txt", kind: "modified", version: "5:1", added: 1, removed: 1 }] }));
+            }
+
+            if (String(url).includes("/changes/diff?")) {
+                diffs++;
+
+                return new Response("diff --git a/a.txt b/a.txt\\n--- a/a.txt\\n+++ b/a.txt\\n@@ -1 +1 @@\\n-old\\n+new\\n");
+            }
+
+            return fetched(url, ...args);
+        };
+        document.body.append(box);
+        store.set({ conversationId: ${Number(first)} });
+        render(h(DiffReview, { active: false }), box);
+        store.subscribe(() => render(h(DiffReview, { active: false }), box));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        const before = diffs;
+
+        box.querySelector('[aria-label="Refresh"]').click();
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        window.fetch = fetched;
+
+        return JSON.stringify({ before, after: diffs });
+    `);
+
+        assert.equal(requests.before, 1);
+        assert.equal(requests.after, 2, "Refresh asks for the diff again");
+    },
+);

@@ -1250,7 +1250,8 @@ export function DiffReview({ active = true, autoFocus = false, covering = false 
 
     const refresh = () => {
         forgetDiffs(id);
-        load();
+        // An answer equal to the one shown draws nothing, yet the diffs on screen have a new key to read again.
+        load().finally(() => store.set({}));
     };
 
     const [viewed, setViewedState] = useState(() => readViewed(id));
