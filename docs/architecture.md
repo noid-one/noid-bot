@@ -109,7 +109,7 @@ Lessons Pi keeps across sessions are one document for the whole app, `MemoryDoc`
 
 `PocketApp.#open` runs in this order, and the order matters:
 
-1. Take the data folder's lock. Set up push, Pi's settings, and the HTTP settings for provider streams.
+1. Take the data folder's lock. Set up push, Pi's settings, and the HTTP settings for provider streams. The pid-only `harness.lock` keeps older readers compatible; its `.identity` sidecar binds the lock file to Linux process start time and boot ID, with a conservative live-pid fallback when identity is unavailable (legacy PID reuse can require manual recovery).
 2. Load the models, and register the core tasks and every extension module that is on.
 3. Open the storage and the harness.
 4. `#recover`:
