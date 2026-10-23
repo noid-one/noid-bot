@@ -5393,7 +5393,12 @@ pre.diff .del {
 @media (min-width: 700px) {
     .overlay {
         align-items: flex-start;
-        padding: 7vh 16px 16px;
+        /* A sheet keeps 16px from the sides, and clear of a notch. */
+        padding: 7vh max(16px, var(--inset-r)) 16px max(16px, var(--inset-l));
+    }
+    /* The drawer keeps its place, and its rail clears the notch itself (below). */
+    .overlay.drawer-overlay {
+        padding-left: 16px;
     }
     .sheet {
         max-width: 500px;
