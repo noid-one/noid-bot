@@ -1102,6 +1102,8 @@ export class PocketApp {
         const stream = () => this.streamSettings();
 
         return {
+            // A phase can wait for hours without changing state; repeated process kills must not park it.
+            restartLimit: Infinity,
             // Every installed extension, in install order, but the session tools: their tools and prompt are for bots'
             // conversations only, which select them by name (`session-tools.ts`).
             get extensions() {
