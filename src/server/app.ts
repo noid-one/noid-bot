@@ -1501,7 +1501,12 @@ export class PocketApp {
     /** Someone came, went, or changed: remember when they were last here and tell everyone. */
     #peopleChanged(userId?: string): void {
         if (userId !== undefined && this.config.userById(userId) !== undefined) {
-            this.config.updateUser(userId, { lastSeen: Date.now() });
+            // Only a timestamp: a full disk must not stop the server on every connect and close.
+            try {
+                this.config.updateUser(userId, { lastSeen: Date.now() });
+            } catch (error) {
+                this.#log(`last seen not saved: ${describe(error)}`);
+            }
         }
 
         for (const client of this.#clients) {
