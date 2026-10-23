@@ -120,11 +120,7 @@ export class Schedules {
                         return runtime.commit(() => finished, context);
                     }
 
-                    await runtime.sleep(schedule.next, context);
-                    await runtime.commit(
-                        () => ({ status: "running", checkpoint: { phase: "send" } }),
-                        context,
-                    );
+                    return runtime.sleepUntil(schedule.next, { phase: "send" }, context);
                 },
                 send: (task, runtime, context) =>
                     this.#send(task.input.scheduleId, runtime, context),

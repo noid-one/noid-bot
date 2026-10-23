@@ -263,11 +263,7 @@ export class Watches {
                         return runtime.commit(() => finished, context);
                     }
 
-                    await runtime.sleep(watch.next, context);
-                    await runtime.commit(
-                        () => ({ status: "running", checkpoint: { phase: "look" } }),
-                        context,
-                    );
+                    return runtime.sleepUntil(watch.next, { phase: "look" }, context);
                 },
                 look: (_task, runtime, context) => this.#look(runtime, context),
                 send: (task, runtime, context) => {

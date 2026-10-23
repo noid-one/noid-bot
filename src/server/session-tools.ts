@@ -1634,14 +1634,14 @@ export class SessionTools {
 
         // The session tools turned off keep the bot's follows: a report waits until they are on again, as its
         // schedules, do, so no run starts in its conversation without its rules and tools.
-        for (;;) {
-            const person = this.#app.config.userById(input.userId);
+        const person = this.#app.config.userById(input.userId);
 
-            if (person === undefined || this.available(person)) {
-                break;
-            }
-
-            await runtime.sleep(runtime.now() + this.holdMs, context);
+        if (person !== undefined && !this.available(person)) {
+            return runtime.sleepUntil(
+                runtime.now() + this.holdMs,
+                { phase: "report", text },
+                context,
+            );
         }
 
         const bot = await this.#app.harness.conversation(botId, context);
