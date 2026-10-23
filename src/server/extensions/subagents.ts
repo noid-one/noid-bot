@@ -849,7 +849,8 @@ export default function createSubagents(host: PocketHost) {
             };
 
             if (action === "status") {
-                const names = name === undefined ? Object.keys(registry.agents) : [name];
+                const names =
+                    name === undefined || name === "all" ? Object.keys(registry.agents) : [name];
                 const lines: string[] = [];
 
                 for (const each of names) {
