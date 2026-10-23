@@ -9,6 +9,10 @@ Pi Durable owns the lasting state of conversations: conversations, entries, task
 - At startup, `#recover` reads each conversation's run, agent, chat, subagents, and who Pi works for in it.
 - After that, every commit goes through `#committed`, which keeps the memory up to date.
 
+Pi Durable 1.4.0 migrates SQLite storage to schema version 2 when it opens. Older Durable versions cannot open that database. Back up the complete data folder with the server stopped before upgrading to Pi Pocket 0.21.0.
+
+Scheduled messages, PR watches, repository watches, and PiP reports held while PiP is off use durable `sleepUntil()` checkpoints. A sleeping task holds no invocation and resumes at its saved phase when the harness clock reaches its deadline. The task graph includes these tasks with status `sleeping`.
+
 Some state lives in this process alone, and a restart forgets it. For example:
 
 - who is connected, typing, or away;
