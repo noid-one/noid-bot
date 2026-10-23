@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import {
     copyFileSync,
@@ -11,6 +11,7 @@ import {
     rmSync,
     statSync,
     symlinkSync,
+    utimesSync,
     writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -143,6 +144,16 @@ function startTime(pid: number): string {
     return value;
 }
 
+function processStartWallTime(pid: number): number {
+    const bootTime = readFileSync("/proc/stat", "utf8").match(/^btime (\d+)$/m);
+    const clockTicks = Number(execFileSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).trim());
+
+    assert.ok(bootTime);
+    assert.ok(Number.isFinite(clockTicks) && clockTicks > 0);
+
+    return Number(bootTime[1]) * 1000 + (Number(startTime(pid)) / clockTicks) * 1000;
+}
+
 function identity(lock: string, pid: number) {
     return {
         version: 1,
@@ -219,6 +230,105 @@ test("an old-format Node lock preserves a live pid without metadata", async (t) 
     writeFileSync(lock, `${holder.pid}\n`);
     assertOccupied(lock);
 });
+
+for (const format of ["legacy", "new-format with missing identity"] as const) {
+    test(
+        `a ${format} lock is reclaimed when a live child started after its old mtime`,
+        { skip: !linux },
+        async (t) => {
+            const { lock, child } = fixture(t);
+            const old = new Date(Date.now() - 60_000);
+
+            writeFileSync(lock, "");
+            utimesSync(lock, old, old);
+
+            const holder = await child();
+
+            writeFileSync(lock, `${holder.pid}\n`);
+            utimesSync(lock, old, old);
+
+            if (format !== "legacy") {
+                writeIdentity(lock, identity(lock, holder.pid!));
+                rmSync(`${lock}.identity`);
+            }
+
+            const release = takeLock(lock);
+
+            assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+            assert.deepEqual(
+                JSON.parse(readFileSync(`${lock}.identity`, "utf8")),
+                identity(lock, process.pid),
+            );
+            assert.doesNotThrow(() => process.kill(holder.pid!, 0));
+            release();
+        },
+    );
+
+    test(
+        `a ${format} lock stays occupied when a live child started before its mtime`,
+        { skip: !linux },
+        async (t) => {
+            const { lock, child } = fixture(t);
+            const holder = await child();
+            const fresh = new Date();
+
+            writeFileSync(lock, `${holder.pid}\n`);
+            utimesSync(lock, fresh, fresh);
+
+            if (format !== "legacy") {
+                writeIdentity(lock, identity(lock, holder.pid!));
+                rmSync(`${lock}.identity`);
+            }
+
+            assertOccupied(lock);
+        },
+    );
+
+    for (const offset of [4000, 6000]) {
+        test(
+            `a ${format} lock applies the 5-second start-time margin at ${offset}ms`,
+            { skip: !linux },
+            async (t) => {
+                const { lock, child } = fixture(t);
+                const holder = await child();
+                const nearStart = new Date(processStartWallTime(holder.pid!) - offset);
+
+                writeFileSync(lock, `${holder.pid}\n`);
+                utimesSync(lock, nearStart, nearStart);
+
+                if (format !== "legacy") {
+                    writeIdentity(lock, identity(lock, holder.pid!));
+                    rmSync(`${lock}.identity`);
+                }
+
+                if (offset < 5000) {
+                    assertOccupied(lock);
+                } else {
+                    const release = takeLock(lock);
+
+                    assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+                    assert.doesNotThrow(() => process.kill(holder.pid!, 0));
+                    release();
+                }
+            },
+        );
+    }
+}
+
+test(
+    "a matching Linux process identity stays occupied despite an old lock mtime",
+    { skip: !linux },
+    async (t) => {
+        const { lock, child } = fixture(t);
+        const holder = await child();
+        const old = new Date(Date.now() - 60_000);
+
+        writeFileSync(lock, `${holder.pid}\n`);
+        utimesSync(lock, old, old);
+        writeIdentity(lock, identity(lock, holder.pid!));
+        assertOccupied(lock);
+    },
+);
 
 test("EPERM from a pid probe preserves the lock without reliable stale evidence", async (t) => {
     const { lock, child } = fixture(t);
@@ -441,12 +551,33 @@ test("identity publication failure rolls back the newly created lock", (t) => {
 });
 
 for (const contents of ["", "not-a-pid\n", "0\n", "-1\n"]) {
-    test(`an incomplete or damaged lock is not reclaimed: ${JSON.stringify(contents)}`, (t) => {
+    test(`a young incomplete or damaged lock is not reclaimed: ${JSON.stringify(contents)}`, (t) => {
         const { lock } = fixture(t);
+        const young = new Date(Date.now() - 1000);
 
         writeFileSync(lock, contents);
+        utimesSync(lock, young, young);
         assert.throws(() => takeLock(lock), /incomplete|damaged/i);
         assert.equal(readFileSync(lock, "utf8"), contents);
+        assert.equal(existsSync(`${lock}.identity`), false);
+    });
+
+    test(`an old incomplete or damaged lock is reclaimed: ${JSON.stringify(contents)}`, (t) => {
+        const { lock } = fixture(t);
+        const old = new Date(Date.now() - 11_000);
+
+        writeFileSync(lock, contents);
+        utimesSync(lock, old, old);
+
+        const release = takeLock(lock);
+
+        assert.equal(readFileSync(lock, "utf8").trim(), String(process.pid));
+        assert.deepEqual(
+            JSON.parse(readFileSync(`${lock}.identity`, "utf8")),
+            identity(lock, process.pid),
+        );
+        release();
+        assert.equal(existsSync(lock), false);
         assert.equal(existsSync(`${lock}.identity`), false);
     });
 }
