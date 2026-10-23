@@ -1,11 +1,24 @@
 // The extension loader on its own, with a real registry: a version that fails part way through installing, a load that
 // never finishes, and who hears about it all.
-import { cleanUp, root, until } from "./helpers.ts";
+import {
+    cleanUp,
+    fakeTab,
+    lastText,
+    modelTexts,
+    newSession,
+    openApp,
+    owner as appOwner,
+    root,
+    say,
+    scriptedModel,
+    until,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { createRegistry } from "@earendil-works/pi-durable";
+import { createRegistry, UsageDoc } from "@earendil-works/pi-durable";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { ExtensionWebs } from "../src/server/extension-web.ts";
 import type { PocketHost } from "../src/server/host.ts";
 import { ExtensionLoader } from "../src/server/reload.ts";
@@ -16,6 +29,7 @@ after(cleanUp);
 const shared = globalThis as unknown as {
     gates?: Record<string, Promise<void>>;
     cleaned?: Record<string, number>;
+    checkpointIdentity?: unknown;
 };
 
 shared.gates = {};
@@ -80,6 +94,92 @@ const answer = (webs: ExtensionWebs, module: string) => {
         ? (found.route.handle({} as never) as { v?: unknown })
         : undefined;
 };
+
+test("legacy drop-in documents write through frozen helper definitions, reload, and restart", async () => {
+    const data = join(root, "legacy-documents");
+    const dropIn = join(data, "extensions");
+    const file = join(dropIn, "legacy.ts");
+    const source = (amount: number) => `/** Legacy documents. */
+import { defineExtension, UsageDoc } from "@earendil-works/pi-durable";
+import { Legacy, Family, Explicit } from "./legacy/docs.ts";
+if (UsageDoc !== globalThis.checkpointIdentity) throw new Error("Durable identity changed");
+export default () => defineExtension({ name: "legacy-documents", tools: [{
+    name: "legacy_documents", description: "Count", parameters: { type: "object", properties: { read: { type: "boolean" } } },
+    execute: async (args, api, context) => {
+        if (!args.read) await api.commit(async tx => {
+            (await tx.doc(Legacy, api.conversationId)).count += ${amount};
+            (await tx.doc(Family, api.conversationId, "one", null)).count += ${amount};
+            (await tx.doc(Explicit, api.conversationId)).count += ${amount};
+        }, context);
+        const a = await api.snapshot(Legacy, api.conversationId, context);
+        const b = await api.snapshot(Family, api.conversationId, "one", context);
+        const c = await api.snapshot(Explicit, api.conversationId, context);
+        return { output: [{ type: "text", text: a.count + "/" + b.count + "/" + c.count }] };
+    }
+}] });`;
+
+    mkdirSync(join(dropIn, "legacy"), { recursive: true });
+    writeFileSync(
+        join(dropIn, "legacy", "docs.ts"),
+        `
+import { defineDoc, defineDocFamily } from "@earendil-works/pi-durable";
+const definition = Object.freeze({ kind: "x.legacy.count", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ count: 0 }) });
+export const Legacy = defineDoc(definition);
+export const Family = defineDocFamily(Object.freeze({ ...definition, kind: "x.legacy.family", family: true }));
+const checkpointWhen = () => true;
+export const Explicit = defineDoc({ ...definition, kind: "x.legacy.explicit", checkpointWhen });
+if ("checkpointWhen" in definition || Explicit.definition.checkpointWhen !== checkpointWhen) throw new Error("Definition changed");
+`,
+    );
+    writeFileSync(file, source(1));
+    shared.checkpointIdentity = UsageDoc;
+
+    const model = () =>
+        scriptedModel((input) => {
+            const { role, text } = lastText(input as never);
+
+            return role === "toolResult"
+                ? fauxAssistantMessage([fauxText(text)])
+                : fauxAssistantMessage(
+                      [fauxToolCall("legacy_documents", { read: text.includes("read") })],
+                      { stopReason: "toolUse" },
+                  );
+        });
+    let app = await openApp(model(), data);
+
+    try {
+        const tab = fakeTab(undefined, appOwner(app));
+
+        app.attach(tab.client);
+        await app.setExtensionEnabled(appOwner(app), "legacy.ts", true);
+        const warnings = tab.events.filter(
+            (event) =>
+                event.event === "notice" &&
+                String(event.data.message).includes("has no checkpointWhen"),
+        );
+
+        assert.equal(warnings.length, 2);
+        assert.ok(
+            warnings.every((event) =>
+                String(event.data.message).startsWith("legacy: document x.legacy."),
+            ),
+        );
+        const id = await newSession(app);
+
+        await say(app, id, "count");
+        assert.match((await modelTexts(app, id)).at(-1)!, /1\/1\/1/);
+        writeFileSync(file, source(2));
+        await app.loader.reload("legacy.ts");
+        await say(app, id, "count again");
+        assert.match((await modelTexts(app, id)).at(-1)!, /3\/3\/3/);
+        await app.close();
+        app = await openApp(model(), data);
+        await say(app, id, "read");
+        assert.match((await modelTexts(app, id)).at(-1)!, /3\/3\/3/);
+    } finally {
+        await app.close();
+    }
+});
 
 test("a version that fails part way through installing leaves the version before whole", async () => {
     const { dropIn, loader, webs, installed } = setUp();

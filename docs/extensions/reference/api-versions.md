@@ -8,6 +8,8 @@ This page tells how Pi Pocket marks the age and the stability of each part of th
 
 The version goes up only when a change breaks something that modules use. Additions do not change it.
 
+Document definitions should name `checkpointWhen`; noid supplies `() => false` for older drop-ins when it is missing.
+
 ## `pocketApi`
 
 A module can export `pocketApi`: the server module, the browser module, or both.

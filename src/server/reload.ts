@@ -29,6 +29,7 @@ import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Extension, Registry } from "@earendil-works/pi-durable";
 import { describe } from "./errors.ts";
+import { documentImports } from "./extension-document-imports.ts";
 import { ExtensionWebs, POCKET_API } from "./extension-web.ts";
 import type { ExtensionModule, PocketHost, WebAccess } from "./host.ts";
 
@@ -300,6 +301,7 @@ export class ExtensionLoader {
      */
     readonly #generations = new Map<string, number>();
     readonly #loadLimitMs: number;
+    readonly #stopDocumentImports: () => void;
     /** The folder of each file's latest load: its removal from that folder takes that version away. */
     readonly #sources = new Map<string, string>();
     /** How to end each load still waiting for its module: the server stopping ends them. */
@@ -332,6 +334,10 @@ export class ExtensionLoader {
         this.#webs = options.webs ?? new ExtensionWebs();
         this.#notify = options.notify ?? ((level, message) => host.notice(level, message));
         this.#loadLimitMs = options.loadLimitMs ?? LOAD_LIMIT_MS;
+        this.#stopDocumentImports =
+            this.#dropIn === undefined
+                ? () => {}
+                : documentImports(this.#dropIn, (message) => this.#notify("warning", message));
     }
 
     /** Every module, built-in ones first in install order. A drop-in with a built-in's name is left out. */
@@ -937,6 +943,7 @@ export class ExtensionLoader {
     close(): Promise<void> {
         // Loads still running install nothing, and those waiting for their module end now.
         this.#closed = true;
+        this.#stopDocumentImports();
 
         for (const stop of this.#waiting) {
             stop();

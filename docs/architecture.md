@@ -43,6 +43,8 @@ Some state lives in this process alone, and a restart forgets it. For example:
 
 The harness, models, and settings exist only once `#open` has set them up, after the parts are made. So a part made with the app must not read them in its constructor; it reads them when it is called.
 
+The native extension loader registers one scoped resolve hook for drop-in import graphs. Its compatibility namespace re-exports Pi Durable and supplies a delta-only checkpoint predicate for older document definitions. Built-in modules and core imports keep the real package; existing exports retain their identities.
+
 Extensions never see `PocketApp`. They get `PocketHost` (`host.ts`), whose functions call into the app lazily, and `web`, through which they add routes and a browser module to the app. `ExtensionWebs` (`extension-web.ts`) keeps what each module's version added, which the loader commits once the module installed and removes with it, running its cleanups. The HTTP layer parses a request, checks it, calls a part, and writes the answer; it holds no state of its own beyond invites and the event streams' pollers.
 
 ## Favorite folders
