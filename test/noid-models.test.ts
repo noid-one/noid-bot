@@ -59,6 +59,7 @@ test("OpenAI signed in with ChatGPT lists the subscription's models only, all of
     const listed = (subscription: boolean) =>
         modelList(runtime(subscription)).map((each) => `${each.id}${each.recent ? "" : " (old)"}`);
 
-    assert.deepEqual(listed(true), ["gpt-5.5", "gpt-6.1-sol", "sonnet"]);
+    // Pi 1.4's ChatGPT catalog no longer has gpt-5.5, so a subscription does not list it.
+    assert.deepEqual(listed(true), ["gpt-6.1-sol", "sonnet"]);
     assert.deepEqual(listed(false), ["gpt-4o (old)", "gpt-5.5 (old)", "gpt-6.1-sol", "sonnet"]);
 });
