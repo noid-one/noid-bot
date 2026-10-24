@@ -45,7 +45,7 @@ Stop the server and back up its complete data folder (`~/.noid`) before the firs
 
 Pi Durable 1.4.0 automatically migrates `pocket.sqlite` to schema version 2. Pi Durable 1.3.0 and earlier cannot open the migrated database. To return to an older release, restore the backup with the server stopped; changes made after the backup will not be in it.
 
-Document definitions should name `checkpointWhen` in every `defineDoc` or `defineDocFamily` call. Pi Pocket keeps older drop-ins working by supplying `checkpointWhen: () => false` when it is missing, and logs the module and document kind. Explicit policies stay unchanged. Extensions that use `TaskRuntime.sleep()` must move to durable `sleepUntil()` checkpoints.
+Document definitions should name `checkpointWhen` in every `defineDoc` or `defineDocFamily` call. noid keeps older drop-ins working by supplying `checkpointWhen: () => false` when it is missing, and logs the module and document kind. Explicit policies stay unchanged. Extensions that use `TaskRuntime.sleep()` must move to durable `sleepUntil()` checkpoints.
 
 noid turns off Pi Durable 1.4's task crash-loop guard (`restartLimit: Infinity`) so repeated unclean stops do not park long waits.
 
