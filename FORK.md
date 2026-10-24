@@ -87,3 +87,12 @@ Looked at and not needed: rakazo's fixed-gap interval routines (`6c47ea65`). Rak
 ## Node version
 
 Use Node 26 (`.nvmrc`); the suite runs on it since the test app loads statically (`c24c937`).
+
+**2026-10-24, Pi Pocket 0.21.0 (upstream `7d6fbb0`), part one.** Ported (branch `port/upstream-0.21`):
+
+- Pi packages 1.4.0 (one-way: Pi Durable migrates `pocket.sqlite` to schema 2, so back up `~/.noid` first; tried on a copy of the live data, every table's row count the same after), `sleepUntil` for the follow report, `checkpointWhen` for drop-in documents (older ones get `() => false`), and `restartLimit: Infinity` so repeated unclean stops do not park long waits.
+- Data lock held by process identity, stale locks recovered after unattended restarts.
+- Wide sheets and the phone drawer rail keep clear of the notch; the subagent tool's status treats "all" as no name; Changes → Refresh reads the diffs on screen again.
+- Pi 1.4's ChatGPT catalog dropped `gpt-5.5`, so a subscription no longer lists it (test follows).
+
+Not ported: the rate-limit wait (`limit-gate.ts`; with it upstream's "Fail fast on ChatGPT Business administrator limits" commit, which edits `limits.ts`), extensions adding rows to the Session menu (Pi has none, and noid's menu differs), and the site and README refresh.
