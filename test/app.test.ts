@@ -16,7 +16,7 @@ import {
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
-import { mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 import { after, before, mock, test } from "node:test";
@@ -27,7 +27,7 @@ import {
     fauxThinking,
     fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import type { ConversationId } from "@earendil-works/pi-durable";
+import type { ConversationId, Storage } from "@earendil-works/pi-durable";
 import type { Attachment } from "../src/server/commands.ts";
 import createArtifacts from "../src/server/extensions/artifacts.ts";
 import type { PocketHost } from "../src/server/host.ts";
@@ -1159,7 +1159,55 @@ test("requests with the wrong types are refused, and nothing odd is stored", asy
     assert.equal(app.sessions().find((each) => each.id === Number(id))?.archived, undefined);
 });
 
-test("a lock left by a process that is gone, or is not Node, is taken over; a running server's is not", async () => {
+test("the harness disables the crash-loop guard for long task phases", async () => {
+    const { Harness } = await import("@earendil-works/pi-durable");
+    const opened = mock.method(Harness, "open");
+    let isolated: App | undefined;
+
+    try {
+        isolated = await openApp(faux, join(root, "restart-settings"));
+        const settings = opened.mock.calls[0]!.arguments[1].settings;
+
+        assert.equal(
+            (typeof settings === "function" ? settings() : settings)?.restartLimit,
+            Infinity,
+        );
+    } finally {
+        opened.mock.restore();
+        await isolated?.close();
+    }
+});
+
+test("failed harness initialization closes its opened storage before releasing the lock", async () => {
+    const { Harness } = await import("@earendil-works/pi-durable");
+    const dataDir = join(root, "failed-harness-initialization");
+    let storageClosed = false;
+    const failed = mock.method(Harness, "open", async (storage: Storage) => {
+        const close = storage.close.bind(storage);
+
+        mock.method(storage, "close", async (closeContext: Parameters<Storage["close"]>[0]) => {
+            assert.equal(existsSync(join(dataDir, "harness.lock")), true);
+            assert.equal(existsSync(join(dataDir, "harness.lock.identity")), true);
+            await close(closeContext);
+            storageClosed = true;
+        });
+
+        throw new Error("scripted harness failure");
+    });
+
+    try {
+        await assert.rejects(openApp(faux, dataDir), /scripted harness failure/);
+    } finally {
+        failed.mock.restore();
+    }
+
+    assert.equal(storageClosed, true);
+    assert.equal(existsSync(join(dataDir, "harness.lock")), false);
+    assert.equal(existsSync(join(dataDir, "harness.lock.identity")), false);
+    await (await openApp(faux, dataDir)).close();
+});
+
+test("a dead holder's lock is taken over; live legacy holders with normal or renamed commands are respected", async () => {
     const { spawn } = await import("node:child_process");
     const { once } = await import("node:events");
     const dataDir = join(root, "locks");
@@ -1167,7 +1215,7 @@ test("a lock left by a process that is gone, or is not Node, is taken over; a ru
     mkdirSync(dataDir, { recursive: true });
     const lock = join(dataDir, "harness.lock");
     const openHere = () => openApp(faux, dataDir);
-    // Something running that is not Node; only Linux (and Android) can tell, through /proc.
+    // A changed command name is not proof that the old holder stopped.
     const other = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
         argv0: "not-node",
     });
@@ -1177,10 +1225,11 @@ test("a lock left by a process that is gone, or is not Node, is taken over; a ru
         writeFileSync(lock, "999999999\n");
         await (await openHere()).close();
 
-        if (process.platform === "linux" || process.platform === "android") {
-            writeFileSync(lock, `${other.pid}\n`);
-            await (await openHere()).close();
-        }
+        writeFileSync(lock, `${other.pid}\n`);
+        await assert.rejects(
+            openHere(),
+            new RegExp(`already running on this data directory \\(pid ${other.pid}\\)`),
+        );
 
         writeFileSync(lock, `${node.pid}\n`);
         await assert.rejects(
