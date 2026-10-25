@@ -1,6 +1,6 @@
 /**
- * Noid's context. Noid is one conversation that lives for months, and every reply reads all of it again. By default it
- * is compacted as a session is, at Pi Durable's thresholds (from Pi's settings). The owner can choose in Extensions to
+ * Noid's context. Noid is one conversation that lives for months, and every reply reads all of it again. On a new
+ * install it is compacted as a session is, at Pi Durable's thresholds (from Pi's settings). The owner can choose in Extensions to
  * keep it smaller: then it compacts itself once idle above `compactAt` tokens. It can always be compacted by hand with
  * `/compact`. Sessions' thresholds stay as a backstop while a long run grows it.
  *
@@ -34,10 +34,10 @@ import { clip, defang } from "./fence.ts";
 const context = BACKGROUND_CONTEXT;
 
 /**
- * Tokens of context above which Noid compacts itself once idle, unless its owner chose otherwise. 0 since the 0.22.0
- * sync: as sessions do. An install from before keeps 60k (`config.ts` writes it into `noidCompactAt` once).
+ * Tokens of context above which Noid compacts itself once idle, when no choice is stored: an install from before the
+ * 0.22.0 sync. A new install stores 0, as sessions do (`config.ts`).
  */
-export const NOID_COMPACT_DEFAULT = 0;
+export const NOID_COMPACT_DEFAULT = 60_000;
 /** What the owner may choose from; 0 leaves Noid to the thresholds sessions have. */
 export const NOID_COMPACT_CHOICES: readonly number[] = [0, 40_000, 60_000, 100_000];
 

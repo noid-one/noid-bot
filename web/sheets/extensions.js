@@ -153,7 +153,7 @@ const NOID_COMPACT = [
 ];
 
 function NoidCompactAt({ owner }) {
-    const at = store.state.server?.noidCompactAt ?? 0;
+    const at = store.state.server?.noidCompactAt ?? 60000;
     const change = (value) => attempt(() => api("settings", { noidCompactAt: value }));
 
     return html`<div class="setting wrap">

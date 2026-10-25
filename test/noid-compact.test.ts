@@ -408,9 +408,11 @@ test("Noid compacts itself once idle above its threshold; not below it, nor when
     const id = await noid();
     const count = async () => (await placed(id)).length;
 
-    // As sessions do, unless the owner chose a limit.
-    assert.equal(NOID_COMPACT_DEFAULT, 0);
+    // A new install compacts as sessions do; one from before, with no choice stored, above 60k.
     assert.equal(app.noidCompaction.compactAt, 0);
+    app.config.noidCompactAt = undefined;
+    assert.equal(NOID_COMPACT_DEFAULT, 60_000);
+    assert.equal(app.noidCompaction.compactAt, 60_000);
     // Well above: everything a summary keeps as it is, and then some.
     const long = `Here is the plan in full: ${"step by step, ".repeat(2000)}`;
 

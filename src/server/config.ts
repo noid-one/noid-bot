@@ -62,8 +62,7 @@ export interface ModelChoice {
 }
 
 interface PocketConfig {
-    /** 2 since Noid's compaction default became "as sessions do" (see the constructor). */
-    version: 1 | 2;
+    version: 1;
     /** Printed in the login URL at every start. Keep this file private. */
     ownerToken: string;
     users: User[];
@@ -171,19 +170,14 @@ export class ConfigStore {
 
         if (existsSync(this.file)) {
             this.#config = JSON.parse(readFileSync(this.file, "utf8")) as PocketConfig;
-
-            // Noid compacted itself above 60k tokens by default before; it now does as sessions do. An install from
-            // before keeps what it had, once: from then on the key is the owner's choice, as any other.
-            if (this.#config.version === 1) {
-                this.#config.noidCompactAt ??= 60_000;
-                this.#config.version = 2;
-                this.save();
-            }
         } else {
             const ownerToken = newToken();
 
+            // A new install's Noid compacts as sessions do (pi-pocket 5cedb46); one from before has no choice stored,
+            // so it keeps NOID_COMPACT_DEFAULT, as it did.
             this.#config = {
-                version: 2,
+                version: 1,
+                noidCompactAt: 0,
                 ownerToken,
                 users: [
                     {
