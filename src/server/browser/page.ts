@@ -11,6 +11,9 @@ import {
     SELECT_ALL_SCRIPT,
     SELECT_OPTION_SCRIPT,
     SNAPSHOT_SCRIPT,
+    TYPING_EMPTY_SCRIPT,
+    TYPING_FIELD_SCRIPT,
+    TYPING_FOCUS_SCRIPT,
 } from "./page-scripts.ts";
 import { clamp, presetOf, type Viewport, type ViewportPreset } from "./viewport.ts";
 
@@ -1110,6 +1113,13 @@ export class BrowserPage {
             label = found.label;
         }
 
+        // A page that is going away (the click started a navigation) types as before: one insert.
+        const { box } = (await this.#evaluate(TYPING_FIELD_SCRIPT).catch(() => ({
+            box: false,
+        }))) as {
+            box: boolean;
+        };
+
         if (options.append !== true) {
             const field = await this.#evaluate(SELECT_ALL_SCRIPT);
 
@@ -1123,8 +1133,16 @@ export class BrowserPage {
             }
         }
 
-        if (text !== "") {
+        // Code fields with a box per character take keys one at a time, as focus moves along; so does a field that
+        // took none of the inserted text, which some widgets accept only as key presses.
+        if (box && text.length > 1) {
+            await this.#typeKeys(text, label);
+        } else if (text !== "") {
             await this.#send("Input.insertText", { text });
+
+            if ((await this.#evaluate(TYPING_EMPTY_SCRIPT).catch(() => false)) === true) {
+                await this.#typeKeys(text, label);
+            }
         }
 
         if (options.submit === true) {
@@ -1135,6 +1153,26 @@ export class BrowserPage {
         }
 
         return label;
+    }
+
+    /** Types text as one key press per character, stopping if focus leaves the field and its row of code boxes. */
+    async #typeKeys(text: string, label: string): Promise<void> {
+        const characters = [...text];
+
+        for (const [index, character] of characters.entries()) {
+            if (
+                index > 0 &&
+                (await this.#evaluate(TYPING_FOCUS_SCRIPT).catch(() => false)) !== true
+            ) {
+                throw new BrowserError(
+                    `Typed ${index} of ${characters.length} characters into ${label}: focus left the field, so the rest was not typed.`,
+                );
+            }
+
+            await this.#key(character === "\n" ? "Enter" : character, 0);
+            // Widgets that move focus to the next box often do it a moment after the key.
+            await wait(30);
+        }
     }
 
     async press(combo: string, options: { signal?: AbortSignal } = {}): Promise<void> {

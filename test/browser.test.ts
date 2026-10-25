@@ -246,6 +246,97 @@ test("a password field's value is never part of what describes or finds it", rea
     }
 });
 
+test(
+    "codes go into one-box-per-digit fields a key at a time, and other fields as before",
+    real,
+    async () => {
+        const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "code-")) });
+        // Boxes that move focus on input, boxes that take only key presses, a field that takes only key presses, and boxes
+        // that send focus elsewhere after the second digit. The page counts key presses.
+        const fixture = `
+        <label>Name <input id="name" value="Ada"></label>
+        <div id="otp"></div><div id="keyed"></div><div id="jump"></div>
+        <div id="wrapped"><input type="hidden" name="code"></div>
+        <input id="strict" aria-label="Strict"><input id="tags" aria-label="Tags" oninput="window.tagInputs = (window.tagInputs || 0) + 1; this.value = ''">
+        <script>
+            window.keys = 0;
+            addEventListener("keydown", () => window.keys++, true);
+            for (const id of ["otp", "keyed", "jump", "wrapped"]) {
+                const boxes = Array.from({ length: 6 }, (_, i) => {
+                    const box = document.createElement("input");
+                    box.maxLength = 1;
+                    box.setAttribute("aria-label", id + " " + (i + 1));
+                    // "wrapped": each box in a wrapper of its own, beside a hidden input that holds the code.
+                    const wrapper = id === "wrapped" ? document.createElement("div") : null;
+                    wrapper?.append(box);
+                    document.getElementById(id).append(wrapper ?? box);
+                    return box;
+                });
+                boxes.forEach((box, i) => {
+                    box.addEventListener("focus", () => box.select());
+                    if (id === "keyed") {
+                        box.addEventListener("beforeinput", (event) => event.preventDefault());
+                        box.addEventListener("keydown", (event) => {
+                            if (!/^[0-9]$/.test(event.key)) return;
+                            event.preventDefault();
+                            box.value = event.key;
+                            boxes[Math.min(i + 1, 5)].focus();
+                        });
+                        return;
+                    }
+                    box.addEventListener("input", () => {
+                        if (box.value && i < 5) setTimeout(() => boxes[i + 1].focus(), 0);
+                        if (id === "jump" && i === 1) setTimeout(() => document.getElementById("name").focus(), 0);
+                    });
+                });
+            }
+            const strict = document.getElementById("strict");
+            strict.addEventListener("beforeinput", (event) => { if (event.inputType === "insertText" && event.data.length > 1) event.preventDefault(); });
+        </script>`;
+        const values = (id: string) =>
+            page.evaluate(
+                `[...document.querySelectorAll("#${id} input")].map((box) => box.value).join("")`,
+            );
+        let page!: Awaited<ReturnType<Browsers["open"]>>;
+
+        try {
+            page = await browsers.open(1);
+            await page.navigate(`${base}/`);
+            await page.evaluate(
+                `document.open(); document.write(${JSON.stringify(fixture)}); document.close(); 1`,
+            );
+
+            // An ordinary field: replaced in one insert, with no key presses.
+            await page.type({ selector: "#name" }, "Grace");
+            assert.equal(await page.evaluate("document.getElementById('name').value"), "Grace");
+            assert.equal(await page.evaluate("window.keys"), "0");
+
+            await page.type({ label: "otp 1" }, "123456");
+            assert.equal(await values("otp"), "123456");
+            await page.type({ label: "keyed 1" }, "654321");
+            assert.equal(await values("keyed"), "654321");
+            await page.type({ label: "wrapped 1" }, "112233");
+            assert.equal(await values("wrapped"), "112233");
+            // A field that refuses inserted text takes the same text as keys.
+            await page.type({ selector: "#strict" }, "4242");
+            assert.equal(await page.evaluate("document.getElementById('strict').value"), "4242");
+
+            // A field that took the text and emptied itself, as a tag field does, gets it once.
+            await page.type({ selector: "#tags" }, "alpha");
+            assert.equal(await page.evaluate("window.tagInputs"), "1");
+            // Focus leaves the code's boxes: typing stops there and says how far it got, typing nothing elsewhere.
+            await assert.rejects(
+                page.type({ label: "jump 1" }, "987654"),
+                /Typed 2 of 6 characters/,
+            );
+            assert.equal(await values("jump"), "98");
+            assert.equal(await page.evaluate("document.getElementById('name').value"), "Grace");
+        } finally {
+            await browsers.closeAll({ final: true });
+        }
+    },
+);
+
 test("upload takes regular files only, and on the computer only from the session's folder and shared", async () => {
     const home = mkdtempSync(join(root, "upload-home-"));
     const mine = join(home, "bots", "scout");

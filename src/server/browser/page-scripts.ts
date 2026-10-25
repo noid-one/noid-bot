@@ -228,6 +228,46 @@ export const SELECT_ALL_SCRIPT = String.raw`(() => {
 	return "none";
 })()`;
 
+/**
+ * Notes the focused field before typing, and the row of one-character boxes it belongs to, if any (one-box-per-digit
+ * code fields, which move focus box to box as keys arrive). Returns whether it is such a box.
+ */
+export const TYPING_FIELD_SCRIPT = String.raw`(() => {
+	const el = document.activeElement;
+	const box = (each) => each.tagName === "INPUT" && each.maxLength === 1;
+	window.__piPocketTyping = undefined;
+	if (!el || (!["INPUT", "TEXTAREA"].includes(el.tagName) && !el.isContentEditable)) return { box: false };
+	let group = null;
+	if (box(el)) {
+		const only = (up) => [...up.querySelectorAll("input:not([type=hidden])")].every(box);
+		group = el;
+		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
+			if (!only(up)) break;
+			group = up;
+		}
+	}
+	const typing = { field: el, group, input: false };
+	window.__piPocketTyping = typing;
+	// Whether the page took inserted text at all: an input event, even one whose handler empties the field again.
+	el.addEventListener("input", () => { typing.input = true; }, { once: true });
+	return { box: group !== null };
+})()`;
+
+/** Whether focus is still in the field typing began in, or in its row of code boxes. */
+export const TYPING_FOCUS_SCRIPT = String.raw`(() => {
+	const typing = window.__piPocketTyping;
+	const el = document.activeElement;
+	return Boolean(typing && el && (el === typing.field || (typing.group !== null && typing.group.contains(el))));
+})()`;
+
+/** Whether the page refused inserted text: no input event came, and the field, which still has focus, holds nothing. */
+export const TYPING_EMPTY_SCRIPT = String.raw`(() => {
+	const typing = window.__piPocketTyping;
+	const field = typing?.field;
+	if (!field || typing.input || document.activeElement !== field) return false;
+	return field.isContentEditable ? (field.textContent ?? "") === "" : field.value === "";
+})()`;
+
 /** Picks an option of a select element by its value or text. */
 export const SELECT_OPTION_SCRIPT = String.raw`((target, wanted) => {
 	const el = target.ref ? window.__piPocketRefs?.get(target.ref)?.deref() : target.selector ? document.querySelector(target.selector) : document.activeElement;
