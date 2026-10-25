@@ -213,6 +213,39 @@ test(
     },
 );
 
+test("a password field's value is never part of what describes or finds it", real, async () => {
+    const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "password-")) });
+
+    try {
+        const page = await browsers.open(1);
+
+        await page.navigate(`${base}/`);
+        await page.evaluate(
+            `document.body.innerHTML = '<input id="secret" type="password"><input id="plain" value="visible words"><button id="under" style="position:absolute;left:0;top:200px;width:200px;height:40px">Under</button><input id="over" type="password" style="position:absolute;left:0;top:200px;width:200px;height:40px">'; 1`,
+        );
+        // An unlabelled field that holds a password: nothing about it says the password.
+        await page.type({ selector: "#secret" }, "correct-horse");
+        assert.equal(
+            await page.evaluate("document.querySelector('#secret').value"),
+            "correct-horse",
+        );
+        assert.equal((await page.locate({ selector: "#secret" })).label, "input#secret");
+        await assert.rejects(page.locate({ label: "correct-horse" }), /Nothing on the page says/);
+        // A password field lying over what Pi clicks is named without its value too.
+        await page.evaluate("document.querySelector('#over').value = 'correct-horse'; 1");
+        const found = await page.locate({ selector: "#under" });
+
+        assert.equal(found.covered, "input#over");
+        // Other fields are still found by what they hold.
+        assert.equal(
+            (await page.locate({ label: "visible words" })).label,
+            'input#plain "visible words"',
+        );
+    } finally {
+        await browsers.closeAll({ final: true });
+    }
+});
+
 test("upload takes regular files only, and on the computer only from the session's folder and shared", async () => {
     const home = mkdtempSync(join(root, "upload-home-"));
     const mine = join(home, "bots", "scout");

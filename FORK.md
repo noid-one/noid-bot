@@ -96,3 +96,9 @@ Use Node 26 (`.nvmrc`); the suite runs on it since the test app loads statically
 - Pi 1.4's ChatGPT catalog dropped `gpt-5.5`, so a subscription no longer lists it (test follows).
 
 Not ported: the rate-limit wait (`limit-gate.ts`; with it upstream's "Fail fast on ChatGPT Business administrator limits" commit, which edits `limits.ts`), extensions adding rows to the Session menu (Pi has none, and noid's menu differs), and the site and README refresh.
+
+**2026-10-25, Pi Pocket 0.22 (upstream `bac4466`) and rakazo (`ca0fc3ff`), the small ports.** Rewritten by hand, not cherry-picked: noid's files had moved too far from upstream's (branch `port/upstream-0.22`):
+
+- Browser: a password field's value is never part of what describes or finds it (`LOCATE_SCRIPT`'s `valueOf`, from pi-pocket `46d7353`), so a click or type result, a covering element's name, and `label:` never carry it. This is defence in depth: the browser tool's `evaluate` can still read any field, by design.
+
+Not ported: the sign-in hold (rakazo `ca0fc3ff`; noid has no such bug), "run actions without asking" (`c436c7f1`), rail tooltips (`4f423f0f`), inline bot naming (`6bb83ed9`, for later: it changes today's transcript), Ask someone, public pages, `host.ask`/`hide`/`commandEnv`/`browser`, extension events, services and settings, the systemd unit, and rakazo's web, mobile, desktop, CI, Telegram, credential store, and MCP changes. Pi Pocket 0.22's approvals change (`answerApproval` taking an object, `Decision.ask`, `approval.form`) and its `app-events.ts` bus wait for the next sync.

@@ -169,8 +169,10 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
  */
 export const LOCATE_SCRIPT = String.raw`(async (target) => {
 	const clip = (text, max) => { const flat = String(text ?? "").replace(/\s+/g, " ").trim(); return flat.length > max ? flat.slice(0, max - 1) + "…" : flat; };
+	// A password field's value is never part of what describes or finds it.
+	const valueOf = (el) => (el.tagName === "INPUT" && el.type === "password" ? "" : el.value);
 	const describe = (el) => {
-		const name = clip(el.getAttribute("aria-label") || el.innerText || el.value || el.getAttribute("placeholder") || el.getAttribute("title") || "", 60);
+		const name = clip(el.getAttribute("aria-label") || el.innerText || valueOf(el) || el.getAttribute("placeholder") || el.getAttribute("title") || "", 60);
 		return el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (name ? ' "' + name + '"' : "");
 	};
 	let el = null;
@@ -182,7 +184,7 @@ export const LOCATE_SCRIPT = String.raw`(async (target) => {
 		if (!el) throw new Error("Nothing matches the selector " + target.selector + ".");
 	} else if (target.label) {
 		const want = target.label.replace(/\s+/g, " ").trim().toLowerCase();
-		const text = (each) => (each.getAttribute("aria-label") || each.innerText || each.value || each.getAttribute("placeholder") || each.getAttribute("title") || "").replace(/\s+/g, " ").trim().toLowerCase();
+		const text = (each) => (each.getAttribute("aria-label") || each.innerText || valueOf(each) || each.getAttribute("placeholder") || each.getAttribute("title") || "").replace(/\s+/g, " ").trim().toLowerCase();
 		const seen = (each) => each.getClientRects().length > 0 && getComputedStyle(each).visibility !== "hidden";
 		const controls = [...document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, label, [role], [onclick], [tabindex]')].filter(seen);
 		el = controls.find((each) => text(each) === want) ?? controls.find((each) => text(each).includes(want)) ?? null;
