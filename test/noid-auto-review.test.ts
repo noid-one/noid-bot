@@ -91,6 +91,10 @@ const route: FauxResponseStep = (request) => {
     if (all.includes("fast safety checker")) {
         checks += 1;
 
+        if (all.includes("checker down")) {
+            return fauxAssistantMessage([], { stopReason: "error", errorMessage: "overloaded" });
+        }
+
         return fauxAssistantMessage([
             fauxText(
                 /<owner_task>[^<]*approved transfer/.test(all)
@@ -255,6 +259,17 @@ test("the owner can pick a model that checks and a backup; with none, the bot's 
     await send(scout, message("post", "the notes are in shared/"));
     assert.equal(checks, 1);
     assert.match(await lastReply(scout), /Sent to Post/);
+
+    // A backup that is the first model again is not asked twice: the check asks, after one request.
+    await autoReviewSettings(app, owner(app), {
+        model: { provider: "faux", modelId: "faux-1" },
+        backup: { provider: "faux", modelId: "faux-1" },
+    });
+    checks = 0;
+    const down = await send(scout, message("post", "checker down"), true);
+
+    assert.equal(checks, 1);
+    assert.match(down.question!.reason, /could not be checked by auto review/);
 
     // Turning it off keeps the models; null takes them away.
     assert.equal(await autoReview(app, owner(app), false), false);

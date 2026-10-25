@@ -6,7 +6,12 @@
  * (`planActionGate`, `applyJudgeDecision`), Apache-2.0.
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { type ConversationId, defineDoc, ProviderDoc } from "@earendil-works/pi-durable";
+import {
+    type ConversationId,
+    defineDoc,
+    type ModelRef,
+    ProviderDoc,
+} from "@earendil-works/pi-durable";
 import { AuthorsDoc, rebased } from "../docs.ts";
 import type { PocketApp } from "../app.ts";
 import type { User } from "../config.ts";
@@ -16,14 +21,11 @@ import type { BotProfile } from "./bots.ts";
 import { ownerOf, requireOwner } from "./owner.ts";
 import { onlyReads } from "./read-only.ts";
 
-/** A model as the owner picked it for auto review. */
-export type ReviewModel = { provider: string; modelId: string };
-
 /**
  * Whether the owner turned auto review on, and the models that check: `model` instead of the bot's own (none: the bot's
  * own, as before), and `backup`, tried when the first is not signed in or fails. After rakazo cd2386b3's approval model.
  */
-export type AutoReviewState = { on: boolean; model?: ReviewModel; backup?: ReviewModel };
+export type AutoReviewState = { on: boolean; model?: ModelRef; backup?: ModelRef };
 
 export const AutoReviewDoc = defineDoc<AutoReviewState>({
     kind: "x.noid.auto-review",
@@ -45,7 +47,7 @@ export async function autoReview(app: PocketApp, user: User, on?: boolean): Prom
 export async function autoReviewSettings(
     app: PocketApp,
     user: User,
-    change: { on?: boolean; model?: ReviewModel | null; backup?: ReviewModel | null } = {},
+    change: { on?: boolean; model?: ModelRef | null; backup?: ModelRef | null } = {},
 ): Promise<AutoReviewState> {
     requireOwner(user, "Only the owner can see or change auto review.");
 
@@ -79,7 +81,7 @@ export async function autoReviewSettings(
 }
 
 /** A model the owner picked, from what a request sent: undefined when it is not one, null to pick none. */
-export function reviewModelOf(value: unknown): ReviewModel | null | undefined {
+export function reviewModelOf(value: unknown): ModelRef | null | undefined {
     if (value === null) {
         return null;
     }
@@ -302,14 +304,20 @@ export async function review(
             return { ask: true, reason: "is too long for auto review to check whole" };
         }
 
-        // The owner's review model, else the bot's own; then the backup, when there is one.
+        // The owner's review model, else the bot's own; then the backup, when there is one and is another model.
         const settings = await app.harness.snapshot(AutoReviewDoc, context);
-        const resolve = (picked: (ReviewModel | undefined)[]) =>
+        const own = async () => (await app.agentState(id))?.model;
+        const resolve = (picked: (ModelRef | undefined)[]) =>
             picked
                 .filter((each) => each !== undefined)
                 .map((each) => app.models.getModel(each.provider, each.modelId))
-                .filter((each) => each !== undefined);
-        const own = async () => (await app.agentState(id))?.model;
+                .filter((each) => each !== undefined)
+                .filter(
+                    (each, index, all) =>
+                        all.findIndex(
+                            (other) => other.provider === each.provider && other.id === each.id,
+                        ) === index,
+                );
         let models = resolve([settings?.model ?? (await own()), settings?.backup]);
 
         // The models the owner picked are gone (a provider removed): the bot's own checks rather than none.
@@ -330,14 +338,20 @@ export async function review(
         const prompt = reviewPrompt({ tool, args, task: await taskOf(app, id), bot, newSite });
 
         timedOut = () => deadline.aborted;
+        const handOff = (why: string, backup: { provider: string; id: string }) =>
+            app.log(
+                `auto review: checker ${checking} failed, trying ${backup.provider}/${backup.id}: ${snippet(redactKeys(why), 300)}`,
+            );
 
         for (const [index, model] of models.entries()) {
             const backup = models[index + 1];
 
             checking = `${model.provider}/${model.id}`;
 
+            let reply;
+
             try {
-                const reply = await app.models.completeSimple(
+                reply = await app.models.completeSimple(
                     model,
                     {
                         systemPrompt:
@@ -363,44 +377,46 @@ export async function review(
                         ...(sessionId === undefined ? {} : { sessionId }),
                     },
                 );
-
-                await app.harness.commit((tx) => recordUsage(tx, id, model, reply.usage), context);
-
-                // A request that failed hands over to the backup; an answer, even one that is no verdict, does not.
-                if (reply.stopReason === "error" && backup !== undefined) {
-                    app.log(
-                        `auto review: checker ${checking} failed, trying ${backup.provider}/${backup.id}: ${snippet(redactKeys(reply.errorMessage ?? "error"), 300)}`,
-                    );
-                    continue;
-                }
-
-                // Only an answer that ended by itself: one cut off, or an error with some text, is no verdict.
-                const verdict =
-                    reply.stopReason === "stop"
-                        ? readVerdict(
-                              reply.content
-                                  .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                                  .join(""),
-                          )
-                        : { decision: "error" as const };
-
-                return verdict.decision === "pass"
-                    ? { ask: false, reason: verdict.reason ?? "fits the task" }
-                    : verdict.decision === "ask"
-                      ? {
-                            ask: true,
-                            reason: `was flagged by auto review: ${verdict.reason ?? "looks outside the task"}`,
-                        }
-                      : { ask: true, reason: "could not be checked by auto review" };
             } catch (error) {
                 if (backup === undefined || deadline.aborted || signal?.aborted === true) {
                     throw error;
                 }
 
-                app.log(
-                    `auto review: checker ${checking} failed, trying ${backup.provider}/${backup.id}: ${snippet(redactKeys(String(error)), 300)}`,
-                );
+                handOff(String(error), backup);
+                continue;
             }
+
+            await app.harness.commit((tx) => recordUsage(tx, id, model, reply.usage), context);
+
+            // A request that failed hands over to the backup; an answer, even one that is no verdict, does not.
+            if (
+                reply.stopReason === "error" &&
+                backup !== undefined &&
+                !deadline.aborted &&
+                signal?.aborted !== true
+            ) {
+                handOff(reply.errorMessage ?? "error", backup);
+                continue;
+            }
+
+            // Only an answer that ended by itself: one cut off, or an error with some text, is no verdict.
+            const verdict =
+                reply.stopReason === "stop"
+                    ? readVerdict(
+                          reply.content
+                              .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                              .join(""),
+                      )
+                    : { decision: "error" as const };
+
+            return verdict.decision === "pass"
+                ? { ask: false, reason: verdict.reason ?? "fits the task" }
+                : verdict.decision === "ask"
+                  ? {
+                        ask: true,
+                        reason: `was flagged by auto review: ${verdict.reason ?? "looks outside the task"}`,
+                    }
+                  : { ask: true, reason: "could not be checked by auto review" };
         }
 
         return { ask: true, reason: "could not be checked by auto review" };
