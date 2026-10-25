@@ -1,6 +1,6 @@
 // App state, the server connection, and API calls. Components read `store.state` and re-render on `store.subscribe`.
 import { onRoute, pushRoute } from "./back.js";
-import { sessionForest } from "./session-tree.js";
+import { sessionForest, unfolded } from "./session-tree.js";
 import { liveMessage } from "./live.js";
 
 /** A random id. crypto.randomUUID only exists on https and localhost pages; plain-http network addresses lack it. */
@@ -62,6 +62,9 @@ const emptyView = () => ({
     subagentsHeld: null,
 });
 
+/** Where this browser keeps the sessions whose linked sessions are folded away (`toggleFoldedLinked`). */
+const FOLDED_LINKED_KEY = "noid.foldedLinked";
+
 export const store = {
     state: {
         me: undefined, // undefined: unknown, null: signed out
@@ -81,6 +84,8 @@ export const store = {
         /** Sessions marked unread in this browser: an id each, until opened again. */
         unread: unreadOf(),
         conversationId: routeConversation(),
+        /** Sessions whose linked sessions are folded away in the list: this browser's choice (`toggleFoldedLinked`). */
+        foldedLinked: readFoldedLinked(),
         view: emptyView(),
         ...peopleFor(routeConversation()),
         history: null,
@@ -230,9 +235,23 @@ export function sessionBot(id = store.state.conversationId, state = store.state)
  * (`session-tree.js`). Archived sessions are left out.
  */
 export function workspaceOrder(state = store.state) {
+    // Linked sessions folded away are out of the order too: the numbers and Alt+arrows follow what shows.
+    return orderOf(state, foldsNow(state));
+}
+
+/**
+ * Every session that is not archived, in workspace order, folded ones too: for finding a session (the launcher), where a
+ * fold must not hide one that waits.
+ */
+export function sessionOrder(state = store.state) {
+    return orderOf(state, new Set());
+}
+
+/** Sessions in workspace order, with the linked sessions under `folds` left out. */
+function orderOf(state, folds) {
     const active = state.sessions.filter((session) => !session.archived);
     const { roots, rows } = sessionForest(active, { pinned: state.pinned });
-    const family = (root) => rows.get(root.id).map((row) => row.session);
+    const family = (root) => unfolded(rows.get(root.id), folds).map((row) => row.session);
     const pinned = state.pinned.map((id) => roots.find((root) => root.id === id)).filter(Boolean);
 
     return [
@@ -240,6 +259,72 @@ export function workspaceOrder(state = store.state) {
         ...roots.filter((root) => !pinned.includes(root)).flatMap(family),
     ];
 }
+
+function readFoldedLinked() {
+    try {
+        const kept = JSON.parse(localStorage.getItem(FOLDED_LINKED_KEY) ?? "[]");
+
+        return Array.isArray(kept) ? kept.filter((id) => Number.isSafeInteger(id)) : [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * The folds that apply now: a session whose linked sessions are folded, but not one above the open session, which
+ * always shows.
+ */
+export function foldsNow(state = store.state) {
+    const folds = new Set(state.foldedLinked);
+
+    for (const id of holdsOpen(state)) {
+        folds.delete(id);
+    }
+
+    return folds;
+}
+
+/** The sessions above the open one, linked session by linked session: their folds stay open. */
+export function holdsOpen(state = store.state) {
+    const byId = new Map(state.sessions.map((session) => [session.id, session]));
+    const above = new Set();
+
+    for (
+        let at = byId.get(state.conversationId)?.linkedFrom?.id;
+        at !== undefined && !above.has(at);
+        at = byId.get(at)?.linkedFrom?.id
+    ) {
+        above.add(at);
+    }
+
+    return above;
+}
+
+/** Fold a session's linked sessions away in the list, or show them again; kept for this browser, its other tabs too. */
+export function toggleFoldedLinked(id) {
+    const known = new Set(store.state.sessions.map((session) => session.id));
+    // Sessions that are gone are let go of as the choice is saved.
+    const next = store.state.foldedLinked.filter((each) => each !== id && known.has(each));
+
+    if (!store.state.foldedLinked.includes(id)) {
+        next.push(id);
+    }
+
+    try {
+        localStorage.setItem(FOLDED_LINKED_KEY, JSON.stringify(next));
+    } catch {
+        // Storage refused (a private window): the fold holds until the page reloads.
+    }
+
+    store.set({ foldedLinked: next });
+}
+
+// Another tab of this browser folded or unfolded: this one follows.
+addEventListener("storage", (event) => {
+    if (event.key === FOLDED_LINKED_KEY) {
+        store.set({ foldedLinked: readFoldedLinked() });
+    }
+});
 
 /** Server features the web app may use. `collab` 2 adds roles, take turns, reactions, pins, notes, mentions, push. */
 export const collab = () => (store.state.server?.collab ?? 0) >= 2;

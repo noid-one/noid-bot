@@ -6,7 +6,7 @@ import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
 import { Face } from "./faces/face.js";
 import { useDragToClose } from "./gestures.js";
-import { sessionForest } from "./session-tree.js";
+import { sessionForest, unfolded } from "./session-tree.js";
 import { Splitter } from "./splitter.js";
 import {
     actions,
@@ -18,11 +18,14 @@ import {
     openSheet,
     openTool,
     closeTool,
+    foldsNow,
+    holdsOpen,
     scoped,
     sessionUnread,
     setUnread,
     stillMoving,
     store,
+    toggleFoldedLinked,
     workspaceOrder,
 } from "./store.js";
 import { finishedUnseen } from "./seen.js";
@@ -177,6 +180,42 @@ const readClosed = () => {
     }
 };
 
+/** The fold's name for a screen reader: how many, and what its dot says (`aria-expanded` says whether they show). */
+function foldLabel(kids, trouble) {
+    const count = `${kids} linked ${kids === 1 ? "session" : "sessions"}`;
+
+    return trouble === "waiting"
+        ? `${count}, one needs you`
+        : trouble === "failed"
+          ? `${count}, one failed`
+          : count;
+}
+
+/** Whether a session folded away under `id` waits for you or failed: the fold shows it, as a folded group does. */
+function hiddenTrouble(group, id) {
+    const at = group.hidden.findIndex((row) => row.session.id === id);
+
+    if (at === -1) {
+        return undefined;
+    }
+
+    const depth = group.hidden[at].branches.length;
+
+    for (const row of group.hidden.slice(at + 1)) {
+        if (row.branches.length <= depth) {
+            break;
+        }
+
+        const shape = sessionMark(row.session).shape;
+
+        if (shape === "waiting" || shape === "failed") {
+            return shape;
+        }
+    }
+
+    return undefined;
+}
+
 const DAY = 86_400_000;
 
 /** Which day bucket a time falls in, in this device's time zone. */
@@ -319,6 +358,10 @@ export function sessionMark(session) {
 function SessionRow({
     session,
     branches,
+    kids = 0,
+    folded = false,
+    foldHeld = false,
+    foldTrouble,
     index,
     number,
     needle,
@@ -371,7 +414,7 @@ function SessionRow({
     const acts = (canSteer() ? 1 : 0) + (session.archived ? 0 : 2);
 
     return html`<div
-        class=${`session-row ${open ? "active" : ""} ${selected ? "selected" : ""} ${pressing ? "pressing" : ""} ${moving ? "moving" : ""} ${marked ? "marked-unread" : ""} ${unseen ? "unseen" : ""} ${["no-acts", "one-act", "", "three-acts"][acts]}`}
+        class=${`session-row ${kids > 0 ? "with-fold" : ""} ${open ? "active" : ""} ${selected ? "selected" : ""} ${pressing ? "pressing" : ""} ${moving ? "moving" : ""} ${marked ? "marked-unread" : ""} ${unseen ? "unseen" : ""} ${["no-acts", "one-act", "", "three-acts"][acts]}`}
         data-part="session-row"
         data-state=${ROW_STATES[mark.shape.split(" ")[0]]}
         data-id=${session.id}
@@ -460,6 +503,31 @@ function SessionRow({
                 }
             </span>
         </button>
+        ${
+            kids > 0 &&
+            html`<button
+                class=${`session-fold ${folded ? "folded" : ""}`}
+                data-part="session-fold"
+                aria-expanded=${!folded}
+                aria-label=${foldLabel(kids, foldTrouble)}
+                title=${
+                    foldHeld
+                        ? "The open session is among them, so they show"
+                        : `${folded ? "Show" : "Hide"} ${kids} linked ${kids === 1 ? "session" : "sessions"}`
+                }
+                disabled=${foldHeld}
+                onClick=${() => toggleFoldedLinked(session.id)}
+            >
+                ${
+                    foldTrouble &&
+                    html`<span class=${`group-trouble ${foldTrouble}`} aria-hidden="true"></span>`
+                }
+                <span class="session-fold-pill">
+                    ${kids}
+                    <${Icon} name="down" size=${10} />
+                </span>
+            </button>`
+        }
         <span class="session-actions">
             ${
                 canSteer() &&
@@ -883,11 +951,21 @@ function AllSessions({ compact = false }) {
                     .includes(needle)),
     );
     const forest = sessionForest(shown, { pinned, folders: tab === "folders" });
+    // Linked sessions folded away (`store.js`), but never above the open session, which always shows.
+    const folded = foldsNow();
+    const above = holdsOpen();
     const groups = groupsOf(forest.roots, { tab, needle, home: server?.home, pinned }).map(
-        (group) => ({
-            ...group,
-            rows: group.rows.flatMap((root) => forest.rows.get(root.id)),
-        }),
+        (group) => {
+            const rows = group.rows.flatMap((root) => forest.rows.get(root.id));
+
+            return {
+                ...group,
+                total: rows.length,
+                rows: needle === "" ? unfolded(rows, folded) : rows,
+                // What each folded row hides, for the marks it stands in for.
+                hidden: needle === "" ? rows : [],
+            };
+        },
     );
 
     visible.current = groups.flatMap((group) =>
@@ -895,8 +973,12 @@ function AllSessions({ compact = false }) {
             ? []
             : group.rows.map(({ session }) => session.id),
     );
-    const chosen = shown.filter((session) => selected.has(session.id)).map((session) => session.id);
-    // Taps select while the bar shows: not for rows selected and then hidden (archived, or searched away).
+    // A row a fold hides is not chosen: an action runs only on rows the person can see were picked.
+    const listed = new Set(groups.flatMap((group) => group.rows.map(({ session }) => session.id)));
+    const chosen = shown
+        .filter((session) => selected.has(session.id) && listed.has(session.id))
+        .map((session) => session.id);
+    // Taps select while the bar shows: not for rows selected and then hidden (archived, searched away, or folded).
     const tapping = tapSelects && chosen.length > 0;
     const numbers = new Map(workspaceOrder().map((session, index) => [session.id, index]));
 
@@ -1362,7 +1444,7 @@ function AllSessions({ compact = false }) {
                 const isClosed = closed.has(group.key) && group.key !== "flat";
                 // A folded group hides its rows' marks: say when one waits for you or its run failed.
                 const trouble = isClosed
-                    ? group.rows
+                    ? group.hidden
                           .map((row) => sessionMark(row.session).shape)
                           .find((shape) => shape === "waiting" || shape === "failed")
                     : undefined;
@@ -1397,7 +1479,7 @@ function AllSessions({ compact = false }) {
                                     ></span>`
                                 }
                                 <span class="group-count" data-part="session-group-count">
-                                    ${group.rows.length}
+                                    ${group.total}
                                 </span>
                                 ${group.key !== "flat" && html`<${Icon} name="down" size=${11} />`}
                             </button>`
@@ -1405,12 +1487,20 @@ function AllSessions({ compact = false }) {
                     }
                     <div class="group-body" inert=${isClosed}>
                         <div>
-                            ${group.rows.map(
-                                ({ session, branches }) =>
-                                    html`<${SessionRow}
+                            ${group.rows.map(({ session, branches, descendants }) => {
+                                // Linked sessions fold under the one that started them; a search shows them all,
+                                // with nothing to fold.
+                                const kids = needle === "" ? descendants : 0;
+                                const isFolded = kids > 0 && folded.has(session.id);
+
+                                return html`<${SessionRow}
                                         key=${session.id}
                                         session=${session}
                                         branches=${branches}
+                                        kids=${kids}
+                                        folded=${isFolded}
+                                        foldHeld=${above.has(session.id)}
+                                        foldTrouble=${isFolded ? hiddenTrouble(group, session.id) : undefined}
                                         index=${index++}
                                         number=${numbers.get(session.id)}
                                         needle=${needle}
@@ -1419,8 +1509,8 @@ function AllSessions({ compact = false }) {
                                         folders=${tab === "folders" && needle === ""}
                                         onPick=${pick}
                                         onSelect=${select}
-                                    />`,
-                            )}
+                                    />`;
+                            })}
                         </div>
                     </div>
                 </section>`;

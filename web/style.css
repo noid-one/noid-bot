@@ -4886,6 +4886,69 @@ pre.diff .del {
     display: none;
 }
 
+/*
+ * A row with linked sessions under it: a button on its right shows how many and folds them away (`sessions.js`). The
+ * row's own button keeps its right side clear of it, and the hover actions move in beside it.
+ */
+.session-fold {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 44px;
+    padding: 0 6px;
+    font: 11px var(--mono);
+    color: var(--muted);
+}
+
+/* The control itself: how many, and a chevron, in a quiet pill; the whole 44px beside it takes the tap. */
+.session-fold-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--hair);
+    border-radius: var(--r-pill);
+    background: var(--card-2);
+    transition:
+        color var(--t-hover) var(--ease-out),
+        border-color var(--t-hover) var(--ease-out);
+}
+
+/* Above the open session: its group stays open, so the fold waits. */
+.session-fold:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+@media (hover: hover) {
+    .session-fold:not(:disabled):hover .session-fold-pill {
+        color: var(--text);
+        border-color: var(--accent-line);
+    }
+}
+
+.session-fold .icon {
+    transition: transform var(--t-in) var(--ease-out);
+}
+
+.session-fold.folded .icon {
+    transform: rotate(-90deg);
+}
+
+.session-row.with-fold .session {
+    padding-right: 64px;
+}
+
+.session-row.with-fold .session-actions {
+    right: 62px;
+}
+
 /* Archive, pin, and mark unread: on the row's right, shown on hover or while the row has focus. */
 .session-actions {
     position: absolute;

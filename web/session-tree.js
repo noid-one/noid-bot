@@ -1,3 +1,6 @@
+/** A top row's branches: none. One array for all of them, so a memoized row sees the same value each time. */
+const NO_BRANCHES = Object.freeze([]);
+
 // Presentation only: linked sessions stay independent sessions, never subagents of the one that started them.
 export function sessionForest(shown, { pinned = [], folders = false } = {}) {
     const byId = new Map(shown.map((session) => [session.id, session]));
@@ -43,6 +46,20 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
         }
     }
 
+    // How many rows a row has under it, at any depth: what folding it hides.
+    const counted = new Map();
+
+    const count = (id) => {
+        if (!counted.has(id)) {
+            counted.set(
+                id,
+                children.get(id).reduce((sum, child) => sum + 1 + count(child.id), 0),
+            );
+        }
+
+        return counted.get(id);
+    };
+
     const rows = new Map();
     const roots = [];
 
@@ -52,7 +69,7 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
         }
 
         const family = [];
-        const pending = [{ session, branches: [] }];
+        const pending = [{ session, branches: NO_BRANCHES, descendants: count(session.id) }];
         let updatedAt = session.updatedAt;
 
         while (pending.length > 0) {
@@ -66,6 +83,7 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
                 pending.push({
                     session: descendants[index],
                     branches: [...row.branches, index < descendants.length - 1],
+                    descendants: count(descendants[index].id),
                 });
             }
         }
@@ -77,4 +95,23 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
     roots.sort((a, b) => b.updatedAt - a.updatedAt);
 
     return { roots, rows };
+}
+
+/** A list of rows in tree order without those under a folded row (`folded`: the ids folded). */
+export function unfolded(rows, folded) {
+    const out = [];
+    let under = null;
+
+    for (const row of rows) {
+        const depth = row.branches.length;
+
+        if (under !== null && depth > under) {
+            continue;
+        }
+
+        under = row.descendants > 0 && folded.has(row.session.id) ? depth : null;
+        out.push(row);
+    }
+
+    return out;
 }

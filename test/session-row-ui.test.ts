@@ -14,11 +14,13 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { Browsers } from "../src/server/browser.ts";
 import { findBrowser } from "../src/server/browser/discovery.ts";
 import type { BrowserPage } from "../src/server/browser/page.ts";
 import { VIEWPORTS } from "../src/server/browser/viewport.ts";
+import { SessionsDoc } from "../src/server/docs.ts";
 import { createHandler } from "../src/server/http.ts";
 
 const chromium = findBrowser();
@@ -344,3 +346,73 @@ test("a session marked unread shows it until it is opened", real, async () => {
     await until(async () => (await touched()).path === `/s/${one}`, "opened");
     await marked([], "opening it read it");
 });
+
+test(
+    "a fold hides linked sessions at once, from the list and the numbers, but never above the open one",
+    real,
+    async () => {
+        const parent = await newSession(app);
+        const kids = [await newSession(app), await newSession(app)];
+
+        // Started by the parent, as a linked session is (`team`).
+        await app.harness.commit(async (tx) => {
+            const sessions = (await tx.doc(SessionsDoc)).items;
+
+            for (const kid of kids) {
+                sessions[String(kid)]!.linkedFrom = { id: Number(parent) };
+            }
+        }, BACKGROUND_CONTEXT);
+
+        const shown = async () =>
+            await inPage<{
+                kids: number;
+                expanded: string | null;
+                numbered: number;
+                rows: number;
+            }>(`
+            const fold = document.querySelector(${JSON.stringify(`${row(parent)} .session-fold`)});
+            return JSON.stringify({
+                kids: ${JSON.stringify(kids.map((kid) => row(kid)))}.filter((each) => document.querySelector(each)).length,
+                expanded: fold?.getAttribute("aria-expanded") ?? null,
+                numbered: document.querySelectorAll(${JSON.stringify(`${list} .session-num`)}).length,
+                rows: document.querySelectorAll(${JSON.stringify(`${list} .session-row`)}).length,
+            });
+        `);
+        const click = (selector: string) =>
+            page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+
+        await fresh();
+        await until(
+            async () => (await shown()).kids === 2,
+            "the linked sessions under their parent",
+        );
+
+        // Folded: gone from the list, and from the numbers Alt+1…9 use, with nothing else changing.
+        await click(`${row(parent)} .session-fold`);
+        await until(async () => (await shown()).kids === 0, "the fold hides them");
+        const folded = await shown();
+
+        assert.equal(folded.expanded, "false");
+        assert.equal(
+            folded.numbered,
+            Math.min(9, folded.rows),
+            "the numbers follow the rows that show",
+        );
+
+        // Open one of them: its parent's fold opens, and its button is off.
+        await page.navigate(`${base}/s/${kids[0]}`);
+        await until(async () => (await shown()).kids === 2, "the open session's family shows");
+        assert.equal(
+            await inPage<boolean>(
+                `return JSON.stringify(document.querySelector(${JSON.stringify(`${row(parent)} .session-fold`)}).disabled)`,
+            ),
+            true,
+        );
+
+        // Back home, the fold is as it was, and unfolding shows them.
+        await fresh();
+        await until(async () => (await shown()).kids === 0, "folded again away from it");
+        await click(`${row(parent)} .session-fold`);
+        await until(async () => (await shown()).kids === 2, "unfolded");
+    },
+);
