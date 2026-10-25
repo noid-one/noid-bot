@@ -11,11 +11,56 @@ import {
     SELECT_ALL_SCRIPT,
     SELECT_OPTION_SCRIPT,
     SNAPSHOT_SCRIPT,
-    TYPING_EMPTY_SCRIPT,
+    TYPING_CLEAR_SCRIPT,
     TYPING_FIELD_SCRIPT,
-    TYPING_FOCUS_SCRIPT,
+    TYPING_FOCUS_BOX_SCRIPT,
+    TYPING_STATE_SCRIPT,
 } from "./page-scripts.ts";
 import { clamp, presetOf, type Viewport, type ViewportPreset } from "./viewport.ts";
+
+/** Where typing a code stands (`TYPING_STATE_SCRIPT`). */
+type TypingState = { at: number; values: string[] | null; submitted: boolean; failed?: boolean };
+
+/** A row of code boxes (`TYPING_FIELD_SCRIPT`): what its boxes held before typing. */
+type CodeRow = { box: false } | { box: true; before: string[]; clicked: number };
+
+/** A letter or digit: what codes are made of. */
+const CODE_CHARACTER = /^[\p{L}\p{N}]$/u;
+
+/**
+ * How many letters and digits of `code` a row of boxes kept, -1 for all: box by box from the first box typing changed
+ * (a widget may send focus back to the first empty box), else the box it began in (`from`). A row with fewer boxes,
+ * boxes that kept an old code, or a box that took two does not hold it. Case aside; a box that shows a mask (•)
+ * counts as kept when it changed, or when it was selected for the key (`replace`).
+ */
+function keptOf(
+    code: readonly string[],
+    values: readonly string[],
+    before: readonly string[],
+    from: number,
+    replace: boolean,
+): number {
+    const changed = values.findIndex((each, index) => each !== before[index]);
+    const start = changed === -1 ? from : Math.min(changed, from);
+
+    return code.findIndex((each, index) => {
+        const held = values[start + index];
+
+        return (
+            !holds(held, each) ||
+            (!replace && !CODE_CHARACTER.test(held!) && held === before[start + index])
+        );
+    });
+}
+
+/** Whether a box holds one character of a code: that character (case aside), or a mask (•) in its place. */
+function holds(held: string | undefined, character: string): boolean {
+    if (held === undefined || [...held].length !== 1) {
+        return false;
+    }
+
+    return !CODE_CHARACTER.test(held) || held.toLowerCase() === character.toLowerCase();
+}
 
 export type BrowserState = {
     /** A browser to run was found on this machine. */
@@ -1094,12 +1139,16 @@ export class BrowserPage {
         return found.label;
     }
 
-    /** Type into a target (clicking it first), or into what has focus. Replaces what the field holds unless `append`. */
+    /**
+     * Type into a target (clicking it first), or into what has focus. Replaces what the field holds unless `append`.
+     * Returns what it typed into, and with `submit`, whether the page submitted a code itself (Enter is then not
+     * pressed, but its load is waited for as Enter's would be).
+     */
     async type(
         target: Target | undefined,
         text: string,
         options: { append?: boolean; submit?: boolean; signal?: AbortSignal } = {},
-    ): Promise<string> {
+    ): Promise<{ label: string; pageSubmitted: boolean }> {
         this.usedAt = Date.now();
         let label = "the focused element";
 
@@ -1111,16 +1160,25 @@ export class BrowserPage {
 
             await this.#click({ x: found.x, y: found.y }, "left", 1);
             label = found.label;
+
+            // A code's widget may send focus on after the click (to its first empty box, or to a hidden field behind
+            // the boxes) on a timer: it gets a moment first.
+            if (text.length > 1) {
+                await wait(30);
+            }
         }
 
-        // A page that is going away (the click started a navigation) types as before: one insert.
-        const { box } = (await this.#evaluate(TYPING_FIELD_SCRIPT).catch(() => ({
-            box: false,
-        }))) as {
-            box: boolean;
-        };
+        // Only a code of more than one character can need keys. A page that is going away (the click started a
+        // navigation) types as before: one insert.
+        const row =
+            text.length > 1
+                ? ((await this.#evaluate(TYPING_FIELD_SCRIPT).catch(() => ({
+                      box: false,
+                  }))) as CodeRow)
+                : { box: false as const };
 
-        if (options.append !== true) {
+        // A code's row is selected box by box as it is typed (`#typeCode`).
+        if (options.append !== true && !row.box) {
             const field = await this.#evaluate(SELECT_ALL_SCRIPT);
 
             // Some fields (email, number) cannot be selected by script: the editor's select-all works on them.
@@ -1133,46 +1191,240 @@ export class BrowserPage {
             }
         }
 
-        // Code fields with a box per character take keys one at a time, as focus moves along; so does a field that
-        // took none of the inserted text, which some widgets accept only as key presses.
-        if (box && text.length > 1) {
-            await this.#typeKeys(text, label);
+        // Code fields with a box per character take keys one at a time, as focus moves along; every other field takes
+        // the text in one insert. A code the page took itself (a form submitted, a load started, or the row emptied or
+        // gone) was submitted by the page: Enter would send it again.
+        let submitted = false;
+        // Where loading stood before typing: a code whose page submits it starts a load that Enter's wait would see.
+        const mark = this.#mark();
+
+        if (row.box) {
+            submitted = await this.#typeCode(
+                text,
+                label,
+                row,
+                options.append !== true,
+                mark,
+                options.submit === true,
+                options.signal,
+            );
         } else if (text !== "") {
             await this.#send("Input.insertText", { text });
+        }
 
-            if ((await this.#evaluate(TYPING_EMPTY_SCRIPT).catch(() => false)) === true) {
-                await this.#typeKeys(text, label);
+        // A code the page submitted itself: Enter would send it again. Its load is waited for as Enter's would be.
+        if (submitted) {
+            await this.#settle(mark, 10_000, options.signal);
+        } else if (options.submit === true) {
+            const before = this.#mark();
+
+            await this.#key("Enter", 0);
+            await this.#settle(before, 10_000, options.signal);
+        }
+
+        return { label, pageSubmitted: submitted };
+    }
+
+    /**
+     * Where typing a code stands (`TYPING_STATE_SCRIPT`), selecting the focused box's text first with `select`. A page
+     * that could not be read comes back `failed`, with focus gone (`#typeCode` decides what that means).
+     */
+    async #typingState(select: boolean): Promise<TypingState> {
+        const state = await this.#evaluate(`(${TYPING_STATE_SCRIPT})(${String(select)})`).catch(
+            () => undefined,
+        );
+
+        return (
+            (state as TypingState | undefined) ?? {
+                at: -1,
+                values: null,
+                submitted: false,
+                failed: true,
+            }
+        );
+    }
+
+    /**
+     * Types a code into a row of one-character boxes, a key per letter or digit (a code written "123 456" fills six
+     * boxes; a space or dash pressed would take a box, or a line break submit the form), stopping if focus leaves the
+     * row's boxes or the run stops. With `replace`, each box's text is selected as focus reaches it, so the code
+     * replaces an old one. `before` is what the boxes held, `clicked` the box clicked; `mark`, where loading stood before. True when the page took
+     * the code itself: a form was submitted, a load started, or the row emptied after the last key or left the page.
+     * With `enter` (Enter follows), it waits up to 300 ms for that first. A read that fails with no load started, or a
+     * page that submits before the code's end, is an error.
+     */
+    async #typeCode(
+        text: string,
+        label: string,
+        { before, clicked }: { before: string[]; clicked: number },
+        replace: boolean,
+        mark: { starts: number; stops: number },
+        enter: boolean,
+        signal?: AbortSignal,
+    ): Promise<boolean> {
+        const code = [...text].filter((each) => CODE_CHARACTER.test(each));
+
+        if (code.length === 0) {
+            throw new BrowserError(
+                `Nothing was typed into ${label}: its boxes take letters and digits, and "${text}" has none.`,
+            );
+        }
+
+        // Whether the page took the code: a form submitted, a load started, or the row gone. A page that could not be
+        // read is that only when a load started; otherwise the read failed, and nothing can be said.
+        const movedOn = (now: TypingState) => {
+            if (now.failed === true && this.#starts === mark.starts) {
+                throw new BrowserError(`Could not read the page while typing into ${label}.`);
+            }
+
+            return now.submitted || now.values === null || this.#starts !== mark.starts;
+        };
+
+        // A code longer than its row: the boxes would keep the wrong part of it, or the page send that. Nothing is typed.
+        // The boxes the code takes: from the one clicked, or from the row's first for a code as long as the row
+        // (wherever the widget sent focus since).
+        const from = code.length >= before.length ? 0 : Math.max(0, clicked);
+
+        // A code longer than the boxes from there on: they would keep the wrong part of it, or the page send that.
+        if (code.length > before.length - from) {
+            throw new BrowserError(
+                `Nothing was typed into ${label}: the code has ${String(code.length)} letters and digits, and its row ${String(before.length - from)} boxes${from > 0 ? ` from the one clicked on` : ""}.`,
+            );
+        }
+
+        // Replacing clears the row from there to its end: a shorter code would otherwise leave old digits after it,
+        // which a widget that sends once every box is full would send with it. Boxes before it are left (a code typed
+        // in two parts).
+        const taken = (values: string[] | null) => values?.slice(from) ?? [];
+
+        // Replacing a code: the old one goes first, so the page never holds old digits with new ones (a widget that
+        // sends once every box is full would send them). As edits, then, for a widget that puts values back, with
+        // Backspace from the last of them; a code that still cannot be cleared is not typed over.
+        if (replace && taken(before).some((each) => each !== "")) {
+            await this.#evaluate(
+                `(${TYPING_CLEAR_SCRIPT})(${String(from)}, ${String(before.length - from)})`,
+            ).catch(() => false);
+            await wait(30);
+
+            if (taken((await this.#typingState(false)).values).some((each) => each !== "")) {
+                const last = before.length - 1;
+
+                await this.#evaluate(`(${TYPING_FOCUS_BOX_SCRIPT})(${String(last)})`).catch(
+                    () => false,
+                );
+
+                for (let presses = 0; presses < 2 * (before.length - from); presses++) {
+                    aborted(signal);
+                    await this.#key("Backspace", 0);
+                    await wait(30);
+
+                    if (
+                        !taken((await this.#typingState(false)).values).some((each) => each !== "")
+                    ) {
+                        break;
+                    }
+                }
+
+                if (taken((await this.#typingState(false)).values).some((each) => each !== "")) {
+                    throw new BrowserError(
+                        `Nothing was typed into ${label}: its boxes hold an old code that could not be cleared.`,
+                    );
+                }
             }
         }
 
-        if (options.submit === true) {
-            const mark = this.#mark();
-
-            await this.#key("Enter", 0);
-            await this.#settle(mark, 10_000, options.signal);
+        if (from !== clicked || (replace && taken(before).some((each) => each !== ""))) {
+            await this.#evaluate(`(${TYPING_FOCUS_BOX_SCRIPT})(${String(from)})`).catch(
+                () => false,
+            );
+            await wait(30);
         }
 
-        return label;
-    }
+        let state = await this.#typingState(replace);
+        // What changed from here on is the code's doing: boxes this cleared are where it goes.
+        const baseline = state.values ?? before;
+        // The code starts in the box that has focus (the widget may have moved it from the one clicked).
+        const start = state.at;
+        // What each box a key went to held once the widget moved on: a row that empties itself after the last key
+        // (a PIN pad that submits and resets) is judged by these.
+        const landed: string[] = [];
 
-    /** Types text as one key press per character, stopping if focus leaves the field and its row of code boxes. */
-    async #typeKeys(text: string, label: string): Promise<void> {
-        const characters = [...text];
+        for (const [index, character] of code.entries()) {
+            aborted(signal);
 
-        for (const [index, character] of characters.entries()) {
-            if (
-                index > 0 &&
-                (await this.#evaluate(TYPING_FOCUS_SCRIPT).catch(() => false)) !== true
-            ) {
+            // The page took the code before its end (more characters than the row has boxes): the rest is not typed,
+            // which would go into the next step, or be sent again.
+            if (index > 0 && movedOn(state)) {
                 throw new BrowserError(
-                    `Typed ${index} of ${characters.length} characters into ${label}: focus left the field, so the rest was not typed.`,
+                    `The page submitted ${label} after ${index} of ${code.length} characters, so the rest was not typed: it sent what its boxes held then, before the code was complete.`,
                 );
             }
 
-            await this.#key(character === "\n" ? "Enter" : character, 0);
-            // Widgets that move focus to the next box often do it a moment after the key.
-            await wait(30);
+            if (state.at < 0) {
+                throw new BrowserError(
+                    `Typed ${index} of ${code.length} characters into ${label}: focus left the field, so the rest was not typed.`,
+                );
+            }
+
+            const at = state.at;
+
+            await this.#key(character, 0);
+
+            // Widgets move focus to the next box when they take a key, some a while after it, some through a moment
+            // with no box focused (they lock the full box first): wait for another box to have focus, up to 300 ms, so
+            // the next key does not land in a full box. The last key waits for the row to hold the code instead.
+            for (let waited = 0; waited < 300 && !movedOn(state); waited += 30) {
+                await wait(30);
+                state = await this.#typingState(replace);
+
+                const done =
+                    movedOn(state) ||
+                    (index === code.length - 1
+                        ? keptOf(code, state.values!, baseline, start, replace) === -1
+                        : state.at >= 0 && state.at !== at);
+
+                if (done) {
+                    break;
+                }
+            }
+
+            landed.push(state.values?.[at] ?? "");
         }
+
+        if (movedOn(state)) {
+            return true;
+        }
+
+        const values = state.values!;
+        // The row was emptied once the code was complete, after every key but the last went in (a PIN pad that
+        // submits and resets).
+        const reset =
+            values.every((each) => each === "") &&
+            code.slice(0, -1).every((each, index) => holds(landed[index], each));
+
+        if (reset) {
+            return true;
+        }
+
+        const kept = keptOf(code, values, baseline, start, replace);
+
+        if (kept !== -1) {
+            throw new BrowserError(
+                `Typed ${code.length} characters into ${label}, but the page kept ${kept} of ${code.length} characters.`,
+            );
+        }
+
+        // Some widgets submit the code a moment after its last digit: when Enter is to follow, a while for that, as
+        // Enter would send it again.
+        for (let waited = 0; enter && waited < 300; waited += 30) {
+            await wait(30);
+
+            if (movedOn(await this.#typingState(false))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     async press(combo: string, options: { signal?: AbortSignal } = {}): Promise<void> {

@@ -386,7 +386,7 @@ export default function createBrowser(host: PocketHost) {
 
                 case "type": {
                     need(args.text !== undefined, "text");
-                    const into = await run(
+                    const typed = await run(
                         page.type(pointed ? target : undefined, args.text!, {
                             ...(args.append === undefined ? {} : { append: args.append }),
                             ...(args.submit === undefined ? {} : { submit: args.submit }),
@@ -396,8 +396,10 @@ export default function createBrowser(host: PocketHost) {
 
                     lines.push(
                         args.text === ""
-                            ? `Cleared ${into}.`
-                            : `Typed into ${into}${args.submit === true ? " and pressed Enter" : ""}.`,
+                            ? `Cleared ${typed.label}.`
+                            : typed.pageSubmitted
+                              ? `Typed into ${typed.label}; the page submitted the code itself${args.submit === true ? ", so Enter was not pressed" : ""}.`
+                              : `Typed into ${typed.label}${args.submit === true ? " and pressed Enter" : ""}.`,
                     );
                     break;
                 }

@@ -257,23 +257,84 @@ test(
         <label>Name <input id="name" value="Ada"></label>
         <div id="otp"></div><div id="keyed"></div><div id="jump"></div>
         <div id="wrapped"><input type="hidden" name="code"></div>
+        <form id="submit"><input type="submit" value="Verify"></form><label>Before <input aria-label="Before"></label><div id="four"></div><label>Gap <input aria-label="Gap"></label><div id="stale"></div><div id="swap"></div><div id="masked"></div>
+        <form id="deep" onsubmit="event.preventDefault(); window.submits = (window.submits ?? 0) + 1"></form>
+        <input type="checkbox" id="check" maxlength="1" aria-label="Check">
+        <div id="autofill"><input autocomplete="one-time-code" tabindex="-1" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+        <div id="halves"><div><div class="half"></div></div><span>-</span><div><div class="half"></div></div></div>
+        <label>Email <input type="email" aria-label="Email"></label><div id="slow"></div>
+        <label>Phone <input type="tel" aria-label="Phone"></label><div id="gated"></div><div id="naive"></div>
+        <label>Town <input aria-label="Town"></label><div id="lock"></div>
+        <label>Street <input aria-label="Street"></label><div id="pin"></div>
+        <label>Zip <input aria-label="Zip"></label><div id="first"></div>
+        <form id="pinform" onsubmit="event.preventDefault(); window.pinSubmits = (window.pinSubmits ?? 0) + 1"></form>
+        <label>City <input aria-label="City"></label><form id="scripted" onsubmit="event.preventDefault(); window.sent = (window.sent ?? 0) + 1"></form>
+        <label>State <input aria-label="State"></label>
+        <form id="later" onsubmit="event.preventDefault(); window.laterSent = (window.laterSent ?? 0) + 1"></form>
+        <form id="full" onsubmit="event.preventDefault(); (window.fullSent ??= []).push([...this.querySelectorAll('input')].map((each) => each.value).join(''))"></form>
+        <label>Area <input aria-label="Area"></label>
+        <form id="held" onsubmit="event.preventDefault(); (window.heldSent ??= []).push([...this.querySelectorAll('input')].map((each) => each.value).join(''))"></form>
+        <label>Floor <input aria-label="Floor"></label><div id="empty"></div>
+        <label>Unit <input aria-label="Unit"></label><form id="locked" onsubmit="event.preventDefault(); (window.lockedSent ??= []).push([...this.querySelectorAll('input')].map((each) => each.value).join(''))"></form>
+        <label>Suite <input aria-label="Suite"></label>
+        <label>Region <input aria-label="Region"></label><div id="go"></div><label>Country <input aria-label="Country"></label><div id="behind"><input id="real" maxlength="6" autocomplete="one-time-code" style="position:absolute;opacity:0;width:1px;height:1px"></div>
+        <label>Note <input aria-label="Note"></label><div id="shadowed"></div><shadow-field></shadow-field>
+        <div id="notes"><textarea aria-label="Notes"></textarea></div>
         <input id="strict" aria-label="Strict"><input id="tags" aria-label="Tags" oninput="window.tagInputs = (window.tagInputs || 0) + 1; this.value = ''">
         <script>
             window.keys = 0;
             addEventListener("keydown", () => window.keys++, true);
-            for (const id of ["otp", "keyed", "jump", "wrapped"]) {
-                const boxes = Array.from({ length: 6 }, (_, i) => {
+            for (const id of ["otp", "keyed", "jump", "wrapped", "submit", "four", "stale", "notes", "swap", "masked", "deep", "autofill", "halves", "slow", "gated", "naive", "lock", "pin", "first", "pinform", "behind", "go", "scripted", "later", "full", "held", "empty", "locked"]) {
+                const boxes = Array.from({ length: id === "four" ? 4 : 6 }, (_, i) => {
                     const box = document.createElement("input");
                     box.maxLength = 1;
                     box.setAttribute("aria-label", id + " " + (i + 1));
+                    // "stale": boxes that still hold an old code, and do not select it when focused.
+                    if (["stale", "full", "held", "locked"].includes(id)) box.value = id === "stale" ? "8" : "9";
+                    // "locked" keeps each box read-only until it is focused, against autofill.
+                    if (id === "locked") {
+                        box.readOnly = true;
+                        box.addEventListener("focus", () => (box.readOnly = false));
+                        box.addEventListener("blur", () => (box.readOnly = true));
+                    }
+                    // "held" keeps its digits as a controlled widget does: an emptied box gets its digit back, and only
+                    // Backspace clears one.
+                    if (id === "held") {
+                        box.dataset.digit = "9";
+                        box.addEventListener("keydown", (event) => {
+                            if (event.key === "Backspace") {
+                                event.preventDefault();
+                                box.dataset.digit = "";
+                                box.value = "";
+                                if (i > 0) boxes[i - 1].focus();
+                            }
+                        });
+                    }
+                    // "gated": each box locked until the one before it is filled.
+                    if (id === "gated" && i > 0) box.disabled = true;
                     // "wrapped": each box in a wrapper of its own, beside a hidden input that holds the code.
-                    const wrapper = id === "wrapped" ? document.createElement("div") : null;
+                    // "deep": each box in a wrapper inside a wrapper.
+                    const wrapper = id === "wrapped" || id === "deep" ? document.createElement("div") : null;
+                    const outer = id === "deep" ? document.createElement("div") : null;
                     wrapper?.append(box);
-                    document.getElementById(id).append(wrapper ?? box);
+                    outer?.append(wrapper);
+                    // "halves": a code split 3 + 3, each half in wrappers of its own.
+                    const half = id === "halves" ? document.querySelectorAll("#halves .half")[i < 3 ? 0 : 1] : null;
+                    (half ?? document.getElementById(id)).append(outer ?? wrapper ?? box);
                     return box;
                 });
                 boxes.forEach((box, i) => {
-                    box.addEventListener("focus", () => box.select());
+                    if (id !== "stale") box.addEventListener("focus", () => box.select());
+                    // "behind" shows boxes, but sends focus to the field behind them, which fills them.
+                    if (id === "behind") {
+                        box.addEventListener("focus", () => setTimeout(() => document.getElementById("real").focus(), 0));
+                    }
+                    // "first" sends focus to its first empty box a moment after any box is focused.
+                    if (id === "first") {
+                        box.addEventListener("focus", () =>
+                            setTimeout(() => boxes.find((each) => each.value === "")?.focus(), 0),
+                        );
+                    }
                     if (id === "keyed") {
                         box.addEventListener("beforeinput", (event) => event.preventDefault());
                         box.addEventListener("keydown", (event) => {
@@ -285,18 +346,84 @@ test(
                         return;
                     }
                     box.addEventListener("input", () => {
-                        if (box.value && i < 5) setTimeout(() => boxes[i + 1].focus(), 0);
+                        // As code widgets do: only letters and digits stay ("naive" keeps anything).
+                        if (id !== "naive") box.value = box.value.replace(/[^0-9a-z]/gi, "");
+                        if (id === "gated" && box.value && i < boxes.length - 1) boxes[i + 1].disabled = false;
+                        // "pin" takes the code once complete and empties its boxes for the next one, as PIN pads do.
+                        if (id === "held") {
+                            if (box.value === "") {
+                                box.value = box.dataset.digit;
+                                return;
+                            }
+                            box.dataset.digit = box.value;
+                        }
+                        // "full" sends the code as soon as every box holds a digit, as many widgets do.
+                        if (["full", "held", "locked"].includes(id) && box.value && boxes.every((each) => each.value)) {
+                            document.getElementById(id).requestSubmit();
+                            return;
+                        }
+                        // "scripted" sends the code itself on its last digit; "later" a moment after it.
+                        if (id === "scripted" && i === boxes.length - 1 && box.value) {
+                            document.getElementById("scripted").requestSubmit();
+                            return;
+                        }
+                        if (id === "later" && i === boxes.length - 1 && box.value) {
+                            setTimeout(() => document.getElementById("later").requestSubmit(), 60);
+                            return;
+                        }
+                        // "go" leaves for the next page once the code is complete.
+                        if (id === "go" && i === boxes.length - 1 && box.value) {
+                            location.href = "/two";
+                            return;
+                        }
+                        if ((id === "pin" || id === "pinform") && i === boxes.length - 1 && box.value) {
+                            window.pin = boxes.map((each) => each.value).join("");
+                            if (id === "pinform") document.getElementById("pinform").requestSubmit();
+                            boxes.forEach((each) => (each.value = ""));
+                            boxes[0].focus();
+                            return;
+                        }
+                        // "lock" locks a full box, so no box has focus until it moves to the next one a while later.
+                        if (id === "lock" && box.value) {
+                            box.disabled = true;
+                            if (i < boxes.length - 1) setTimeout(() => boxes[i + 1].focus(), 60);
+                            return;
+                        }
+                        // "slow" moves focus well after the key, as some widgets do.
+                        if (box.value && i < boxes.length - 1) setTimeout(() => boxes[i + 1].focus(), id === "slow" ? 80 : 0);
                         if (id === "jump" && i === 1) setTimeout(() => document.getElementById("name").focus(), 0);
+                        if (id === "notes" && i === 1) setTimeout(() => document.querySelector("#notes textarea").focus(), 0);
+                        // "masked" shows a dot for each digit; "swap" moves on, as an app does, once the code is in.
+                        if (id === "masked" && box.value) box.value = "•";
+                        if (id === "swap" && i === 5) setTimeout(() => (document.getElementById("swap").textContent = "Signed in"), 0);
                     });
                 });
             }
+            // A row made of web components, a box in each one's shadow root, and a text field inside one.
+            const shadowed = Array.from({ length: 6 }, (_, i) => {
+                const host = document.createElement("span");
+                const box = document.createElement("input");
+                box.maxLength = 1;
+                box.setAttribute("aria-label", "shadowed " + (i + 1));
+                host.attachShadow({ mode: "open" }).append(box);
+                document.getElementById("shadowed").append(host);
+                return box;
+            });
+            shadowed.forEach((box, i) => box.addEventListener("input", () => box.value && i < 5 && shadowed[i + 1].focus()));
+            const field = document.createElement("input");
+            field.value = "old";
+            document.querySelector("shadow-field").attachShadow({ mode: "open" }).append(field);
+            window.shadowField = field;
+            window.shadowBoxes = shadowed;
             const strict = document.getElementById("strict");
             strict.addEventListener("beforeinput", (event) => { if (event.inputType === "insertText" && event.data.length > 1) event.preventDefault(); });
         </script>`;
         const values = (id: string) =>
             page.evaluate(
-                `[...document.querySelectorAll("#${id} input")].map((box) => box.value).join("")`,
+                `[...document.querySelectorAll("#${id} input:not([type=submit])")].map((box) => box.value).join("")`,
             );
+        const textOf = (selector: string) =>
+            page.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
         let page!: Awaited<ReturnType<Browsers["open"]>>;
 
         try {
@@ -317,9 +444,157 @@ test(
             assert.equal(await values("keyed"), "654321");
             await page.type({ label: "wrapped 1" }, "112233");
             assert.equal(await values("wrapped"), "112233");
-            // A field that refuses inserted text takes the same text as keys.
+            // Boxes beside the form's submit button are still one row.
+            await page.type({ label: "submit 1" }, "445566");
+            assert.equal(await values("submit"), "445566");
+            // More characters than boxes: nothing is typed, and typing says so.
+            await assert.rejects(
+                page.type({ label: "four 1" }, "123456"),
+                /the code has 6 letters and digits, and its row 4 boxes/,
+            );
+            // Any other field gets one insert and no keys, as before, even one that refuses it: no text typed twice
+            // into an editor that takes it late, no Enter or Space pressed into a form or a checkbox.
+            const keys = await page.evaluate("window.keys");
+
             await page.type({ selector: "#strict" }, "4242");
-            assert.equal(await page.evaluate("document.getElementById('strict').value"), "4242");
+            assert.equal(await page.evaluate("document.getElementById('strict').value"), "");
+            await page.type({ selector: "#check" }, "a b");
+            // Ticked once by the click that type() makes first, as before; no Space toggled it back.
+            assert.equal(await page.evaluate("document.getElementById('check').checked"), "true");
+            assert.equal(await page.evaluate("window.keys"), keys);
+            // Boxes wrapped two levels deep are still a row, and a line break in a code is no Enter.
+            await page.type({ label: "deep 1" }, "121\n212");
+            assert.equal(await values("deep"), "121212");
+            assert.equal(await page.evaluate("window.submits ?? 0"), "0");
+
+            // A hidden autofill input under the boxes, a code split in wrapped halves, and a widget slow to move focus.
+            for (const [id, code] of [
+                ["autofill", "102938"],
+                ["halves", "564738"],
+                ["slow", "918273"],
+            ] as const) {
+                await page.type({ label: `${id} 1` }, code);
+                assert.equal(await values(id), code, id);
+            }
+
+            // Boxes a widget unlocks in turn, and a space in a code into boxes that would keep it.
+            await page.type({ label: "gated 1" }, "246813");
+            assert.equal(await values("gated"), "246813");
+            await page.type({ label: "naive 1" }, "135 791");
+            assert.equal(await values("naive"), "135791");
+            // A PIN pad that empties itself once the code is complete took it: no error, the code typed once.
+            await page.type({ label: "pin 1" }, "246802");
+            assert.equal(await page.evaluate("window.pin"), "246802");
+            // A PIN form that submits itself once the code is complete is not submitted again, empty, by Enter.
+            assert.deepEqual(await page.type({ label: "pinform 1" }, "135792", { submit: true }), {
+                label: 'input "pinform 1"',
+                pageSubmitted: true,
+            });
+            assert.equal(await page.evaluate("window.pin"), "135792");
+            assert.equal(await page.evaluate("window.pinSubmits"), "1");
+
+            // Codes the widget sends itself, at once or a moment later: sent once, Enter not pressed after them.
+            for (const [id, counter] of [
+                ["scripted", "sent"],
+                ["later", "laterSent"],
+            ] as const) {
+                assert.equal(
+                    (await page.type({ label: `${id} 1` }, "123456", { submit: true }))
+                        .pageSubmitted,
+                    true,
+                );
+                assert.equal(await page.evaluate(`window.${counter}`), "1", id);
+            }
+
+            // Boxes still holding an old code, in a widget that sends once every box is full: the old code goes
+            // first, so the page sends only the new one.
+            assert.equal((await page.type({ label: "full 1" }, "123456")).pageSubmitted, true);
+            assert.equal(await page.evaluate("JSON.stringify(window.fullSent)"), '["123456"]');
+            // A widget that puts back what a script empties: the old code goes with Backspace, and only the new one is
+            // sent.
+            assert.equal((await page.type({ label: "held 1" }, "123456")).pageSubmitted, true);
+            assert.equal(await page.evaluate("JSON.stringify(window.heldSent)"), '["123456"]');
+            // Boxes read-only until focused, holding an old code: it goes all the same, and only the new code is sent.
+            assert.equal((await page.type({ label: "locked 1" }, "135790")).pageSubmitted, true);
+            assert.equal(await page.evaluate("JSON.stringify(window.lockedSent)"), '["135790"]');
+            // A shorter code over an old one clears the rest of the row too: the page never holds old digits with
+            // new ones, so a widget that sends once every box is full sends nothing yet.
+            await page.evaluate(
+                "document.querySelectorAll('#full input').forEach((each) => (each.value = '9')); 1",
+            );
+            assert.equal((await page.type({ label: "full 1" }, "1234")).pageSubmitted, false);
+            assert.equal(await values("full"), "1234");
+            assert.equal(await page.evaluate("window.fullSent.length"), "1");
+            // A code longer than the boxes from the one clicked on is not typed.
+            await assert.rejects(
+                page.type({ label: "empty 3" }, "12345"),
+                /the code has 5 letters and digits, and its row 4 boxes from the one clicked on/,
+            );
+            // A code as long as its row starts at the row's first box, whichever box was clicked.
+            await page.type({ label: "empty 4" }, "123456");
+            assert.equal(await values("empty"), "123456");
+            // Without submit, a code the page sends itself is still said to be sent.
+            assert.equal((await page.type({ label: "scripted 1" }, "654321")).pageSubmitted, true);
+            // A code longer than the row: nothing is typed, so the page sends no part of it, and typing says so.
+            await assert.rejects(
+                page.type({ label: "scripted 1" }, "G-123456", { submit: true }),
+                /the code has 7 letters and digits, and its row 6 boxes/,
+            );
+            assert.equal(await page.evaluate("window.sent"), "2");
+            // Boxes that hand focus to the field behind them: that field gets the code in one insert.
+            await page.type({ label: "behind 1" }, "864200");
+            assert.equal(await page.evaluate("document.getElementById('real').value"), "864200");
+            // A widget that sends focus to its first empty box a moment after the click gets every key there.
+            await page.evaluate(
+                "const f = document.querySelectorAll('#first input'); f[0].value = '1'; f[1].value = '2'; 1",
+            );
+            await page.type({ label: "first 1" }, "3456", { append: true });
+            assert.equal(await values("first"), "123456");
+            // Replacing its full row: the old code goes first from the box clicked, wherever the widget sends focus.
+            await page.type({ label: "first 1" }, "654321");
+            assert.equal(await values("first"), "654321");
+            // A widget that locks each full box, with no box focused for a moment, gets the whole code.
+            await page.type({ label: "lock 1" }, "975310");
+            assert.equal(await values("lock"), "975310");
+            // Text with no letters or digits types nothing into a code, and says so.
+            await assert.rejects(page.type({ label: "naive 1" }, "--"), /Nothing was typed/);
+            // Web components: a box in each one's shadow root, and a field whose text is replaced.
+            await page.evaluate("window.shadowBoxes[0].focus(); 1");
+            await page.type(undefined, "102030");
+            assert.equal(
+                await page.evaluate("window.shadowBoxes.map((box) => box.value).join('')"),
+                "102030",
+            );
+            await page.evaluate("window.shadowField.focus(); 1");
+            await page.type(undefined, "new");
+            assert.equal(await page.evaluate("window.shadowField.value"), "new");
+            // Codes as people write them, as a page that moves on, and as boxes that show dots: all went in.
+            await page.type({ label: "otp 1" }, "135 791");
+            assert.equal(await values("otp"), "135791");
+            await page.type({ label: "swap 1" }, "112358");
+            await page.type({ label: "masked 1" }, "314159");
+            // A row still holding an old code, in boxes that do not select it on focus: the new code replaces it.
+            await page.type({ label: "stale 1" }, "123456");
+            assert.equal(await values("stale"), "123456");
+            // Appending to full boxes keeps nothing, and typing says so.
+            await assert.rejects(
+                page.type({ label: "stale 1" }, "999999", { append: true }),
+                /kept 0 of 6 characters/,
+            );
+            // A row beside a text area is still a row: focus going to the text area stops typing there.
+            await assert.rejects(
+                page.type({ label: "notes 1" }, "246802"),
+                /Typed 2 of 6 characters/,
+            );
+            assert.equal(await textOf("#notes textarea"), "");
+            // Stop ends typing key by key.
+            const stop = new AbortController();
+
+            setTimeout(() => stop.abort(), 50);
+            await assert.rejects(
+                page.type({ label: "keyed 1" }, "999999", { signal: stop.signal }),
+                /Stopped/,
+            );
 
             // A field that took the text and emptied itself, as a tag field does, gets it once.
             await page.type({ selector: "#tags" }, "alpha");
@@ -331,6 +606,14 @@ test(
             );
             assert.equal(await values("jump"), "98");
             assert.equal(await page.evaluate("document.getElementById('name').value"), "Grace");
+
+            // Last, as it leaves this page: a code that sends the page on is submitted by the page, and type() waits
+            // for the next page, as Enter's would.
+            assert.equal(
+                (await page.type({ label: "go 1" }, "112233", { submit: true })).pageSubmitted,
+                true,
+            );
+            assert.equal(page.title, "Two");
         } finally {
             await browsers.closeAll({ final: true });
         }

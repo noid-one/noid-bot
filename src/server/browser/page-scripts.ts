@@ -209,12 +209,20 @@ export const LOCATE_SCRIPT = String.raw`(async (target) => {
 	return { x: (x - (view?.offsetLeft ?? 0)) * scale, y: (y - (view?.offsetTop ?? 0)) * scale, label: describe(el), covered, editable: el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) };
 })`;
 
+/** The focused element, inside web components too (their shadow roots keep their own focus). Put into scripts. */
+const DEEP_ACTIVE = String.raw`const deepActive = () => {
+		let el = document.activeElement;
+		while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+		return el;
+	};`;
+
 /**
  * Selects what the focused field holds, so typed text replaces it: "selected", "empty", "none" (not a field), or "keys"
  * for a field a script cannot select (email, number), which the editor's select-all shortcut selects instead.
  */
 export const SELECT_ALL_SCRIPT = String.raw`(() => {
-	const el = document.activeElement;
+	${DEEP_ACTIVE}
+	const el = deepActive();
 	if (!el) return "none";
 	if (["INPUT", "TEXTAREA"].includes(el.tagName)) {
 		if (el.value === "") return "empty";
@@ -229,44 +237,104 @@ export const SELECT_ALL_SCRIPT = String.raw`(() => {
 })()`;
 
 /**
- * Notes the focused field before typing, and the row of one-character boxes it belongs to, if any (one-box-per-digit
- * code fields, which move focus box to box as keys arrive). Returns whether it is such a box.
+ * Notes the focused field before typing, when it is a one-character box in a row of two or more (one-box-per-digit
+ * code fields, which move focus box to box as keys arrive). Returns whether it is.
+ *
+ * The row is the run of boxes next to it in page order among the fields one can see and type into, however they are
+ * wrapped (a code split 3 + 3, each box in its own wrapper): another field ends it, and an invisible one (an SMS
+ * autofill input under the boxes), a button, or a hidden input does not. Two rows with no field between them are one.
  */
 export const TYPING_FIELD_SCRIPT = String.raw`(() => {
-	const el = document.activeElement;
-	const box = (each) => each.tagName === "INPUT" && each.maxLength === 1;
+	${DEEP_ACTIVE}
+	const el = deepActive();
+	const texts = ["text", "tel", "password", "search", "number", "email", "url"];
+	// A read-only or disabled input showing a mark that is no letter or digit (a dash between the halves of a code)
+	// is part of no row: neither a box nor a field that ends one. An empty one is a box a widget unlocks in its turn.
+	const mark = (each) => (each.readOnly || each.disabled) && each.value !== "" && !/^[\p{L}\p{N}]$/u.test(each.value);
+	// A box one types a character into: not a checkbox, button, or file input that happens to have a maxlength.
+	const box = (each) => each.tagName === "INPUT" && each.maxLength === 1 && texts.includes(each.type) && !mark(each);
 	window.__piPocketTyping = undefined;
-	if (!el || (!["INPUT", "TEXTAREA"].includes(el.tagName) && !el.isContentEditable)) return { box: false };
-	let group = null;
-	if (box(el)) {
-		const only = (up) => [...up.querySelectorAll("input:not([type=hidden])")].every(box);
-		group = el;
-		for (let up = el.parentElement; up && up !== document.body; up = up.parentElement) {
-			if (!only(up)) break;
-			group = up;
-		}
-	}
-	const typing = { field: el, group, input: false };
+	if (!el || !box(el)) return { box: false };
+	const seen = (each) => {
+		const style = getComputedStyle(each);
+		return each.getClientRects().length > 0 && style.visibility !== "hidden" && style.opacity !== "0";
+	};
+	const typed = (each) => (each.tagName !== "INPUT" || texts.includes(each.type)) && !mark(each);
+	// Every field in page order, into open shadow roots (a widget may give each box one of its own).
+	const all = (root) => [...root.querySelectorAll("*")].flatMap((each) => [
+		...(["INPUT", "TEXTAREA", "SELECT"].includes(each.tagName) ? [each] : []),
+		...(each.shadowRoot ? all(each.shadowRoot) : []),
+	]);
+	const fields = all(document).filter((each) => each === el || (typed(each) && seen(each)));
+	const at = fields.indexOf(el);
+	let start = at;
+	let end = at;
+	while (start > 0 && box(fields[start - 1])) start--;
+	while (end < fields.length - 1 && box(fields[end + 1])) end++;
+	// One box alone (a middle initial) is a field like any other: it takes one insert, as before.
+	if (end === start) return { box: false };
+	const row = fields.slice(start, end + 1);
+	const typing = { field: el, row, submitted: false };
 	window.__piPocketTyping = typing;
-	// Whether the page took inserted text at all: an input event, even one whose handler empties the field again.
-	el.addEventListener("input", () => { typing.input = true; }, { once: true });
-	return { box: group !== null };
+	// A form submitted while the code goes in, by the widget itself (on the last digit, or a moment after it).
+	// Only the latest typing listens: the one before lets go.
+	window.__piPocketTypingOff?.();
+	const submitted = () => { typing.submitted = true; };
+	const roots = [...new Set([document, el.getRootNode()])];
+	for (const root of roots) root.addEventListener("submit", submitted, { capture: true });
+	window.__piPocketTypingOff = () => { for (const root of roots) root.removeEventListener("submit", submitted, { capture: true }); };
+	// What the row held before: a box still holding it after typing did not take its key.
+	return { box: true, before: row.map((each) => each.value), clicked: row.indexOf(el) };
 })()`;
 
-/** Whether focus is still in the field typing began in, or in its row of code boxes. */
-export const TYPING_FOCUS_SCRIPT = String.raw`(() => {
+/**
+ * Where typing a code stands (`TYPING_FIELD_SCRIPT`): which of the row's boxes has focus (-1 for none), what each box
+ * holds (null once the row left the page, as a page that moved on does), and whether a form was submitted since
+ * typing began. With `select`, the focused box's text is selected first, so the next key replaces it.
+ */
+export const TYPING_STATE_SCRIPT = String.raw`((select) => {
+	${DEEP_ACTIVE}
 	const typing = window.__piPocketTyping;
-	const el = document.activeElement;
-	return Boolean(typing && el && (el === typing.field || (typing.group !== null && typing.group.contains(el))));
-})()`;
+	if (!typing || !typing.field.isConnected) return { at: -1, values: null, submitted: Boolean(typing?.submitted) };
+	const { row } = typing;
+	const el = deepActive();
+	const at = row.indexOf(el);
+	if (select && at >= 0) el.select();
+	return { at, values: row.map((each) => each.value), submitted: typing.submitted };
+})`;
 
-/** Whether the page refused inserted text: no input event came, and the field, which still has focus, holds nothing. */
-export const TYPING_EMPTY_SCRIPT = String.raw`(() => {
+/**
+ * Empties `count` boxes of the row typing began in (`TYPING_FIELD_SCRIPT`) from box `from` on, as edits would (the
+ * page's own value setter and an input event for each box, so frameworks see it). A controlled widget may put a value
+ * back: `#typeCode` reads the boxes after this.
+ */
+export const TYPING_CLEAR_SCRIPT = String.raw`((from, count) => {
 	const typing = window.__piPocketTyping;
-	const field = typing?.field;
-	if (!field || typing.input || document.activeElement !== field) return false;
-	return field.isContentEditable ? (field.textContent ?? "") === "" : field.value === "";
-})()`;
+	if (!typing || !typing.field.isConnected) return false;
+	const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+	for (const box of typing.row.slice(from, from + count)) {
+		// Read-only boxes too: some are read-only until focused, against autofill, and hold an old code all the same.
+		if (box.value === "") continue;
+		set.call(box, "");
+		box.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "deleteContentBackward" }));
+	}
+	return true;
+})`;
+
+/**
+ * Focuses box `index` of the row typing began in, as a person's click would: blurred first, so a widget that keeps its
+ * own place in the row takes it from the focus event (a box that has focus already would not get one).
+ */
+export const TYPING_FOCUS_BOX_SCRIPT = String.raw`((index) => {
+	${DEEP_ACTIVE}
+	const box = window.__piPocketTyping?.row[index];
+	if (!box || !box.isConnected) return false;
+	deepActive()?.blur();
+	box.focus();
+	// Selected, as a click into a box leaves it: Backspace deletes it, and a key replaces it.
+	box.select?.();
+	return true;
+})`;
 
 /** Picks an option of a select element by its value or text. */
 export const SELECT_OPTION_SCRIPT = String.raw`((target, wanted) => {
