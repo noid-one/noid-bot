@@ -146,21 +146,22 @@ function GalleryPart({ module, installed, busy, turnOff }) {
 
 /** When Noid compacts its own context: once idle above so many tokens (`noid-compact.ts`), or only as sessions do. */
 const NOID_COMPACT = [
+    [0, "As sessions do"],
     [40000, "Above 40k tokens"],
     [60000, "Above 60k tokens"],
     [100000, "Above 100k tokens"],
-    [0, "As sessions do"],
 ];
 
 function NoidCompactAt({ owner }) {
-    const at = store.state.server?.noidCompactAt ?? 60000;
+    const at = store.state.server?.noidCompactAt ?? 0;
     const change = (value) => attempt(() => api("settings", { noidCompactAt: value }));
 
     return html`<div class="setting wrap">
         <div class="grow">
             <div class="small">Compact Noid's context</div>
             <div class="muted small">
-                Once Noid is idle above this, older messages become a short summary.
+                When Noid's older messages become a short summary: as a session's do, or sooner,
+                once Noid is idle above a limit, which keeps each reply cheaper.
             </div>
         </div>
         <div class="segmented" role="group" aria-label="Compact Noid's context">

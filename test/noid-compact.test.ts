@@ -408,7 +408,9 @@ test("Noid compacts itself once idle above its threshold; not below it, nor when
     const id = await noid();
     const count = async () => (await placed(id)).length;
 
-    assert.equal(app.noidCompaction.compactAt, NOID_COMPACT_DEFAULT);
+    // As sessions do, unless the owner chose a limit.
+    assert.equal(NOID_COMPACT_DEFAULT, 0);
+    assert.equal(app.noidCompaction.compactAt, 0);
     // Well above: everything a summary keeps as it is, and then some.
     const long = `Here is the plan in full: ${"step by step, ".repeat(2000)}`;
 
