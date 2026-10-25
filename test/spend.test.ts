@@ -182,6 +182,15 @@ test("the owner sees spend by model, over every conversation, most spent first",
             totalTokens: 1520,
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.25 },
         };
+        // A model that never answered: its row has nothing in it.
+        usage.models["ghost/never"] = {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 0,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        };
     }, context);
     await until(
         () =>
@@ -202,6 +211,11 @@ test("the owner sees spend by model, over every conversation, most spent first",
         },
     );
     assert.ok(faux.spent >= 3, String(faux.spent));
+    assert.equal(
+        models.find((row) => row.model === "ghost/never"),
+        undefined,
+        "no row for nothing",
+    );
     assert.equal(models[0], faux);
 });
 

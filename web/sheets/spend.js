@@ -1,16 +1,10 @@
 // Spend: what each session and person cost, and their limits.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, attempt, closeSheet, store } from "../store.js";
-import { html, Icon, Loader, Sheet } from "../ui.js";
+import { formatTokens, html, Icon, Loader, Sheet } from "../ui.js";
 
 const money = (amount) => `$${amount.toFixed(2)}`;
 const largest = (rows) => rows.reduce((max, row) => Math.max(max, row.spent), 1);
-const tokens = (count) =>
-    count >= 1e6
-        ? `${(count / 1e6).toFixed(1)}M`
-        : count >= 1e3
-          ? `${Math.round(count / 1e3)}k`
-          : String(count);
 
 /** A spend limit, and (for the owner) a way to change it. */
 function SpendLimit({ budget, editable, save }) {
@@ -162,7 +156,7 @@ export function SpendSheet() {
                         (row) => html`<div class="spend-row" key=${row.model}>
                             <span class="grow" title=${row.model}>
                                 ${row.model}
-                                <span class="muted small"> · ${tokens(row.input)} in · ${tokens(row.output)} out</span>
+                                <span class="muted small"> · ${formatTokens(row.input)} in · ${formatTokens(row.output)} out</span>
                             </span>
                             <${Usage} row=${row} max=${modelsMax} />
                             <span class="mono">${money(row.spent)}</span>

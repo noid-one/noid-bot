@@ -788,6 +788,11 @@ export function formatTokens(count) {
         return `${(count / 1_000_000).toFixed(count % 1_000_000 === 0 ? 0 : 1)}M`;
     }
 
+    // From 999.5k on, the thousands would round to "1000k": that is a million.
+    if (count >= 999_500) {
+        return "1M";
+    }
+
     if (count >= 1000) {
         return `${Math.round(count / 1000)}k`;
     }

@@ -450,7 +450,10 @@ export class Spend {
             }
         }
 
-        return [...rows.values()].sort((a, b) => b.spent - a.spent || b.input - a.input);
+        // A model that never answered (not signed in, say) has a row in `pi.usage` with nothing in it.
+        return [...rows.values()]
+            .filter((row) => row.spent > 0 || row.input > 0 || row.output > 0)
+            .sort((a, b) => b.spent - a.spent || b.input - a.input);
     }
 
     close(): void {
