@@ -16,8 +16,16 @@ import type { BotProfile } from "./bots.ts";
 import { ownerOf, requireOwner } from "./owner.ts";
 import { onlyReads } from "./read-only.ts";
 
-/** Whether the owner turned auto review on. */
-export const AutoReviewDoc = defineDoc<{ on: boolean }>({
+/** A model as the owner picked it for auto review. */
+export type ReviewModel = { provider: string; modelId: string };
+
+/**
+ * Whether the owner turned auto review on, and the models that check: `model` instead of the bot's own (none: the bot's
+ * own, as before), and `backup`, tried when the first is not signed in or fails. After rakazo cd2386b3's approval model.
+ */
+export type AutoReviewState = { on: boolean; model?: ReviewModel; backup?: ReviewModel };
+
+export const AutoReviewDoc = defineDoc<AutoReviewState>({
     kind: "x.noid.auto-review",
     version: 1,
     ...rebased,
@@ -27,15 +35,63 @@ export const AutoReviewDoc = defineDoc<{ on: boolean }>({
 
 /** Whether auto review is on; turned on or off first when `on` is given. The owner's switch alone. */
 export async function autoReview(app: PocketApp, user: User, on?: boolean): Promise<boolean> {
+    return (await autoReviewSettings(app, user, on === undefined ? {} : { on })).on;
+}
+
+/**
+ * Auto review's settings, changed first by what `change` holds: `on`, and `model` and `backup` (null for none). The
+ * owner's alone.
+ */
+export async function autoReviewSettings(
+    app: PocketApp,
+    user: User,
+    change: { on?: boolean; model?: ReviewModel | null; backup?: ReviewModel | null } = {},
+): Promise<AutoReviewState> {
     requireOwner(user, "Only the owner can see or change auto review.");
 
-    if (on !== undefined) {
+    if (Object.keys(change).length > 0) {
         await app.harness.commit(async (tx) => {
-            (await tx.doc(AutoReviewDoc)).on = on;
+            const doc = await tx.doc(AutoReviewDoc);
+
+            if (change.on !== undefined) {
+                doc.on = change.on;
+            }
+
+            for (const key of ["model", "backup"] as const) {
+                const value = change[key];
+
+                if (value === null) {
+                    delete doc[key];
+                } else if (value !== undefined) {
+                    doc[key] = { provider: value.provider, modelId: value.modelId };
+                }
+            }
         }, context);
     }
 
-    return (await app.harness.snapshot(AutoReviewDoc, context))?.on === true;
+    const state = await app.harness.snapshot(AutoReviewDoc, context);
+
+    return {
+        on: state?.on === true,
+        ...(state?.model === undefined ? {} : { model: { ...state.model } }),
+        ...(state?.backup === undefined ? {} : { backup: { ...state.backup } }),
+    };
+}
+
+/** A model the owner picked, from what a request sent: undefined when it is not one, null to pick none. */
+export function reviewModelOf(value: unknown): ReviewModel | null | undefined {
+    if (value === null) {
+        return null;
+    }
+
+    const each = value as { provider?: unknown; modelId?: unknown } | undefined;
+
+    return typeof each?.provider === "string" &&
+        typeof each.modelId === "string" &&
+        each.provider !== "" &&
+        each.modelId !== ""
+        ? { provider: each.provider, modelId: each.modelId }
+        : undefined;
 }
 
 /** How long a check may take before the call asks instead (NOID_AUTO_REVIEW_SECONDS, default 20). */
@@ -211,9 +267,14 @@ export async function taskOf(app: PocketApp, id: ConversationId): Promise<string
     );
 }
 
+/** A provider's error can quote a key: anything that looks like one is left out. */
+const redactKeys = (text: string) =>
+    text.replace(/\b[A-Za-z]{2,5}[-_][A-Za-z0-9_-]{12,}|[A-Za-z0-9+/_-]{32,}/g, "[redacted]");
+
 /**
- * Check a bot's call with the conversation's own model: whether it asks the owner, and why. A check that cannot be
- * made (no model, a failure, too slow, an answer that is not one) asks, with the reason why.
+ * Check a bot's call with the owner's review model, else the conversation's own, and the backup when the first fails:
+ * whether it asks the owner, and why. A check that cannot be made (no model, a failure, too slow, an answer that is not
+ * one) asks, with the reason why.
  */
 export async function review(
     app: PocketApp,
@@ -241,75 +302,108 @@ export async function review(
             return { ask: true, reason: "is too long for auto review to check whole" };
         }
 
-        const agent = await app.agentState(id);
-        const model =
-            agent?.model === undefined
-                ? undefined
-                : app.models.getModel(agent.model.provider, agent.model.modelId);
+        // The owner's review model, else the bot's own; then the backup, when there is one.
+        const settings = await app.harness.snapshot(AutoReviewDoc, context);
+        const resolve = (picked: (ReviewModel | undefined)[]) =>
+            picked
+                .filter((each) => each !== undefined)
+                .map((each) => app.models.getModel(each.provider, each.modelId))
+                .filter((each) => each !== undefined);
+        const own = async () => (await app.agentState(id))?.model;
+        let models = resolve([settings?.model ?? (await own()), settings?.backup]);
 
-        if (model === undefined) {
+        // The models the owner picked are gone (a provider removed): the bot's own checks rather than none.
+        if (models.length === 0 && settings?.model !== undefined) {
+            models = resolve([await own()]);
+
+            if (models.length > 0) {
+                app.log("auto review: the picked models are not here; the bot's own model checks");
+            }
+        }
+
+        if (models.length === 0) {
             return { ask: true, reason: "could not be checked by auto review (no model)" };
         }
 
         const sessionId = (await app.harness.snapshot(ProviderDoc, id, context))?.sessionId;
         const deadline = AbortSignal.timeout(timeoutMs());
+        const prompt = reviewPrompt({ tool, args, task: await taskOf(app, id), bot, newSite });
 
-        checking = `${model.provider}/${model.id}`;
         timedOut = () => deadline.aborted;
-        const reply = await app.models.completeSimple(
-            model,
-            {
-                systemPrompt:
-                    "You are a fast safety checker. Output strict JSON only. No tools. No markdown.",
-                messages: [
+
+        for (const [index, model] of models.entries()) {
+            const backup = models[index + 1];
+
+            checking = `${model.provider}/${model.id}`;
+
+            try {
+                const reply = await app.models.completeSimple(
+                    model,
                     {
-                        role: "user",
-                        content: [
+                        systemPrompt:
+                            "You are a fast safety checker. Output strict JSON only. No tools. No markdown.",
+                        messages: [
                             {
-                                type: "text",
-                                text: reviewPrompt({
-                                    tool,
-                                    args,
-                                    task: await taskOf(app, id),
-                                    bot,
-                                    newSite,
-                                }),
+                                role: "user",
+                                content: [{ type: "text", text: prompt }],
+                                timestamp: Date.now(),
                             },
                         ],
-                        timestamp: Date.now(),
                     },
-                ],
-            },
-            {
-                // Room to think on a model that does by default, though as little as it allows.
-                maxTokens: 4096,
-                reasoning: "minimal",
-                cacheRetention: "none",
-                signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
-                ...(sessionId === undefined ? {} : { sessionId }),
-            },
-        );
+                    {
+                        // Room to think on a model that does by default, though as little as it allows.
+                        maxTokens: 4096,
+                        reasoning: "minimal",
+                        cacheRetention: "none",
+                        // With a backup to go to, the switch replaces the SDK's retry, so the time limit is not spent on
+                        // one model (rakazo d3e7f1adb).
+                        ...(backup === undefined ? {} : { maxRetries: 0 }),
+                        signal:
+                            signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+                        ...(sessionId === undefined ? {} : { sessionId }),
+                    },
+                );
 
-        await app.harness.commit((tx) => recordUsage(tx, id, model, reply.usage), context);
+                await app.harness.commit((tx) => recordUsage(tx, id, model, reply.usage), context);
 
-        // Only an answer that ended by itself: one cut off, or an error with some text, is no verdict.
-        const verdict =
-            reply.stopReason === "stop"
-                ? readVerdict(
-                      reply.content
-                          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                          .join(""),
-                  )
-                : { decision: "error" as const };
-
-        return verdict.decision === "pass"
-            ? { ask: false, reason: verdict.reason ?? "fits the task" }
-            : verdict.decision === "ask"
-              ? {
-                    ask: true,
-                    reason: `was flagged by auto review: ${verdict.reason ?? "looks outside the task"}`,
+                // A request that failed hands over to the backup; an answer, even one that is no verdict, does not.
+                if (reply.stopReason === "error" && backup !== undefined) {
+                    app.log(
+                        `auto review: checker ${checking} failed, trying ${backup.provider}/${backup.id}: ${snippet(redactKeys(reply.errorMessage ?? "error"), 300)}`,
+                    );
+                    continue;
                 }
-              : { ask: true, reason: "could not be checked by auto review" };
+
+                // Only an answer that ended by itself: one cut off, or an error with some text, is no verdict.
+                const verdict =
+                    reply.stopReason === "stop"
+                        ? readVerdict(
+                              reply.content
+                                  .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                                  .join(""),
+                          )
+                        : { decision: "error" as const };
+
+                return verdict.decision === "pass"
+                    ? { ask: false, reason: verdict.reason ?? "fits the task" }
+                    : verdict.decision === "ask"
+                      ? {
+                            ask: true,
+                            reason: `was flagged by auto review: ${verdict.reason ?? "looks outside the task"}`,
+                        }
+                      : { ask: true, reason: "could not be checked by auto review" };
+            } catch (error) {
+                if (backup === undefined || deadline.aborted || signal?.aborted === true) {
+                    throw error;
+                }
+
+                app.log(
+                    `auto review: checker ${checking} failed, trying ${backup.provider}/${backup.id}: ${snippet(redactKeys(String(error)), 300)}`,
+                );
+            }
+        }
+
+        return { ask: true, reason: "could not be checked by auto review" };
     } catch (error) {
         const why = timedOut()
             ? `timed out after ${String(timeoutMs())} ms`
@@ -317,13 +411,7 @@ export async function review(
               ? "stopped with the run"
               : `failed: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
 
-        // A provider's error can quote a key: anything that looks like one is left out.
-        const said = why.replace(
-            /\b[A-Za-z]{2,5}[-_][A-Za-z0-9_-]{12,}|[A-Za-z0-9+/_-]{32,}/g,
-            "[redacted]",
-        );
-
-        app.log(`auto review: checker ${checking || "(none)"} ${snippet(said, 300)}`);
+        app.log(`auto review: checker ${checking || "(none)"} ${snippet(redactKeys(why), 300)}`);
 
         return {
             ask: true,

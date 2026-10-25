@@ -2,7 +2,7 @@
  * `/api`: the routes the web app calls. Each needs a signed-in person, and each but a GET needs the `X-Pocket` header,
  * which a form on another site cannot send. A conversation's routes are in `conversation-routes.ts`.
  */
-import { autoReview } from "../noid/auto-review.ts";
+import { autoReviewSettings, reviewModelOf } from "../noid/auto-review.ts";
 import { type BotRequest, personFace } from "../noid/bots.ts";
 import { readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -480,11 +480,38 @@ export function createApi(options: HttpOptions, auth: Auth) {
 
         // noid: auto review of bots' calls, which the owner turns on and off.
         if (first === "auto-review" && second === undefined) {
-            const body = method === "POST" ? await readJson<{ on?: unknown }>(request) : undefined;
+            const body =
+                method === "POST"
+                    ? await readJson<{ on?: unknown; model?: unknown; backup?: unknown }>(request)
+                    : undefined;
+            const change: Parameters<typeof autoReviewSettings>[2] = {};
 
-            return json(response, 200, {
-                on: await autoReview(app, user, body === undefined ? undefined : body.on === true),
-            });
+            if (body !== undefined) {
+                // A body with neither model sets the switch, as before.
+                if (
+                    body.on !== undefined ||
+                    (body.model === undefined && body.backup === undefined)
+                ) {
+                    change.on = body.on === true;
+                }
+
+                for (const key of ["model", "backup"] as const) {
+                    if (body[key] !== undefined) {
+                        const picked = reviewModelOf(body[key]);
+
+                        if (picked === undefined) {
+                            throw new HttpError(
+                                400,
+                                `${key} must be a model ({ provider, modelId }) or null`,
+                            );
+                        }
+
+                        change[key] = picked;
+                    }
+                }
+            }
+
+            return json(response, 200, await autoReviewSettings(app, user, change));
         }
 
         // noid: group threads, the owner and several bots in one room.

@@ -23,9 +23,11 @@ import type { BotProfile } from "../src/server/noid/bots.ts";
 import { hostSite, sitesInText, urlSite } from "../src/server/noid/sites.ts";
 import {
     autoReview,
+    autoReviewSettings,
     consequential,
     readVerdict,
     redact,
+    reviewModelOf,
     reviewPrompt,
 } from "../src/server/noid/auto-review.ts";
 
@@ -218,6 +220,50 @@ test("on: a call that fits runs, one that looks off asks, and one it cannot judg
     assert.match(unsure.question!.reason, /could not be checked by auto review/);
     assert.match(await lastReply(scout), /Sent to Camp/, "the owner said yes");
     await autoReview(app, owner(app), false);
+});
+
+test("the owner can pick a model that checks and a backup; with none, the bot's own checks as before", async () => {
+    const scout = await bot("Picker");
+
+    await bot("Post");
+    const guest = app.config.users.find((user) => user.role !== "owner")!;
+
+    await assert.rejects(autoReviewSettings(app, guest, { model: null }), { status: 403 });
+    assert.deepEqual(await autoReviewSettings(app, owner(app)), { on: false });
+    await autoReviewSettings(app, owner(app), {
+        on: true,
+        model: { provider: "faux", modelId: "gone" },
+    });
+
+    // The model that checks is not here, and no backup: the bot's own checks rather than none.
+    checks = 0;
+    await send(scout, message("post", "the notes are in shared/"));
+    assert.equal(checks, 1);
+    assert.match(await lastReply(scout), /Sent to Post/);
+
+    // The backup takes over.
+    const settings = await autoReviewSettings(app, owner(app), {
+        backup: { provider: "faux", modelId: "faux-1" },
+    });
+
+    assert.deepEqual(settings, {
+        on: true,
+        model: { provider: "faux", modelId: "gone" },
+        backup: { provider: "faux", modelId: "faux-1" },
+    });
+    checks = 0;
+    await send(scout, message("post", "the notes are in shared/"));
+    assert.equal(checks, 1);
+    assert.match(await lastReply(scout), /Sent to Post/);
+
+    // Turning it off keeps the models; null takes them away.
+    assert.equal(await autoReview(app, owner(app), false), false);
+    assert.equal((await autoReviewSettings(app, owner(app))).backup?.modelId, "faux-1");
+    assert.deepEqual(await autoReviewSettings(app, owner(app), { model: null, backup: null }), {
+        on: false,
+    });
+    assert.equal(reviewModelOf({ provider: "faux" }), undefined);
+    assert.equal(reviewModelOf(null), null);
 });
 
 test("only the owner's own words are the task: mail from another bot cannot vouch for a call", async () => {
