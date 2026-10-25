@@ -17,7 +17,12 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { type ConversationId, LiveDoc, type UsageState } from "@earendil-works/pi-durable";
+import {
+    type ConversationId,
+    LiveDoc,
+    UsageDoc,
+    type UsageState,
+} from "@earendil-works/pi-durable";
 import type { User } from "../src/server/config.ts";
 import { SpendDoc } from "../src/server/docs.ts";
 import { usageCost } from "../src/server/projection.ts";
@@ -152,11 +157,52 @@ test("limits refuse new messages, for a session and for a guest, but never for t
     const summary = app.spend.summary(alex);
 
     assert.equal(summary.total, undefined, "only the owner sees the total");
+    assert.equal(summary.models, undefined, "and spend by model");
     assert.deepEqual(
         summary.people.map((person) => person.name),
         ["Alex"],
     );
     assert.ok(app.spend.summary(owner(app)).people.length >= 2);
+});
+
+test("the owner sees spend by model, over every conversation, most spent first", async () => {
+    const first = await newSession(app);
+    const second = await newSession(app);
+
+    await recordCost(app, first, 1);
+    await recordCost(app, second, 2);
+    await app.harness.commit(async (tx) => {
+        const usage = await tx.doc(UsageDoc, second);
+
+        usage.models["other/small"] = {
+            input: 1000,
+            output: 20,
+            cacheRead: 500,
+            cacheWrite: 0,
+            totalTokens: 1520,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.25 },
+        };
+    }, context);
+    await until(
+        () =>
+            app.spend.summary(owner(app)).models?.some((row) => row.model === "other/small") ===
+            true,
+        "the model's spend",
+    );
+    const models = app.spend.summary(owner(app)).models!;
+    const faux = models.find((row) => row.model === "faux/faux-1")!;
+
+    assert.deepEqual(
+        models.find((row) => row.model === "other/small"),
+        {
+            model: "other/small",
+            spent: 0.25,
+            input: 1500,
+            output: 20,
+        },
+    );
+    assert.ok(faux.spent >= 3, String(faux.spent));
+    assert.equal(models[0], faux);
 });
 
 test("compacting asks the model too, so a limit refuses it", async () => {

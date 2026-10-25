@@ -10,7 +10,7 @@ import type { PocketApp } from "./app.ts";
 import type { User } from "./config.ts";
 import { SessionsDoc, SpendDoc } from "./docs.ts";
 import { describe, HttpError } from "./errors.ts";
-import { usageCost } from "./projection.ts";
+import { type UsageNumbers, usageCost } from "./projection.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -25,12 +25,16 @@ export type SpendSummary = {
     sessions: { id: number; title: string; spent: number; budget?: number }[];
     /** Everyone for the owner; others see themselves. */
     people: { id: string; name: string; spent: number; budget?: number }[];
+    /** Every model's responses on this server (`provider/modelId`), most spent first; only the owner sees them. */
+    models?: { model: string; spent: number; input: number; output: number }[];
 };
 
 export class Spend {
     readonly #app: PocketApp;
     /** Each conversation's spend so far. */
     readonly #costs = new Map<ConversationId, number>();
+    /** Each conversation's model responses, by model, as `pi.usage` has them. */
+    readonly #models = new Map<ConversationId, UsageState["models"]>();
     /** Spend added to people but not stored yet, per conversation and person. */
     readonly #owed = new Map<ConversationId, Map<string, number>>();
     /** What `SpendDoc` says each person spent, as of the last count. */
@@ -53,7 +57,10 @@ export class Spend {
         const harness = this.#app.harness;
 
         for (const id of ids) {
-            this.#costs.set(id, usageCost(await harness.snapshot(UsageDoc, id, context)));
+            const usage = await harness.snapshot(UsageDoc, id, context);
+
+            this.#costs.set(id, usageCost(usage));
+            this.#models.set(id, usage?.models ?? {});
         }
 
         if ((await harness.snapshot(SpendDoc, context)) === undefined) {
@@ -100,6 +107,7 @@ export class Spend {
         const added = cost - (this.#costs.get(id) ?? 0);
 
         this.#costs.set(id, cost);
+        this.#models.set(id, usage?.models ?? {});
 
         if (added > 0) {
             this.#owe(id, this.#payer(id), added);
@@ -418,10 +426,31 @@ export class Spend {
         const total = [...this.#costs.values()].reduce((sum, cost) => sum + cost, 0);
 
         return {
-            ...(owner ? { total } : {}),
+            ...(owner ? { total, models: this.#byModel() } : {}),
             sessions: sessions.sort((a, b) => b.spent - a.spent),
             people: people.sort((a, b) => b.spent - a.spent),
         };
+    }
+
+    /** What each model's responses cost and read and wrote, over every conversation; tools' spend has no model. */
+    #byModel(): NonNullable<SpendSummary["models"]> {
+        const rows = new Map<
+            string,
+            { model: string; spent: number; input: number; output: number }
+        >();
+
+        for (const models of this.#models.values()) {
+            for (const [model, value] of Object.entries(models) as [string, UsageNumbers][]) {
+                const row = rows.get(model) ?? { model, spent: 0, input: 0, output: 0 };
+
+                row.spent += value.cost?.total ?? 0;
+                row.input += (value.input ?? 0) + (value.cacheRead ?? 0) + (value.cacheWrite ?? 0);
+                row.output += value.output ?? 0;
+                rows.set(model, row);
+            }
+        }
+
+        return [...rows.values()].sort((a, b) => b.spent - a.spent || b.input - a.input);
     }
 
     close(): void {

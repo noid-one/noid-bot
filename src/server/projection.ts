@@ -715,7 +715,7 @@ export type ClientStats = {
     contextEstimated?: boolean;
 };
 
-type UsageNumbers = {
+export type UsageNumbers = {
     input?: number;
     output?: number;
     cacheRead?: number;

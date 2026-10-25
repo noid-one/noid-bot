@@ -5,6 +5,12 @@ import { html, Icon, Loader, Sheet } from "../ui.js";
 
 const money = (amount) => `$${amount.toFixed(2)}`;
 const largest = (rows) => rows.reduce((max, row) => Math.max(max, row.spent), 1);
+const tokens = (count) =>
+    count >= 1e6
+        ? `${(count / 1e6).toFixed(1)}M`
+        : count >= 1e3
+          ? `${Math.round(count / 1e3)}k`
+          : String(count);
 
 /** A spend limit, and (for the owner) a way to change it. */
 function SpendLimit({ budget, editable, save }) {
@@ -97,6 +103,7 @@ export function SpendSheet() {
     const save = (target) => async (budget) => setData(await api("spend", { ...target, budget }));
     const peopleMax = largest(data?.people ?? []);
     const sessionsMax = largest(data?.sessions ?? []);
+    const modelsMax = largest(data?.models ?? []);
 
     return html`<${Sheet} title="Spend" onClose=${closeSheet} wide=${true}>
         ${data === null && html`<${Loader} label="Adding it up" />`}
@@ -141,6 +148,24 @@ export function SpendSheet() {
                                 editable=${owner}
                                 save=${save({ session: session.id })}
                             />
+                        </div>`,
+                    )}
+                </div>
+            </div>`
+        }
+        ${
+            data?.models?.length > 0 &&
+            html`<div class="group">
+                <div class="group-title">Models</div>
+                <div class="sheet-list">
+                    ${data.models.map(
+                        (row) => html`<div class="spend-row" key=${row.model}>
+                            <span class="grow" title=${row.model}>
+                                ${row.model}
+                                <span class="muted small"> · ${tokens(row.input)} in · ${tokens(row.output)} out</span>
+                            </span>
+                            <${Usage} row=${row} max=${modelsMax} />
+                            <span class="mono">${money(row.spent)}</span>
                         </div>`,
                     )}
                 </div>
