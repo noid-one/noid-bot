@@ -480,6 +480,9 @@ export function createApi(options: HttpOptions, auth: Auth) {
 
         // noid: auto review of bots' calls, which the owner turns on and off.
         if (first === "auto-review" && second === undefined) {
+            // Who may, before what was sent is read: someone else learns nothing from a 400.
+            requireOwner(user);
+
             const body =
                 method === "POST"
                     ? await readJson<{ on?: unknown; model?: unknown; backup?: unknown }>(request)

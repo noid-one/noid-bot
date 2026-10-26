@@ -82,7 +82,7 @@ test("the checker's answer, the call's secrets, and the prompt's data", () => {
 /** The bot calls what it is told; the checker answers by what the call carries. */
 let checks = 0;
 
-const route: FauxResponseStep = (request) => {
+const route: FauxResponseStep = (request, options, _state, model) => {
     const all = JSON.stringify(request);
     const { role, text: said } = lastText(request as never);
     // With more than one person on the server, a message starts with who sent it.
@@ -93,6 +93,19 @@ const route: FauxResponseStep = (request) => {
 
         if (all.includes("checker down")) {
             return fauxAssistantMessage([], { stopReason: "error", errorMessage: "overloaded" });
+        }
+
+        // The owner's pick (faux-2) fails, or answers nothing until its time is up; the bot's own (faux-1) answers.
+        if (model.id === "faux-2" && all.includes("picked down")) {
+            return fauxAssistantMessage([], { stopReason: "error", errorMessage: "signed out" });
+        }
+
+        if (model.id === "faux-2" && all.includes("picked hangs")) {
+            return new Promise((done) =>
+                options?.signal?.addEventListener("abort", () =>
+                    done(fauxAssistantMessage([], { stopReason: "aborted" })),
+                ),
+            );
         }
 
         return fauxAssistantMessage([
@@ -270,6 +283,33 @@ test("the owner can pick a model that checks and a backup; with none, the bot's 
 
     assert.equal(checks, 1);
     assert.match(down.question!.reason, /could not be checked by auto review/);
+
+    // A pick that fails with no backup (signed out, say): the bot's own checks after it, as before there was a pick.
+    await autoReviewSettings(app, owner(app), {
+        model: { provider: "faux", modelId: "faux-2" },
+        backup: null,
+    });
+    checks = 0;
+    await send(scout, message("post", "picked down"));
+    assert.equal(checks, 2);
+    assert.match(await lastReply(scout), /Sent to Post/);
+
+    // A pick that hangs gets part of the time, and leaves the rest to the next.
+    process.env.NOID_AUTO_REVIEW_SECONDS = "2";
+
+    try {
+        checks = 0;
+        const started = Date.now();
+
+        await send(scout, message("post", "picked hangs"));
+        assert.equal(checks, 2);
+        assert.match(await lastReply(scout), /Sent to Post/);
+        assert.ok(Date.now() - started < 5000);
+    } finally {
+        delete process.env.NOID_AUTO_REVIEW_SECONDS;
+    }
+
+    await autoReviewSettings(app, owner(app), { backup: { provider: "faux", modelId: "faux-1" } });
 
     // Turning it off keeps the models; null takes them away.
     assert.equal(await autoReview(app, owner(app), false), false);
@@ -466,4 +506,35 @@ test("Noid asks before it starts work that another bot's mail asked for", async 
     assert.match(asked!.reason, /after reading what someone else wrote/);
     assert.ok(await app.answerApproval(asked!.id, false, owner(app)));
     await app.harness.waitForIdle(context);
+});
+
+test("the auto review route tells someone else only that it is the owner's", async () => {
+    const { createServer } = await import("node:http");
+    const { createHandler } = await import("../src/server/http.ts");
+    const server = createServer(
+        createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
+    );
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+    const post = (token: string, body: unknown) =>
+        fetch(`http://127.0.0.1:${port}/api/auto-review`, {
+            method: "POST",
+            headers: {
+                authorization: `Bearer ${token}`,
+                "content-type": "application/json",
+                "x-pocket": "1",
+            },
+            body: JSON.stringify(body),
+        });
+
+    try {
+        const guest = app.config.addUser("Ida", "guest").token;
+
+        // What was sent is not read for someone else: a 403, not a 400 that says what was wrong with it.
+        assert.equal((await post(guest, { model: "x" })).status, 403);
+        assert.equal((await post(app.config.ownerToken, { model: "x" })).status, 400);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
 });

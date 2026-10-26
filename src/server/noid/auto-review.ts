@@ -97,6 +97,9 @@ export function reviewModelOf(value: unknown): ModelRef | null | undefined {
 }
 
 /** How long a check may take before the call asks instead (NOID_AUTO_REVIEW_SECONDS, default 20). */
+/** The part of the time left a model gets when there is another to go to. */
+const TURN_SHARE = 0.6;
+
 function timeoutMs(): number {
     const seconds = Number(process.env.NOID_AUTO_REVIEW_SECONDS ?? 20);
 
@@ -318,16 +321,13 @@ export async function review(
                             (other) => other.provider === each.provider && other.id === each.id,
                         ) === index,
                 );
-        let models = resolve([settings?.model ?? (await own()), settings?.backup]);
-
-        // The models the owner picked are gone (a provider removed): the bot's own checks rather than none.
-        if (models.length === 0 && settings?.model !== undefined) {
-            models = resolve([await own()]);
-
-            if (models.length > 0) {
-                app.log("auto review: the picked models are not here; the bot's own model checks");
-            }
-        }
+        // A picked model that is gone, signed out, or failing leaves the bot's own to check last, as it did before
+        // there was a pick.
+        const models = resolve([
+            settings?.model ?? (await own()),
+            settings?.backup,
+            ...(settings?.model === undefined ? [] : [await own()]),
+        ]);
 
         if (models.length === 0) {
             return { ask: true, reason: "could not be checked by auto review (no model)" };
@@ -335,6 +335,7 @@ export async function review(
 
         const sessionId = (await app.harness.snapshot(ProviderDoc, id, context))?.sessionId;
         const deadline = AbortSignal.timeout(timeoutMs());
+        const deadlineAt = Date.now() + timeoutMs();
         const prompt = reviewPrompt({ tool, args, task: await taskOf(app, id), bot, newSite });
 
         timedOut = () => deadline.aborted;
@@ -348,6 +349,14 @@ export async function review(
 
             checking = `${model.provider}/${model.id}`;
 
+            // With a model to go to next, this one gets part of the time left, so one that hangs leaves the next its
+            // turn.
+            const turn =
+                backup === undefined
+                    ? undefined
+                    : AbortSignal.timeout(
+                          Math.max(1, Math.round((deadlineAt - Date.now()) * TURN_SHARE)),
+                      );
             let reply;
 
             try {
@@ -372,8 +381,9 @@ export async function review(
                         // With a backup to go to, the switch replaces the SDK's retry, so the time limit is not spent on
                         // one model (rakazo d3e7f1adb).
                         ...(backup === undefined ? {} : { maxRetries: 0 }),
-                        signal:
-                            signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+                        signal: AbortSignal.any(
+                            [signal, deadline, turn].filter((each) => each !== undefined),
+                        ),
                         ...(sessionId === undefined ? {} : { sessionId }),
                     },
                 );
@@ -388,14 +398,21 @@ export async function review(
 
             await app.harness.commit((tx) => recordUsage(tx, id, model, reply.usage), context);
 
-            // A request that failed hands over to the backup; an answer, even one that is no verdict, does not.
+            // A request that failed or ran out of its turn hands over to the backup; an answer, even one that is no
+            // verdict, does not.
             if (
-                reply.stopReason === "error" &&
+                (reply.stopReason === "error" ||
+                    (reply.stopReason === "aborted" && turn?.aborted === true)) &&
                 backup !== undefined &&
                 !deadline.aborted &&
                 signal?.aborted !== true
             ) {
-                handOff(reply.errorMessage ?? "error", backup);
+                handOff(
+                    reply.stopReason === "aborted"
+                        ? "took too long"
+                        : (reply.errorMessage ?? "error"),
+                    backup,
+                );
                 continue;
             }
 
