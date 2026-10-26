@@ -125,21 +125,22 @@ Tools and raw results (`bench2.mjs`, `bench-pwd.mjs`, `bench-rk.mjs`, `load.mjs`
 
 ## The Pi Pocket 0.22 ports, before merging (2026-10-26)
 
-Measured on Node 26 at main's head once branches `port/upstream-0.22` and `menu/working-subagents` were in (`41734b5`),
-in one sitting with main before them (`a412a1e`) and upstream Pi Pocket 0.23.1 (`d08ccd4`), with the 220-turn data set
-and no model called. Server figures are medians of 5 cold starts, each API figure the median of 7 calls
-(`~/.cache/noid-perf/final26/bench.mjs`; its event streams are now read uncompressed, so the bytes are raw); typing is
-the median of 20 calls into a plain field in real Chromium:
+Measured on Node 26 at main's head once branches `port/upstream-0.22` and `menu/working-subagents` and the review's
+fixes were in (`20043b1`), in one sitting with main before them (`a412a1e`) and upstream Pi Pocket 0.25.0 (`c65cf99`, its
+newest that day), with the 220-turn data set and no model called. Server figures are medians of 5 cold starts, each API
+figure the median of 7 calls (`~/.cache/noid-perf/final26/bench.mjs`; its event streams are now read uncompressed, so
+the bytes are raw); typing is the median of 20 calls into a plain field in real Chromium:
 
-| median                               | before (`a412a1e`) | after (`41734b5`) | Pi Pocket 0.23.1 |
+| median                               | before (`a412a1e`) | after (`20043b1`) | Pi Pocket 0.25.0 |
 | ------------------------------------ | ------------------ | ----------------- | ---------------- |
-| Start: first byte / first `200`      | 202 / 202 ms       | 204 / 204 ms      | 649 / 753 ms     |
-| Memory at idle / after the API calls | 212 / 225 MB       | 210 / 223 MB      | 201 / 225 MB     |
-| Session list / the 220-turn view     | 1.66 / 7.43 ms     | 1.76 / 7.45 ms    | 2.16 / 7.49 ms   |
-| The 220-turn view, raw               | 488,400 B          | 488,400 B         | 482,491 B        |
-| Typing into a plain field            | 50.0 ms            | 50.0 ms           | –                |
+| Start: first byte / first `200`      | 201 / 201 ms       | 196 / 196 ms      | 629 / 732 ms     |
+| Memory at idle / after the API calls | 209 / 223 MB       | 201 / 222 MB      | 203 / 226 MB     |
+| Session list / the 220-turn view     | 1.58 / 7.34 ms     | 1.71 / 7.63 ms    | 1.95 / 8.08 ms   |
+| The 220-turn view, raw               | 488,402 B          | 488,402 B         | 482,489 B        |
+| Typing into a plain field            | 50.0 ms            | 50.2 ms           | –                |
 
-The full suite passes at `41734b5` (521, and the 12 Docker tests against their own container).
+The full suite passes at `20043b1` (524, and the 12 Docker tests against their own container). An earlier sitting
+against Pi Pocket 0.23.1 (`d08ccd4`) gave the same picture (753 ms to its first `200`).
 
 The review before merging changed three things that cost time:
 
@@ -156,3 +157,6 @@ The review before merging changed three things that cost time:
     | 10,000   | 8.22 ms | 35.6 / 11.7 ms               | 10.4 / 10.1 ms    |
 
 - Spend by model adds up the usage the Spend sheet already reads: 0.9 ms for the live data's 47 usage records.
+- Counting what each row folds away recursed (a chain of about 10,000 links ran out of stack), and breaking loops in
+  links walked each session's whole chain: both now take a chain's length once (15,000 links: 7.5 s → 1.6 s for the
+  test, most of it Node's start).
