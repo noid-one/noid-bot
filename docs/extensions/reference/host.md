@@ -281,7 +281,7 @@ Makes a session linked to `source` and sends it `message` as its first message. 
 - The new session works in the folder of `source`. It gets a copy of the agent settings of `source`, except a bot's own extensions (the session tools, bot mail, the overseer, and the desktop), which stay with the bot, but not its history.
 - Without `title`, the title is the first line of `message`.
 - `model` is `provider/modelId`. It must be the model of `source`, or a model that the owner lets subagents use. Without it, the session uses the model of `source`.
-- `thinking` is a level no higher than the level of `source`. Without it, the session uses the level of `source`. Pi Pocket lowers it to the highest level that the model has.
+- `thinking` can be any level, also one above the level of `source`. Without it, the session uses the level of `source`. Pi Pocket lowers it to the highest level that the model has, or uses the lowest level of the model when it has none that low.
 - When Pi cannot use the model now, `start` makes nothing and throws an error.
 
 #### `linkedSessions.send`

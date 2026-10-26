@@ -23,7 +23,7 @@ import {
 } from "./docs.ts";
 import { HttpError } from "./errors.ts";
 import { defang, INVISIBLE_CLASS } from "./fence.ts";
-import { isThinkingLevel, levelAtMost, resolveModel, THINKING_LEVELS } from "./models.ts";
+import { isThinkingLevel, levelFor, resolveModel, THINKING_LEVELS } from "./models.ts";
 import { requestFor } from "./requests.ts";
 import { SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
 import { BOT_MAIL_EXTENSION, OVERSEER_EXTENSION } from "./noid/botmail.ts";
@@ -584,8 +584,7 @@ export class LinkedSessions implements LinkedSessionsApi {
             request.model === undefined
                 ? agent.model && `${agent.model.provider}/${agent.model.modelId}`
                 : request.model.trim();
-        const own = agent.thinkingLevel ?? "off";
-        const asked = request.thinking ?? own;
+        const asked = request.thinking ?? agent.thinkingLevel ?? "off";
 
         if (!spec || spec.indexOf("/") <= 0) {
             throw new HttpError(
@@ -609,16 +608,14 @@ export class LinkedSessions implements LinkedSessionsApi {
         }
 
         const selected = app.models.getModel(model.provider, model.modelId)!;
-        const cap = THINKING_LEVELS.indexOf(asked) > THINKING_LEVELS.indexOf(own) ? own : asked;
-        const thinking = levelAtMost(selected, cap);
+        // Any level (Pi Pocket 5a45afd): one the model lacks becomes its nearest lower one, else its lowest; a person's
+        // own start (strict) still refuses a level the model cannot take exactly.
+        const thinking = levelFor(selected, asked);
 
-        if (
-            thinking === undefined ||
-            (strict && request.thinking !== undefined && thinking !== asked)
-        ) {
+        if (strict && request.thinking !== undefined && thinking !== asked) {
             throw new HttpError(
                 400,
-                `The model ${spec} does not support the requested thinking within the source's ${own} cap.`,
+                `The model ${spec} does not support the requested thinking level ${asked}.`,
             );
         }
 

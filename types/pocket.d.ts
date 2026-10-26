@@ -247,7 +247,7 @@ export interface PublicFetchInit {
 export interface LinkedSessions {
     /**
      * Starts a session linked to `source`, in its folder, and sends it `message` as its first message. `model` is
-     * `provider/modelId`; `thinking` is a level no higher than the source's.
+     * `provider/modelId`; `thinking` is any level; one the model lacks becomes its nearest lower one, else its lowest.
      * @since 0.14.0
      * @experimental
      */
@@ -330,7 +330,7 @@ export interface HumanLinkedSession extends LinkedSession {
  */
 export interface HumanLinkedSessions {
     /**
-     * Starts once for this key, as the clicking person. Explicit thinking must be supported and no higher than source.
+     * Starts once for this key, as the clicking person. Explicit thinking must be one the model takes exactly.
      * @since 0.16.0
      */
     start(

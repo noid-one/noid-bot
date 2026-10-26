@@ -8,12 +8,13 @@
  * Everything survives a restart: anchors, reporters, and the courier that delivers reports are durable tasks, and
  * request IDs keep a restarted task from delivering a message or a report twice.
  *
- * Models are a person's to choose: a subagent runs on its session's model, thinking no harder than the session, unless
- * the owner allowed other models for subagents (`subagentModels`), and then only on one of those. A subagent its model
+ * Models are a person's to choose: a subagent runs on its session's model unless the owner allowed other models for
+ * subagents (`subagentModels`), and then only on one of those. It thinks at any level asked, its session's when none is
+ * (Pi Pocket 5a45afd: levels do not compare across models, and the owner's list already limits cost). A subagent its model
  * or provider failed is reported as such, and Pi is told to stop and tell the user, never to try another model.
  */
 import type { AssistantMessage, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { clampThinkingLevel, Type } from "@earendil-works/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import type { Context } from "@earendil-works/chord";
 import {
     AgentDoc,
@@ -36,7 +37,7 @@ import {
 import { type PendingReport, REPORT_PREFIX, SubagentsDoc } from "../docs.ts";
 import { describe } from "../errors.ts";
 import type { PocketHost } from "../host.ts";
-import { levelAtMost, sameModel, THINKING_LEVELS } from "../models.ts";
+import { levelFor, sameModel, THINKING_LEVELS } from "../models.ts";
 import { requestFor } from "../requests.ts";
 import { whyUnanswered } from "../subagent-runs.ts";
 
@@ -647,7 +648,7 @@ function courierFor(limits: Limits) {
 }
 
 const GUIDE = `You can delegate to background subagents with the subagent tool. A subagent is a separate agent with its own transcript that works while you keep talking to the user; its answer comes back to you at your next pause (after a tool call, or when you are done) as a message starting with "${REPORT_PREFIX}<name> answered". Answers that arrive together come in one message. Use them for independent, self-contained work (research, long builds, test runs, a second opinion). Give each message everything the subagent needs: it does not see this conversation. Do not poll: wait for the report. The user can open a subagent and talk to it directly.
-A subagent runs on your model, thinking as hard as you or less. Models are the user's to choose: never pick one on your own. If a subagent fails because of its model or provider (a sign-in, a missing model, a quota), stop and tell the user what failed; never start it again on another model.`;
+A subagent runs on your model. Name a thinking level when the work needs one: a cheap model can think hard, and a strong one can think little. Models are the user's to choose: never pick one on your own. If a subagent fails because of its model or provider (a sign-in, a missing model, a quota), stop and tell the user what failed; never start it again on another model.`;
 
 /** What the tool says when Pi names a model, and none but its own may be used. */
 const NO_CHOICE =
@@ -758,9 +759,6 @@ async function chosenModel(
     return ref;
 }
 
-/** Where a level stands among the thinking levels, lowest first. */
-const rank = (level: ModelThinkingLevel) => THINKING_LEVELS.indexOf(level);
-
 export default function createSubagents(host: PocketHost) {
     const Courier = courierFor(host);
     const Reporter = reporterFor(Courier, host);
@@ -784,7 +782,7 @@ export default function createSubagents(host: PocketHost) {
                 THINKING_LEVELS.map((level) => Type.Literal(level)),
                 {
                     description:
-                        "spawn only: its thinking level, yours or lower. One its model lacks becomes the nearest lower one it has.",
+                        "spawn only: its thinking level; left out, yours. One its model lacks becomes the nearest lower one it has, else its lowest.",
                 },
             ),
         ),
@@ -819,7 +817,7 @@ export default function createSubagents(host: PocketHost) {
             (choosing
                 ? "model, only one the user allows (it runs on your model otherwise), "
                 : "") +
-            "thinking level, yours or lower, tools to allow, and agent: an agent file whose instructions it takes" +
+            "thinking level (left out: yours), tools to allow, and agent: an agent file whose instructions it takes" +
             (choosing ? "" : "; it runs on your model") +
             "), send (name, message; followUp: true queues it after the current answer instead of steering), stop " +
             "(name: aborts its current work), status (one name, or all). Answers come back to you as messages at your " +
@@ -897,23 +895,9 @@ export default function createSubagents(host: PocketHost) {
             // Work goes to a subagent only on this session's model, or one the owner allows: one started on a model the
             // owner no longer allows (or before there was a choice) gets none. A model a person set there is the
             // owner's to allow too.
-            // A subagent started before thinking was capped, or one a person raised, thinks no harder than the session
-            // for this work: lowered (never raised) as the work is sent.
-            let lowered: ModelThinkingLevel | undefined;
-
+            // A level set by hand stays: work sent to a subagent no longer lowers it (Pi Pocket 5a45afd).
             if (action === "send") {
-                const child = await api.snapshot(AgentDoc, agent!.conversationId, context);
-                const runs = child?.model;
-                const most = parent.thinkingLevel ?? "off";
-                const level = child?.thinkingLevel;
-                const found =
-                    runs === undefined
-                        ? undefined
-                        : api.models.getModel(runs.provider, runs.modelId);
-
-                if (level !== undefined && rank(level) > rank(most)) {
-                    lowered = (found === undefined ? undefined : levelAtMost(found, most)) ?? most;
-                }
+                const runs = (await api.snapshot(AgentDoc, agent!.conversationId, context))?.model;
 
                 if (runs !== undefined && !same(runs, parent.model)) {
                     if (!allowedModels(host).includes(keyOf(runs))) {
@@ -971,33 +955,17 @@ export default function createSubagents(host: PocketHost) {
                 );
             }
 
-            // The session's own level is the most a subagent may think: its person chose it.
-            const most = parent.thinkingLevel ?? "off";
-            const wanted = asked === undefined ? most : rank(asked) > rank(most) ? most : asked;
+            const wanted = asked ?? parent.thinkingLevel ?? "off";
             const notes: string[] = [];
             let thinking: ModelThinkingLevel | undefined;
 
-            if (asked !== undefined && rank(asked) > rank(most)) {
-                notes.push(`no higher than this session's ${most}`);
-            }
-
-            // As the model picker does, but never up: the level wanted, and when its model lacks that level, the nearest
-            // lower one it has. On this session's own model, the level the session itself gets when even its lowest is
-            // above that; on another model, a refusal.
+            // The level wanted; when its model lacks that level, the nearest lower one it has, else its lowest.
             if (action === "spawn" && (asked !== undefined || model !== undefined)) {
                 const ref = model ?? parent.model;
                 const found =
                     ref === undefined ? undefined : api.models.getModel(ref.provider, ref.modelId);
-                const lower = found === undefined ? wanted : levelAtMost(found, wanted);
 
-                if (lower === undefined && model !== undefined) {
-                    throw new Error(
-                        `${keyOf(model)} cannot think as little as this session (${most}). Leave model out, or ask the user.`,
-                    );
-                }
-
-                thinking =
-                    lower ?? (found === undefined ? wanted : clampThinkingLevel(found, wanted));
+                thinking = found === undefined ? wanted : levelFor(found, wanted);
 
                 if (thinking !== wanted) {
                     notes.push(`its model has no ${wanted}`);
@@ -1032,10 +1000,6 @@ export default function createSubagents(host: PocketHost) {
                 const conversationId = record.conversationId;
                 const requestedBy = host.requesterOf(api.conversationId);
 
-                if (lowered !== undefined) {
-                    await configure(tx, conversationId, { thinkingLevel: lowered });
-                }
-
                 // For the subagents bar: what it works on now, and since when.
                 record.asked = message.trim().slice(0, 300);
                 record.askedAt = Date.now();
@@ -1050,9 +1014,7 @@ export default function createSubagents(host: PocketHost) {
                 state.reporters[api.taskId] = await tx.createTask(Reporter, input, BACKGROUND);
 
                 if (action === "send") {
-                    return lowered === undefined
-                        ? `Sent to ${name}.`
-                        : `Sent to ${name}, thinking at ${lowered} now: no higher than this session's.`;
+                    return `Sent to ${name}.`;
                 }
 
                 const runs = model ?? parent.model;

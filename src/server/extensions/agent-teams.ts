@@ -38,7 +38,7 @@ export default function createAgentTeams(host: PocketHost, web?: ExtensionWeb) {
         name: "team",
         description:
             "Linked sessions: ordinary sessions this one starts and messages, not subagents. " +
-            "start: a title and a first message that holds all it needs; model (provider/modelId: this session's, or one the owner allows for subagents) and thinking (no higher than this session's) are optional. " +
+            "start: a title and a first message that holds all it needs; model (provider/modelId: this session's, or one the owner allows for subagents) and thinking (left out: this session's) are optional. " +
             "list: the linked sessions you can reach, by address. " +
             "send: a message to an address; it returns once taken, not answered.",
         parameters: Type.Object({
