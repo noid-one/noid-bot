@@ -38,7 +38,7 @@ type KeptValue = {
 };
 
 /** A row of code boxes (`TYPING_FIELD_SCRIPT`): what its boxes held before typing. */
-type CodeRow = { box: false } | { box: true; before: string[]; clicked: number };
+type CodeRow = { box: false; field?: boolean } | { box: true; before: string[]; clicked: number };
 
 /** A letter or digit: what codes are made of. */
 const CODE_CHARACTER = /^[\p{L}\p{N}]$/u;
@@ -1168,6 +1168,7 @@ export class BrowserPage {
         this.usedAt = Date.now();
         let label = "the focused element";
         let note: string | undefined;
+        let clicked = false;
 
         if (
             target !== undefined &&
@@ -1177,22 +1178,21 @@ export class BrowserPage {
 
             await this.#click({ x: found.x, y: found.y }, "left", 1);
             label = found.label;
-
-            // A code's widget may send focus on after the click (to its first empty box, or to a hidden field behind
-            // the boxes) on a timer: it gets a moment first.
-            if (text.length > 1) {
-                await wait(30);
-            }
+            clicked = true;
         }
 
         // Only a code of more than one character can need keys. A page that is going away (the click started a
         // navigation) types as before: one insert.
-        const row =
-            text.length > 1
-                ? ((await this.#evaluate(TYPING_FIELD_SCRIPT).catch(() => ({
-                      box: false,
-                  }))) as CodeRow)
-                : { box: false as const };
+        const field = async () =>
+            (await this.#evaluate(TYPING_FIELD_SCRIPT).catch(() => ({ box: false }))) as CodeRow;
+        let row: CodeRow = text.length > 1 ? await field() : { box: false };
+
+        // A code's widget may send focus on after the click (to its first empty box, or to a hidden field behind the
+        // boxes) on a timer: it gets a moment first, unless the click landed in a plain field (most typing).
+        if (clicked && text.length > 1 && !(row.box === false && row.field === true)) {
+            await wait(30);
+            row = await field();
+        }
 
         // A code's row is selected box by box as it is typed (`#typeCode`).
         if (options.append !== true && !row.box) {

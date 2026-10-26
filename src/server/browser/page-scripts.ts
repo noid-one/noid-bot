@@ -257,7 +257,8 @@ export const TYPING_FIELD_SCRIPT = String.raw`(() => {
 	// A box one types a character into: not a checkbox, button, or file input that happens to have a maxlength.
 	const box = (each) => each.tagName === "INPUT" && each.maxLength === 1 && texts.includes(each.type) && !mark(each);
 	window.__piPocketTyping = undefined;
-	if (!el || !box(el)) return { box: false };
+	// A field one types in that is no box: no widget moves focus on from it, so typing needs no moment's wait.
+	if (!el || !box(el)) return { box: false, field: !!el && (el.tagName === "TEXTAREA" || el.isContentEditable || (el.tagName === "INPUT" && texts.includes(el.type))) };
 	const seen = (each) => {
 		const style = getComputedStyle(each);
 		return each.getClientRects().length > 0 && style.visibility !== "hidden" && style.opacity !== "0";
