@@ -118,9 +118,9 @@ export function unfolded(rows, folded) {
 
 /**
  * noid: for the sessions not `shown` that `mark` says something of, the nearest shown session each is linked under (by
- * `linkedFrom`, however deep), with the first such mark found for it.
+ * `linkedFrom`, however deep), with the first such mark found for it, or `first` when one under it says that.
  */
-export function foldedUnder(sessions, shown, mark) {
+export function foldedUnder(sessions, shown, mark, first) {
     const byId = new Map(sessions.map((session) => [session.id, session]));
     const marks = new Map();
 
@@ -139,7 +139,7 @@ export function foldedUnder(sessions, shown, mark) {
             up = byId.get(up)?.linkedFrom?.id;
         }
 
-        if (up !== undefined && shown.has(up) && !marks.has(up)) {
+        if (up !== undefined && shown.has(up) && (!marks.has(up) || said === first)) {
             marks.set(up, said);
         }
     }

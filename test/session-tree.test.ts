@@ -61,6 +61,18 @@ test("noid: what waits under a fold is told on the nearest session that shows, h
 
     // 4 shows its own mark: it is not folded under anything. 5 has nowhere to show.
     assert.deepEqual([...marks], [[1, "waiting"]]);
+    // A mark asked for first wins over one found before it.
+    assert.deepEqual(
+        [
+            ...foldedUnder(
+                [linked(1), linked(2, 1), linked(3, 1)],
+                new Set([1]),
+                (session: { id: number }) => (session.id === 2 ? "failed" : "waiting"),
+                "waiting",
+            ),
+        ],
+        [[1, "waiting"]],
+    );
     // A loop of links ends.
     assert.deepEqual(
         [...foldedUnder([linked(1, 2), linked(2, 1)], new Set(), () => "waiting")],

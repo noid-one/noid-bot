@@ -1596,10 +1596,6 @@ export const toggleBoard = () =>
     );
 
 /**
- * The folded sidebar's sessions: noid: the bots first, by their faces, as Grok's folded sidebar keeps them; then the
- * other sessions, numbered like Waybar's workspaces (their Alt+1…9 places, which count the bots too).
- */
-/**
  * noid: what waits for you or failed among the sessions folded away, by the shown session they are folded under: the
  * rail leaves them out, as the list does, and its tile says so with a dot.
  */
@@ -1616,9 +1612,15 @@ function railTroubles(sessions, order) {
 
             return shape === "waiting" || shape === "failed" ? shape : undefined;
         },
+        // One that needs you is told before one that failed.
+        "waiting",
     );
 }
 
+/**
+ * The folded sidebar's sessions: noid: the bots first, by their faces, as Grok's folded sidebar keeps them; then the
+ * other sessions, numbered like Waybar's workspaces (their Alt+1…9 places, which count the bots too).
+ */
 function RailTiles() {
     const { sessions, conversationId } = store.state;
     const items = useRef(null);
