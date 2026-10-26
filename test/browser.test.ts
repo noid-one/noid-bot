@@ -299,6 +299,8 @@ test(
         <label>Emoji gap <input aria-label="Emoji gap"></label>
         <div id="emoji">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="emoji${i}" maxlength="1" aria-label="emoji ${i}" oninput="this.value && document.getElementById('emoji${i + 1}')?.focus()">${i === 3 ? "<span>🔒</span>" : ""}`).join("")}</div>
         <label>Short <input id="short" maxlength="4" aria-label="Short"></label>
+        <label>Upper <input id="upper" aria-label="Upper" oninput="this.value = this.value.toUpperCase().replace(/-/g, '')"></label>
+        <div id="loose">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="loose${i}" style="width:30px" aria-label="loose ${i}" oninput="this.value = this.value.slice(-1); this.value && document.getElementById('loose${i + 1}')?.focus()">`).join("")}</div>
         <label>Secret <input id="secretShort" type="password" maxlength="4" aria-label="Secret"></label>
         <label>Phone mask <input id="phoneMask" type="tel" maxlength="10" aria-label="Phone mask" onbeforeinput="if (event.inputType === 'insertText') { event.preventDefault(); this.value = (this.value + event.data).replace(/[^0-9]/g, '').slice(0, 10); }"></label>
         <form id="blurForm" onsubmit="event.preventDefault(); window.blurSent = (window.blurSent ?? 0) + 1">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="blurBox${i}" maxlength="1" aria-label="blurBox ${i}" oninput="if (this.value) { ${i < 6 ? `document.getElementById('blurBox${i + 1}').focus()` : "this.blur(); setTimeout(() => this.form.requestSubmit(), 600)"} }">`).join("")}<button>Verify</button></form>
@@ -696,6 +698,15 @@ test(
                 (await page.type({ selector: "#short" }, "123456")).note ?? "",
                 /takes 4 characters: it kept "1234" of "123456"/,
             );
+            // Boxes with no maxlength that keep their last character: the tool cannot tell them from fields, but says
+            // what was kept.
+            assert.match(
+                (await page.type({ label: "loose 1" }, "123456")).note ?? "",
+                /kept "6" of "123456": a field per character may need a key at a time/,
+            );
+            // A mask that drops what is not a digit, or a field that changes case, lost nothing.
+            assert.equal((await page.type({ selector: "#upper" }, "ab-cd")).note, undefined);
+            assert.equal(await page.evaluate("document.getElementById('upper').value"), "ABCD");
             // A line break or spaces past the limit are nothing kept or lost; an emoji past it is (it counts as two).
             assert.equal((await page.type({ selector: "#short" }, "1234\n")).note, undefined);
             assert.equal(await page.evaluate("document.getElementById('short').value"), "1234");

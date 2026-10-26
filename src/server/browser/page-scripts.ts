@@ -459,7 +459,9 @@ export const KEPT_VALUE_SCRIPT = String.raw`(() => {
 	if (!el?.isConnected || !["INPUT", "TEXTAREA"].includes(el.tagName)) return null;
 	if (el.tagName === "INPUT" && el.type === "number") return { value: el.value, number: true };
 	const text = el.tagName === "TEXTAREA" || ["text", "tel", "password", "search", "email", "url"].includes(el.type);
-	return text && el.maxLength > 0 ? { value: el.value, number: false, limit: el.maxLength, password: el.type === "password", single: el.tagName === "INPUT" } : null;
+	if (text && el.maxLength > 0) return { value: el.value, number: false, limit: el.maxLength, password: el.type === "password", single: el.tagName === "INPUT" };
+	// A one-line field with no limit, for one a script cuts (a box per character that keeps only the last).
+	return text && el.tagName === "INPUT" ? { value: el.value, number: false, password: el.type === "password", single: true } : null;
 })()`;
 
 /** Picks an option of a select element by its value or text. */

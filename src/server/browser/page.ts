@@ -1257,13 +1257,30 @@ export class BrowserPage {
                         taken.length > kept.limit &&
                         kept.value.length < taken.length &&
                         code(kept.value) !== code(taken);
+                    // A field with no limit that a script cut: it kept fewer letters and digits than went in, the
+                    // start or the end of them (a box per character that keeps its last, with no maxlength).
+                    const letters = (value: string) =>
+                        value.replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+                    const lost =
+                        !kept.number &&
+                        kept.limit === undefined &&
+                        letters(kept.value) !== "" &&
+                        letters(kept.value).length < letters(taken).length &&
+                        (letters(taken).startsWith(letters(kept.value)) ||
+                            letters(taken).endsWith(letters(kept.value)));
                     const typed = text.replace(/\s+/g, "");
                     const dropped =
                         kept.number &&
                         kept.value !== typed &&
                         !(kept.value !== "" && Number(kept.value) === Number(typed));
 
-                    if (cut || dropped) {
+                    if (lost) {
+                        note = `${label} kept ${
+                            kept.password === true
+                                ? `${String(kept.value.length)} of ${String(taken.length)} characters`
+                                : `"${kept.value}" of "${text}"`
+                        }: a field per character may need a key at a time (press each).`;
+                    } else if (cut || dropped) {
                         note = kept.number
                             ? `${label} is a number field: it kept "${kept.value}" of "${text}".`
                             : `${label} takes ${String(kept.limit)} ${kept.limit === 1 ? "character" : "characters"}: it kept ${
