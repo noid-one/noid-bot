@@ -122,3 +122,34 @@ conversation, streamed at 2,000 tokens a second, so every later turn compacts ag
 
 Tools and raw results (`bench2.mjs`, `bench-pwd.mjs`, `bench-rk.mjs`, `load.mjs`, `idle2.mjs`, `seedbig.ts`, and
 `results/run3/`) were kept outside the repository, in `~/.cache/noid-perf/`.
+
+## The Pi Pocket 0.22 ports, before merging (2026-10-26)
+
+Measured on Node 26 before branch `menu/working-subagents` (the 0.22 ports, and the conversation menu's subagents at
+work) went into main, against main (`a412a1e`) and upstream Pi Pocket 0.23.1 (`d08ccd4`), with the 220-turn data set
+and no model called. Server figures are medians of 5 cold starts, each API figure the median of 7 calls
+(`~/.cache/noid-perf/final26/bench.mjs`; its event streams are now read uncompressed, so the bytes are raw):
+
+| median                                    | main           | the branch     | Pi Pocket 0.23.1 |
+| ----------------------------------------- | -------------- | -------------- | ---------------- |
+| Start: first byte / first `200`           | 207 / 207 ms   | 208 / 208 ms   | 643 / 744 ms     |
+| Memory at idle / after the API calls      | 210 / 224 MB   | 210 / 223 MB   | 202 / 226 MB     |
+| Session list / the 220-turn view          | 1.72 / 7.64 ms | 1.77 / 7.20 ms | 2.08 / 7.43 ms   |
+| The 220-turn view, raw                    | 488,400 B      | 488,402 B      | 482,489 B        |
+| Typing into a plain field (real Chromium) | 49.9 ms        | 49.9 ms        | –                |
+
+The review before merging changed three things that cost time:
+
+- Typing first waited 30 ms after every click, in case a code widget moved focus on: a plain field took 83 ms. It
+  now waits only when the click lands on a one-character box or on nothing one types in (the two reads it added, of
+  the field before and of what it kept after, cost about a millisecond each).
+- The fold dots: each folded row walked its whole group (upstream's code, but noid draws the whole list on every store
+  change, where upstream draws it only when the list changes). One pass now, and the rows above the open session are
+  worked out once per list. A draw, all sessions in one group, chains of four, a quarter folded:
+
+    | sessions | main    | before the fix: folds / none | now: folds / none |
+    | -------- | ------- | ---------------------------- | ----------------- |
+    | 2,000    | 1.64 ms | 4.38 / 2.00 ms               | 2.05 / 1.69 ms    |
+    | 10,000   | 8.22 ms | 35.6 / 11.7 ms               | 10.4 / 10.1 ms    |
+
+- Spend by model adds up the usage the Spend sheet already reads: 0.9 ms for the live data's 47 usage records.
