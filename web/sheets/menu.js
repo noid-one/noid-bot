@@ -7,8 +7,9 @@ import { schedulesAvailable, watchAvailable, watchPr } from "../commands.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
-import { openSubagent, workingRuns } from "../subagents.js";
 import { fromServer } from "../seen.js";
+import { workingRuns } from "../subagent-runs.js";
+import { openSubagent } from "../subagents.js";
 import {
     actions,
     attempt,
@@ -311,10 +312,18 @@ function PopMenu({ title, anchor, beside = false, width, label, header = null, g
             ${header}
             <div role="menu" aria-label=${label ?? title}>
                 ${shown.map(
-                    (group, at) => html`<div class="pop-group" role="group" key=${at}>
+                    // Keyed by their first row, so a group put in before others leaves their rows (and focus) be.
+                    (group, at) => html`<div
+                        class="pop-group"
+                        role="group"
+                        key=${group[0]?.id ?? at}
+                        aria-labelledby=${group[0]?.heading ? `pop-${group[0].id}` : undefined}
+                    >
                         ${group.map((row) =>
                             row.heading
-                                ? html`<div class="pop-heading" key=${row.id}>${row.heading}</div>`
+                                ? html`<div class="pop-heading" id=${`pop-${row.id}`} key=${row.id}>
+                                      ${row.heading}
+                                  </div>`
                                 : html`<${PopRow} key=${row.id} ...${row} />`,
                         )}
                     </div>`,
@@ -324,13 +333,18 @@ function PopMenu({ title, anchor, beside = false, width, label, header = null, g
     </div>`;
 }
 
-/** noid: a run of working subagents' heading: "3 subagents working · since 14:23". */
+/** noid: a run of working subagents' heading: "3 subagents working · since 14:23" (no time when it is not known). */
 function runHeading(run) {
-    const since = new Date(fromServer(run[0].askedAt ?? 0)).toLocaleTimeString([], {
+    const count = run.length === 1 ? "1 subagent" : `${run.length} subagents`;
+
+    if (run[0].askedAt === undefined) {
+        return `${count} working`;
+    }
+
+    const since = new Date(fromServer(run[0].askedAt)).toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit",
     });
-    const count = run.length === 1 ? "1 subagent" : `${run.length} subagents`;
 
     return `${count} working · since ${since}`;
 }
