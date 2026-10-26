@@ -101,16 +101,25 @@ const asData = (text: string) => clip(text, HISTORY_CHARS).replaceAll("<", "‹"
 
 /**
  * The members a message names with `@Name`: an @ at the start or after a space (not in an address), then the name
- * (its spaces may be left out), then no more of a word. All of them when it names none.
+ * (its spaces may be left out), then no more of a word. All of them when it names none. Each mention names one member:
+ * the longest name it spells, so "@Ada Lovelace" is not also "@Ada" (rakazo ac09175f1).
  */
 export function addressed(text: string, members: { id: string; name: string }[]): string[] {
+    const spellings = (member: { name: string }) =>
+        [member.name.trim(), member.name.replace(/\s+/g, "")].filter(Boolean);
+    const names = [...new Set(members.flatMap(spellings))].sort((a, b) => b.length - a.length);
+
+    if (names.length === 0) {
+        return members.map((member) => member.id);
+    }
+
+    const pattern = new RegExp(
+        `(?<=^|\\s)@(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![\\p{L}\\p{N}_])`,
+        "giu",
+    );
+    const mentions = new Set([...text.matchAll(pattern)].map((match) => match[1]!.toLowerCase()));
     const named = members.filter((member) =>
-        [member.name, member.name.replace(/\s+/g, "")].some((name) =>
-            new RegExp(
-                `(^|\\s)@${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`,
-                "iu",
-            ).test(text),
-        ),
+        spellings(member).some((name) => mentions.has(name.toLowerCase())),
     );
 
     return (named.length > 0 ? named : members).map((member) => member.id);

@@ -105,6 +105,19 @@ test("who answers: everyone, or the ones a message names", () => {
         ["l"],
         "a name is a whole word",
     );
+
+    // One mention, one member: the longest name it spells (rakazo ac09175f1), its spaces left out or not.
+    const pair = [
+        { id: "d", name: "Design" },
+        { id: "r", name: "Design Review" },
+    ];
+
+    assert.deepEqual(addressed("@Design Review please review", pair), ["r"]);
+    assert.deepEqual(addressed("@designreview please", pair), ["r"]);
+    assert.deepEqual(addressed("@Design please", pair), ["d"]);
+    // Both, when each is written.
+    assert.deepEqual(addressed("@Design and @Design Review", pair), ["d", "r"]);
+    assert.deepEqual(addressed("@Design Review and @Design", pair), ["d", "r"]);
 });
 
 test("only the owner makes groups, of two or more of their bots", async () => {
