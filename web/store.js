@@ -277,6 +277,10 @@ function readFoldedLinked() {
 export function foldsNow(state = store.state) {
     const folds = new Set(state.foldedLinked);
 
+    if (folds.size === 0) {
+        return folds;
+    }
+
     for (const id of holdsOpen(state)) {
         folds.delete(id);
     }
@@ -284,8 +288,15 @@ export function foldsNow(state = store.state) {
     return folds;
 }
 
+/** The last `holdsOpen` answer, for the sessions and open session it was for: the list asks on every draw. */
+let heldOpen = { sessions: undefined, conversationId: undefined, above: new Set() };
+
 /** The sessions above the open one, linked session by linked session: their folds stay open. */
 export function holdsOpen(state = store.state) {
+    if (heldOpen.sessions === state.sessions && heldOpen.conversationId === state.conversationId) {
+        return heldOpen.above;
+    }
+
     const byId = new Map(state.sessions.map((session) => [session.id, session]));
     const above = new Set();
 
@@ -296,6 +307,8 @@ export function holdsOpen(state = store.state) {
     ) {
         above.add(at);
     }
+
+    heldOpen = { sessions: state.sessions, conversationId: state.conversationId, above };
 
     return above;
 }

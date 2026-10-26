@@ -191,29 +191,36 @@ function foldLabel(kids, trouble) {
           : count;
 }
 
-/** Whether a session folded away under `id` waits for you or failed: the fold shows it, as a folded group does. */
-function hiddenTrouble(group, id) {
-    const at = group.hidden.findIndex((row) => row.session.id === id);
+/**
+ * Whether a session folded away under each row waits for you or failed, by row id: the fold shows it, as a folded group
+ * does. The first such session under a row, in list order, is the one told. noid: one pass over the group, not one per
+ * folded row (noid draws the whole list again on every change).
+ */
+function hiddenTroubles(group) {
+    const troubles = new Map();
+    const above = [];
 
-    if (at === -1) {
-        return undefined;
-    }
+    for (const row of group.hidden) {
+        const depth = row.branches.length;
 
-    const depth = group.hidden[at].branches.length;
-
-    for (const row of group.hidden.slice(at + 1)) {
-        if (row.branches.length <= depth) {
-            break;
+        while (above.length > 0 && above.at(-1).depth >= depth) {
+            above.pop();
         }
 
         const shape = sessionMark(row.session).shape;
 
         if (shape === "waiting" || shape === "failed") {
-            return shape;
+            for (const each of above) {
+                if (!troubles.has(each.id)) {
+                    troubles.set(each.id, shape);
+                }
+            }
         }
+
+        above.push({ id: row.session.id, depth });
     }
 
-    return undefined;
+    return troubles;
 }
 
 const DAY = 86_400_000;
@@ -1448,6 +1455,11 @@ function AllSessions({ compact = false }) {
                           .map((row) => sessionMark(row.session).shape)
                           .find((shape) => shape === "waiting" || shape === "failed")
                     : undefined;
+                // What waits or failed under each folded row.
+                const troubles =
+                    !isClosed && needle === "" && folded.size > 0
+                        ? hiddenTroubles(group)
+                        : undefined;
 
                 return html`<section
                     class=${`session-group ${isClosed ? "closed" : ""}`}
@@ -1500,7 +1512,7 @@ function AllSessions({ compact = false }) {
                                         kids=${kids}
                                         folded=${isFolded}
                                         foldHeld=${above.has(session.id)}
-                                        foldTrouble=${isFolded ? hiddenTrouble(group, session.id) : undefined}
+                                        foldTrouble=${isFolded ? troubles?.get(session.id) : undefined}
                                         index=${index++}
                                         number=${numbers.get(session.id)}
                                         needle=${needle}
