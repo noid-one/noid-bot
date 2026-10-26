@@ -125,18 +125,21 @@ Tools and raw results (`bench2.mjs`, `bench-pwd.mjs`, `bench-rk.mjs`, `load.mjs`
 
 ## The Pi Pocket 0.22 ports, before merging (2026-10-26)
 
-Measured on Node 26 before branch `menu/working-subagents` (the 0.22 ports, and the conversation menu's subagents at
-work) went into main, against main (`a412a1e`) and upstream Pi Pocket 0.23.1 (`d08ccd4`), with the 220-turn data set
+Measured on Node 26 at main's head once branches `port/upstream-0.22` and `menu/working-subagents` were in (`41734b5`),
+in one sitting with main before them (`a412a1e`) and upstream Pi Pocket 0.23.1 (`d08ccd4`), with the 220-turn data set
 and no model called. Server figures are medians of 5 cold starts, each API figure the median of 7 calls
-(`~/.cache/noid-perf/final26/bench.mjs`; its event streams are now read uncompressed, so the bytes are raw):
+(`~/.cache/noid-perf/final26/bench.mjs`; its event streams are now read uncompressed, so the bytes are raw); typing is
+the median of 20 calls into a plain field in real Chromium:
 
-| median                                    | main           | the branch     | Pi Pocket 0.23.1 |
-| ----------------------------------------- | -------------- | -------------- | ---------------- |
-| Start: first byte / first `200`           | 207 / 207 ms   | 208 / 208 ms   | 643 / 744 ms     |
-| Memory at idle / after the API calls      | 210 / 224 MB   | 210 / 223 MB   | 202 / 226 MB     |
-| Session list / the 220-turn view          | 1.72 / 7.64 ms | 1.77 / 7.20 ms | 2.08 / 7.43 ms   |
-| The 220-turn view, raw                    | 488,400 B      | 488,402 B      | 482,489 B        |
-| Typing into a plain field (real Chromium) | 49.9 ms        | 49.9 ms        | –                |
+| median                               | before (`a412a1e`) | after (`41734b5`) | Pi Pocket 0.23.1 |
+| ------------------------------------ | ------------------ | ----------------- | ---------------- |
+| Start: first byte / first `200`      | 202 / 202 ms       | 204 / 204 ms      | 649 / 753 ms     |
+| Memory at idle / after the API calls | 212 / 225 MB       | 210 / 223 MB      | 201 / 225 MB     |
+| Session list / the 220-turn view     | 1.66 / 7.43 ms     | 1.76 / 7.45 ms    | 2.16 / 7.49 ms   |
+| The 220-turn view, raw               | 488,400 B          | 488,400 B         | 482,491 B        |
+| Typing into a plain field            | 50.0 ms            | 50.0 ms           | –                |
+
+The full suite passes at `41734b5` (521, and the 12 Docker tests against their own container).
 
 The review before merging changed three things that cost time:
 
