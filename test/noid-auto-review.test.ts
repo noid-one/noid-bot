@@ -284,17 +284,35 @@ test("the owner can pick a model that checks and a backup; with none, the bot's 
     assert.equal(checks, 1);
     assert.match(down.question!.reason, /could not be checked by auto review/);
 
-    // A pick that fails with no backup (signed out, say): the bot's own checks after it, as before there was a pick.
+    // A pick that fails with no backup asks, as a bot's own model that fails does: nothing the owner did not pick
+    // is asked instead.
     await autoReviewSettings(app, owner(app), {
         model: { provider: "faux", modelId: "faux-2" },
         backup: null,
     });
     checks = 0;
-    await send(scout, message("post", "picked down"));
-    assert.equal(checks, 2);
-    assert.match(await lastReply(scout), /Sent to Post/);
+    const failed = await send(scout, message("post", "picked down"), true);
 
-    // A pick that hangs gets part of the time, and leaves the rest to the next.
+    assert.equal(checks, 1);
+    assert.match(failed.question!.reason, /could not be checked by auto review/);
+
+    // A pick that is not signed in, with no backup: the bot's own checks rather than none.
+    const signInNeeded = app.signInNeeded;
+
+    Object.defineProperty(app, "signInNeeded", { value: () => true, configurable: true });
+
+    try {
+        checks = 0;
+        await send(scout, message("post", "picked down"));
+        // The own model is faux-1, which answers; faux-2 was not asked.
+        assert.equal(checks, 1);
+        assert.match(await lastReply(scout), /Sent to Post/);
+    } finally {
+        Object.defineProperty(app, "signInNeeded", { value: signInNeeded, configurable: true });
+    }
+
+    // A pick that hangs gets part of the time, and leaves the rest to the backup.
+    await autoReviewSettings(app, owner(app), { backup: { provider: "faux", modelId: "faux-1" } });
     process.env.NOID_AUTO_REVIEW_SECONDS = "2";
 
     try {
@@ -308,8 +326,6 @@ test("the owner can pick a model that checks and a backup; with none, the bot's 
     } finally {
         delete process.env.NOID_AUTO_REVIEW_SECONDS;
     }
-
-    await autoReviewSettings(app, owner(app), { backup: { provider: "faux", modelId: "faux-1" } });
 
     // Turning it off keeps the models; null takes them away.
     assert.equal(await autoReview(app, owner(app), false), false);

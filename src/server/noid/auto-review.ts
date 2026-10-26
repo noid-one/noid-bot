@@ -96,10 +96,10 @@ export function reviewModelOf(value: unknown): ModelRef | null | undefined {
         : undefined;
 }
 
-/** How long a check may take before the call asks instead (NOID_AUTO_REVIEW_SECONDS, default 20). */
 /** The part of the time left a model gets when there is another to go to. */
 const TURN_SHARE = 0.6;
 
+/** How long a check may take before the call asks instead (NOID_AUTO_REVIEW_SECONDS, default 20). */
 function timeoutMs(): number {
     const seconds = Number(process.env.NOID_AUTO_REVIEW_SECONDS ?? 20);
 
@@ -321,21 +321,33 @@ export async function review(
                             (other) => other.provider === each.provider && other.id === each.id,
                         ) === index,
                 );
-        // A picked model that is gone, signed out, or failing leaves the bot's own to check last, as it did before
-        // there was a pick.
-        const models = resolve([
-            settings?.model ?? (await own()),
-            settings?.backup,
-            ...(settings?.model === undefined ? [] : [await own()]),
-        ]);
+        // A picked model that is gone or not signed in is passed over (the backup takes over, as the sheet says); with
+        // neither left, the bot's own checks rather than none, as before there was a pick.
+        const usable = (model: { provider: string }) =>
+            app.models.hasConfiguredAuth(model.provider) && !app.signInNeeded(model.provider);
+        // The bot's own model, when it checks first, is tried as it always was.
+        let models = resolve([settings?.model ?? (await own()), settings?.backup]).filter(
+            (model, index) => (index === 0 && settings?.model === undefined) || usable(model),
+        );
+
+        if (models.length === 0 && settings?.model !== undefined) {
+            models = resolve([await own()]);
+
+            if (models.length > 0) {
+                app.log(
+                    "auto review: the picked models cannot be used; the bot's own model checks",
+                );
+            }
+        }
 
         if (models.length === 0) {
             return { ask: true, reason: "could not be checked by auto review (no model)" };
         }
 
         const sessionId = (await app.harness.snapshot(ProviderDoc, id, context))?.sessionId;
-        const deadline = AbortSignal.timeout(timeoutMs());
-        const deadlineAt = Date.now() + timeoutMs();
+        const limit = timeoutMs();
+        const deadline = AbortSignal.timeout(limit);
+        const deadlineAt = Date.now() + limit;
         const prompt = reviewPrompt({ tool, args, task: await taskOf(app, id), bot, newSite });
 
         timedOut = () => deadline.aborted;
