@@ -277,6 +277,34 @@ test(
         <label>Floor <input aria-label="Floor"></label><div id="empty"></div>
         <label>Unit <input aria-label="Unit"></label><form id="locked" onsubmit="event.preventDefault(); (window.lockedSent ??= []).push([...this.querySelectorAll('input')].map((each) => each.value).join(''))"></form>
         <label>Suite <input aria-label="Suite"></label>
+        <div id="mainCode"></div> Backup code <div id="backupCode"></div>
+        <style>.or::before { content: "or use a backup code"; }</style>
+        <label>Before or <input aria-label="Before or"></label><div id="orA"></div><div class="or"></div><div id="orB"></div><x-label></x-label><div id="orC"></div><label>After or <input aria-label="After or"></label>
+        <label>Before tail <input aria-label="Before tail"></label><div id="tailA"></div><div><label>Backup code</label></div><div id="tailB"></div><label>After tail <input aria-label="After tail"></label>
+        <label>Postcode <input aria-label="Postcode"></label><div id="redraw"></div>
+        <label>Amount <input type="number" id="amount" aria-label="Amount"></label>
+        <style>.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }</style>
+        <div id="spoken">${[1, 2, 3, 4, 5, 6].map((i) => `<label class="sr" for="spoken${i}">Digit ${i}</label><input id="spoken${i}" maxlength="1" aria-label="spoken ${i}" oninput="this.value && document.getElementById('spoken${i + 1}')?.focus()">`).join("")}</div>
+        <label>Day <input id="day" maxlength="2" aria-label="Day" oninput="if (this.value.length === 2) document.getElementById('month').focus()"></label>
+        <label>Month <input id="month" type="number" aria-label="Month"></label>
+        <div id="nested">${[1, 2, 3, 4, 5, 6].map((i) => `<label class="sr"><span>Digit ${i}</span></label><input id="nested${i}" maxlength="1" aria-label="nested ${i}" oninput="this.value && document.getElementById('nested${i + 1}')?.focus()">`).join("")}</div>
+        <label>Notes <input aria-label="Notes field"></label>
+        <div id="away">${[1, 2, 3, 4, 5, 6].map((i) => `<label style="position: absolute; left: -9999px">Digit ${i}</label><input id="away${i}" maxlength="1" aria-label="away ${i}" oninput="this.value && document.getElementById('away${i + 1}')?.focus()">`).join("")}</div>
+        <div id="verify">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="verify${i}" maxlength="1" aria-label="verify ${i}" oninput="this.value && document.getElementById('${i < 6 ? `verify${i + 1}` : "verifyButton"}').focus()">`).join("")}<button id="verifyButton" onclick="window.verified = (window.verified ?? 0) + 1">Verify</button></div>
+        <div id="wrapA"></div><div style="display: contents"><p>Backup code</p></div><div id="wrapB"></div><label>Wrap <input aria-label="Wrap"></label>
+        <div id="iconCode">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="iconCode${i}" maxlength="1" aria-label="iconCode ${i}" oninput="this.value && document.getElementById('iconCode${i + 1}')?.focus()">${i === 3 ? '<span class="material-icons">remove</span>' : ""}`).join("")}</div>
+        <label>Icon gap <input aria-label="Icon gap"></label><div id="kept"></div>
+        <label>After kept <input aria-label="After kept"></label>
+        <div id="rtl" dir="rtl">${[1, 2, 3, 4, 5, 6].map((i) => `<label style="position: absolute; right: -9999px">رقم ${i}</label><input id="rtl${i}" maxlength="1" aria-label="rtl ${i}" oninput="this.value && document.getElementById('rtl${i + 1}')?.focus()">`).join("")}</div>
+        <label>Emoji gap <input aria-label="Emoji gap"></label>
+        <div id="emoji">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="emoji${i}" maxlength="1" aria-label="emoji ${i}" oninput="this.value && document.getElementById('emoji${i + 1}')?.focus()">${i === 3 ? "<span>🔒</span>" : ""}`).join("")}</div>
+        <label>Short <input id="short" maxlength="4" aria-label="Short"></label>
+        <label>Secret <input id="secretShort" type="password" maxlength="4" aria-label="Secret"></label>
+        <label>Phone mask <input id="phoneMask" type="tel" maxlength="10" aria-label="Phone mask" onbeforeinput="if (event.inputType === 'insertText') { event.preventDefault(); this.value = (this.value + event.data).replace(/[^0-9]/g, '').slice(0, 10); }"></label>
+        <form id="blurForm" onsubmit="event.preventDefault(); window.blurSent = (window.blurSent ?? 0) + 1">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="blurBox${i}" maxlength="1" aria-label="blurBox ${i}" oninput="if (this.value) { ${i < 6 ? `document.getElementById('blurBox${i + 1}').focus()` : "this.blur(); setTimeout(() => this.form.requestSubmit(), 600)"} }">`).join("")}<button>Verify</button></form>
+        <label>After blur <input aria-label="After blur"></label>
+        <div id="spanA"></div><span style="display: contents">Backup code</span><div id="spanB"></div><label>After span <input aria-label="After span"></label>
+        <label>Money <input id="money" maxlength="6" aria-label="Money" onbeforeinput="if (event.inputType === 'insertText') { event.preventDefault(); this.value = (this.value + event.data).replace(/[^0-9]/g, '').slice(0, 6); }"></label><form id="lastForm" onsubmit="event.preventDefault(); window.lastSent = (window.lastSent ?? 0) + 1"><div id="drawn"></div><button>Go</button></form>
         <label>Region <input aria-label="Region"></label><div id="go"></div><label>Country <input aria-label="Country"></label><div id="behind"><input id="real" maxlength="6" autocomplete="one-time-code" style="position:absolute;opacity:0;width:1px;height:1px"></div>
         <label>Note <input aria-label="Note"></label><div id="shadowed"></div><shadow-field></shadow-field>
         <div id="notes"><textarea aria-label="Notes"></textarea></div>
@@ -284,7 +312,7 @@ test(
         <script>
             window.keys = 0;
             addEventListener("keydown", () => window.keys++, true);
-            for (const id of ["otp", "keyed", "jump", "wrapped", "submit", "four", "stale", "notes", "swap", "masked", "deep", "autofill", "halves", "slow", "gated", "naive", "lock", "pin", "first", "pinform", "behind", "go", "scripted", "later", "full", "held", "empty", "locked"]) {
+            for (const id of ["otp", "keyed", "jump", "wrapped", "submit", "four", "stale", "notes", "swap", "masked", "deep", "autofill", "halves", "slow", "gated", "naive", "lock", "pin", "first", "pinform", "behind", "go", "scripted", "later", "full", "held", "empty", "locked", "mainCode", "backupCode", "wrapA", "wrapB", "tailA", "tailB", "orA", "orB", "orC", "spanA", "spanB"]) {
                 const boxes = Array.from({ length: id === "four" ? 4 : 6 }, (_, i) => {
                     const box = document.createElement("input");
                     box.maxLength = 1;
@@ -399,6 +427,72 @@ test(
                     });
                 });
             }
+            // A label inside a web component, between two codes.
+            customElements.define("x-label", class extends HTMLElement {
+                constructor() {
+                    super();
+                    this.attachShadow({ mode: "open" }).innerHTML = "<p>SMS code</p>";
+                }
+            });
+            // A widget that draws all its boxes again, as new elements, on every input (as rakazo's fixture has).
+            const redraw = document.getElementById("redraw");
+            const draw = (values, focus) => {
+                redraw.replaceChildren(...values.map((value, i) => {
+                    const box = document.createElement("input");
+                    box.maxLength = 1;
+                    box.value = value;
+                    box.setAttribute("aria-label", "redraw " + (i + 1));
+                    box.addEventListener("input", () => {
+                        const next = Array.from(redraw.children, (each) => each.value.replace(/[^0-9]/g, "").slice(-1));
+                        draw(next, next[i] ? Math.min(i + 1, 5) : i);
+                    });
+                    return box;
+                }));
+                if (focus !== undefined) redraw.children[focus].focus();
+            };
+            draw(["", "", "", "", "", ""]);
+            // The same, but leaving no box focused after the last digit.
+            const drawn = document.getElementById("drawn");
+            const drawAgain = (values) => {
+                drawn.replaceChildren(...values.map((value, i) => {
+                    const box = document.createElement("input");
+                    box.maxLength = 1;
+                    box.value = value;
+                    box.setAttribute("aria-label", "drawn " + (i + 1));
+                    box.addEventListener("input", () => {
+                        const next = Array.from(drawn.children, (each) => each.value.slice(-1));
+                        drawAgain(next);
+                        if (i < 5) drawn.children[i + 1].focus();
+                    });
+                    return box;
+                }));
+            };
+            drawAgain(["", "", "", "", "", ""]);
+            // A widget that draws its boxes from its own state on every input, and empties a box only on Backspace.
+            const keptRow = document.getElementById("kept");
+            const state = ["1", "2", "3", "4", "5", "6"];
+            const drawKept = (focus) => {
+                keptRow.replaceChildren(...state.map((value, i) => {
+                    const box = document.createElement("input");
+                    box.maxLength = 1;
+                    box.value = value;
+                    box.setAttribute("aria-label", "kept " + (i + 1));
+                    box.addEventListener("keydown", (event) => {
+                        if (event.key !== "Backspace") return;
+                        event.preventDefault();
+                        state[i] = "";
+                        drawKept(Math.max(0, i - 1));
+                    });
+                    box.addEventListener("input", () => {
+                        const digit = box.value.replace(/[^0-9]/g, "").slice(-1);
+                        if (digit) state[i] = digit;
+                        drawKept(digit ? Math.min(i + 1, 5) : i);
+                    });
+                    return box;
+                }));
+                if (focus !== undefined) keptRow.children[focus].focus();
+            };
+            drawKept();
             // A row made of web components, a box in each one's shadow root, and a text field inside one.
             const shadowed = Array.from({ length: 6 }, (_, i) => {
                 const host = document.createElement("span");
@@ -530,6 +624,124 @@ test(
                 page.type({ label: "empty 3" }, "12345"),
                 /the code has 5 letters and digits, and its row 4 boxes from the one clicked on/,
             );
+            // So does a divider whose words come from CSS, or sit in a web component: the boxes are laid out apart.
+            await page.type({ label: "orB 1" }, "777777");
+            await page.type({ label: "orC 1" }, "888888");
+            await page.type({ label: "orA 1" }, "1234");
+            assert.equal(await values("orB"), "777777");
+            await page.type({ label: "orB 1" }, "2345");
+            assert.equal(await values("orC"), "888888");
+            // So they do on a site whose text font lists a symbol font as a fallback (Tailwind's and Bootstrap's do).
+            await page.evaluate(
+                `document.documentElement.style.fontFamily = 'ui-sans-serif, system-ui, sans-serif, "Segoe UI Symbol"'; 1`,
+            );
+            await page.type({ label: "tailB 1" }, "333333");
+            await page.type({ label: "tailA 1" }, "4444");
+            assert.equal(await values("tailB"), "333333");
+            await page.evaluate("document.documentElement.style.fontFamily = ''; 1");
+            // Words between two rows part them: typing the backup code leaves the main code as it is.
+            await page.type({ label: "mainCode 1" }, "111111");
+            await page.type({ label: "backupCode 1" }, "222222");
+            assert.equal(await values("mainCode"), "111111");
+            assert.equal(await values("backupCode"), "222222");
+            // A widget that draws its boxes again on every input gets every key, and a code typed again over it.
+            await page.type({ label: "redraw 1" }, "482913");
+            assert.equal(await values("redraw"), "482913");
+            await page.type({ label: "redraw 4" }, "931");
+            assert.equal(await values("redraw"), "482931");
+            // Labels only a screen reader reads ("Digit 2") between the boxes part nothing.
+            await page.type({ label: "spoken 1" }, "482913");
+            assert.equal(await values("spoken"), "482913");
+            // Labels hidden in a nested element, or moved off the page, part nothing either.
+            await page.type({ label: "nested 1" }, "135791");
+            assert.equal(await values("nested"), "135791");
+            await page.type({ label: "away 1" }, "246802");
+            assert.equal(await values("away"), "246802");
+            // A redrawn row that leaves no box focused: found again, and Enter goes to its last box, once.
+            assert.equal(
+                (await page.type({ label: "drawn 1" }, "482913", { submit: true })).pageSubmitted,
+                false,
+            );
+            assert.equal(await values("drawn"), "482913");
+            assert.equal(await page.evaluate("window.lastSent"), "1");
+            // A widget that hands focus to its Verify button after the last digit: Enter presses that button, once.
+            await page.type({ label: "verify 1" }, "112358", { submit: true });
+            assert.equal(await page.evaluate("window.verified"), "1");
+            // A visible label in a wrapper that has no box of its own (display: contents) still parts two codes.
+            await assert.rejects(
+                page.type({ label: "wrapA 1" }, "48291357"),
+                /the code has 8 letters and digits, and its row 6 boxes/,
+            );
+            // An icon drawn from a font's ligature ("remove" as a dash) between the boxes parts nothing.
+            await page.type({ label: "iconCode 1" }, "482913");
+            assert.equal(await values("iconCode"), "482913");
+            // A widget that draws its boxes from its own state and puts values back: Backspace clears it, and the
+            // new code replaces the old one.
+            await page.type({ label: "kept 1" }, "482913");
+            assert.equal(await values("kept"), "482913");
+            // Labels moved off a right-to-left page, and an emoji between the halves, part nothing.
+            await page.type({ label: "rtl 1" }, "482913");
+            assert.equal(await values("rtl"), "482913");
+            await page.type({ label: "emoji 1" }, "135791");
+            assert.equal(await values("emoji"), "135791");
+            // A field with a length limit that cuts the text says so.
+            await assert.rejects(
+                page.type({ selector: "#short" }, "123456"),
+                /takes 4 characters: it kept "1234" of "123456"/,
+            );
+            // A line break or spaces past the limit are nothing kept or lost; an emoji past it is (it counts as two).
+            await page.type({ selector: "#short" }, "1234\n");
+            assert.equal(await page.evaluate("document.getElementById('short').value"), "1234");
+            await assert.rejects(
+                page.type({ selector: "#short" }, "abc😀"),
+                /takes 4 characters: it kept "abc"/,
+            );
+            // Each line break is a space of its own in a one-line field: two of them leave less room.
+            await assert.rejects(
+                page.type({ selector: "#short" }, "ab\n\nc"),
+                /takes 4 characters/,
+            );
+            // A password's trailing space is part of it: cut, it says so.
+            await assert.rejects(page.type({ selector: "#secretShort" }, "abcd "), /kept 4 of 5\./);
+            // A label right inside an element with display: contents still parts two codes.
+            await assert.rejects(
+                page.type({ label: "spanA 1" }, "48291357"),
+                /the code has 8 letters and digits, and its row 6 boxes/,
+            );
+            // A mask that drops a currency sign and its commas cut nothing.
+            await page.type({ selector: "#money" }, "$10,000");
+            assert.equal(await page.evaluate("document.getElementById('money').value"), "10000");
+            // A mask that keeps the digits and drops the dashes cut nothing.
+            await page.type({ selector: "#phoneMask" }, "555-123-4567");
+            assert.equal(
+                await page.evaluate("document.getElementById('phoneMask').value"),
+                "5551234567",
+            );
+            // A widget that lets go of focus on purpose, then submits the code itself a while later: Enter is pressed
+            // nowhere it would submit it again.
+            await page.type({ label: "blurBox 1" }, "482913", { submit: true });
+            await new Promise((done) => setTimeout(done, 800));
+            assert.equal(await page.evaluate("window.blurSent"), "1");
+            // A password field's cut says how much went in, never what.
+            await assert.rejects(
+                page.type({ selector: "#secretShort" }, "hunter22"),
+                (error: Error) =>
+                    /kept 4 of 8\./.test(error.message) && !error.message.includes("hunt"),
+            );
+            // The number check reads the field typed into, not the next one the page moves focus to.
+            await page.type({ selector: "#day" }, "12");
+            assert.equal(await page.evaluate("document.getElementById('day').value"), "12");
+            // A number field that keeps only part of the text says so.
+            await assert.rejects(
+                page.type({ selector: "#amount" }, "12a"),
+                /number field: it kept "12" of "12a"/,
+            );
+            // The same number written another way is what was typed.
+            await page.type({ selector: "#amount" }, "+5");
+            assert.equal(await page.evaluate("document.getElementById('amount').value"), "5");
+            // Spaces aside: "1 000" is the number 1000.
+            await page.type({ selector: "#amount" }, "1 000");
+            assert.equal(await page.evaluate("document.getElementById('amount').value"), "1000");
             // A code as long as its row starts at the row's first box, whichever box was clicked.
             await page.type({ label: "empty 4" }, "123456");
             assert.equal(await values("empty"), "123456");

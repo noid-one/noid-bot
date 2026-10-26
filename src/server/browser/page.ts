@@ -8,6 +8,7 @@ import {
     DESCRIBE_FUNCTION,
     FILE_INPUT_SCRIPT,
     LOCATE_SCRIPT,
+    KEPT_VALUE_SCRIPT,
     SELECT_ALL_SCRIPT,
     SELECT_OPTION_SCRIPT,
     SNAPSHOT_SCRIPT,
@@ -19,7 +20,22 @@ import {
 import { clamp, presetOf, type Viewport, type ViewportPreset } from "./viewport.ts";
 
 /** Where typing a code stands (`TYPING_STATE_SCRIPT`). */
-type TypingState = { at: number; values: string[] | null; submitted: boolean; failed?: boolean };
+type TypingState = {
+    at: number;
+    values: string[] | null;
+    submitted: boolean;
+    failed?: boolean;
+    idle?: boolean;
+};
+
+/** What a field that may drop part of an insert kept (`KEPT_VALUE_SCRIPT`). */
+type KeptValue = {
+    value: string;
+    number: boolean;
+    limit?: number;
+    password?: boolean;
+    single?: boolean;
+};
 
 /** A row of code boxes (`TYPING_FIELD_SCRIPT`): what its boxes held before typing. */
 type CodeRow = { box: false } | { box: true; before: string[]; clicked: number };
@@ -1210,6 +1226,54 @@ export class BrowserPage {
             );
         } else if (text !== "") {
             await this.#send("Input.insertText", { text });
+
+            // A field that drops part of the text says so rather than keep it silently: a number field what is not a
+            // number ("12a" leaves "12"; spaces aside, and the same number written another way is what was typed), a
+            // field with a length limit what goes past it. The field was noted as select-all ran.
+            if (options.append !== true) {
+                const kept = (await this.#evaluate(KEPT_VALUE_SCRIPT).catch(
+                    () => null,
+                )) as KeptValue | null;
+
+                if (kept !== null) {
+                    // A field may format what it keeps: only text cut at the limit counts, as the field takes it (a
+                    // one-line field makes each line break a space; spaces at the end are nothing to keep, but in a
+                    // password, where they are part of it), in the units its limit counts (an emoji is two). A mask
+                    // that keeps all but punctuation and spaces (a phone number without its dashes) cut nothing.
+                    const lines = kept.single === true ? text.replace(/\r\n|[\r\n]/g, " ") : text;
+                    const taken = kept.password === true ? lines : lines.trimEnd();
+                    // What is left once punctuation, spaces, and currency and math signs ($, +), which masks add or drop, are
+                    // taken out (an emoji stays); all of a password.
+                    const code = (value: string) =>
+                        kept.password === true
+                            ? value
+                            : value.replace(/[\p{P}\p{Z}\p{Sc}\p{Sm}\s]/gu, "");
+                    const cut =
+                        !kept.number &&
+                        kept.limit !== undefined &&
+                        taken.length > kept.limit &&
+                        kept.value.length < taken.length &&
+                        code(kept.value) !== code(taken);
+                    const typed = text.replace(/\s+/g, "");
+                    const dropped =
+                        kept.number &&
+                        kept.value !== typed &&
+                        !(kept.value !== "" && Number(kept.value) === Number(typed));
+
+                    if (cut || dropped) {
+                        throw new BrowserError(
+                            kept.number
+                                ? `${label} is a number field: it kept "${kept.value}" of "${text}".`
+                                : `${label} takes ${String(kept.limit)} ${kept.limit === 1 ? "character" : "characters"}: it kept ${
+                                      // A password is not repeated: only how much of it went in.
+                                      kept.password === true
+                                          ? `${String(kept.value.length)} of ${String(taken.length)}`
+                                          : `"${kept.value}" of "${text}"`
+                                  }.`,
+                        );
+                    }
+                }
+            }
         }
 
         // A code the page submitted itself: Enter would send it again. Its load is waited for as Enter's would be.
@@ -1217,6 +1281,14 @@ export class BrowserPage {
             await this.#settle(mark, 10_000, options.signal);
         } else if (options.submit === true) {
             const before = this.#mark();
+
+            // A code's widget may leave no box focused after the last digit (it drew them again): Enter goes to the
+            // last box, as it would from a person who typed the code there.
+            if (row.box && (await this.#typingState(false)).idle === true) {
+                await this.#evaluate(
+                    `(${TYPING_FOCUS_BOX_SCRIPT})(${String(row.before.length - 1)})`,
+                ).catch(() => false);
+            }
 
             await this.#key("Enter", 0);
             await this.#settle(before, 10_000, options.signal);
@@ -1362,7 +1434,7 @@ export class BrowserPage {
 
             if (state.at < 0) {
                 throw new BrowserError(
-                    `Typed ${index} of ${code.length} characters into ${label}: focus left the field, so the rest was not typed.`,
+                    `Typed ${index} of ${code.length} characters into ${label}: ${this.#starts === mark.starts ? "focus left the field" : "the page changed while typing"}, so the rest was not typed.`,
                 );
             }
 

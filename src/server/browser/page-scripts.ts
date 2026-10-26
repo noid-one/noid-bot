@@ -223,6 +223,8 @@ const DEEP_ACTIVE = String.raw`const deepActive = () => {
 export const SELECT_ALL_SCRIPT = String.raw`(() => {
 	${DEEP_ACTIVE}
 	const el = deepActive();
+	// The field, for KEPT_VALUE_SCRIPT to read after the insert (the page may move focus on as the text goes in).
+	window.__piPocketTyped = el ?? undefined;
 	if (!el) return "none";
 	if (["INPUT", "TEXTAREA"].includes(el.tagName)) {
 		if (el.value === "") return "empty";
@@ -242,7 +244,8 @@ export const SELECT_ALL_SCRIPT = String.raw`(() => {
  *
  * The row is the run of boxes next to it in page order among the fields one can see and type into, however they are
  * wrapped (a code split 3 + 3, each box in its own wrapper): another field ends it, and an invisible one (an SMS
- * autofill input under the boxes), a button, or a hidden input does not. Two rows with no field between them are one.
+ * autofill input under the boxes), a button, or a hidden input does not; neither do words between two boxes, unless one
+ * can see and read them (a label parts two codes; a dash, an icon, or a label for screen readers only does not).
  */
 export const TYPING_FIELD_SCRIPT = String.raw`(() => {
 	${DEEP_ACTIVE}
@@ -265,16 +268,111 @@ export const TYPING_FIELD_SCRIPT = String.raw`(() => {
 		...(["INPUT", "TEXTAREA", "SELECT"].includes(each.tagName) ? [each] : []),
 		...(each.shadowRoot ? all(each.shadowRoot) : []),
 	]);
-	const fields = all(document).filter((each) => each === el || (typed(each) && seen(each)));
-	const at = fields.indexOf(el);
-	let start = at;
-	let end = at;
-	while (start > 0 && box(fields[start - 1])) start--;
-	while (end < fields.length - 1 && box(fields[end + 1])) end++;
+	// Two codes, not one: words one can see between the boxes ("Backup code"; a label for screen readers only parts
+	// nothing); else, unless marks sit between them ("-", "•": they join the halves of one code), boxes laid out apart,
+	// the second more than half a box below the first (a divider this cannot read sits between: drawn by CSS, or in a
+	// web component), which a code wrapped onto a second line is not.
+	const apart = (one, two) => {
+		const a = one.getBoundingClientRect();
+		const b = two.getBoundingClientRect();
+		const gap = Math.max(a.height, b.height) / 2;
+		const below = b.top > a.bottom + gap || a.top > b.bottom + gap;
+		if (one.getRootNode() !== two.getRootNode()) return below;
+		const between = document.createRange();
+		between.setStartAfter(one);
+		between.setEndBefore(two);
+		const top = between.commonAncestorContainer;
+		// Not words one reads, though in the page: in a box of 1 px or less that cuts it off, clipped, invisible, or
+		// decoration, in the text's own element or any around it up to the two boxes' common one (text moved off the
+		// page, left: -9999px, has no place on it: see shown).
+		const hidden = (node) => {
+			for (let el = node.parentElement; el && el !== top; el = el.parentElement) {
+				const style = getComputedStyle(el);
+				if (style.display === "contents") continue;
+				const box = el.getBoundingClientRect();
+				// A box too small to show what it holds hides it only when it cuts it off (a wrapper of no height,
+				// floats inside, shows them); a box placed off the page only when taken out of the flow to be there.
+				if ((box.width <= 1 || box.height <= 1) && style.overflow !== "visible") return true;
+				// Decoration, not words: an icon font's name for its glyph ("remove" drawn as a dash), or what is hidden
+				// from screen readers.
+				// The font it is drawn in: the first of the list (a site's text font lists "Segoe UI Symbol" as a fallback).
+				if (/icon|symbol/i.test(style.fontFamily.split(",")[0]) || el.getAttribute("aria-hidden") === "true") return true;
+				if (el.matches('mat-icon, [class*="material-icons"], [class*="material-symbols"]')) return true;
+				if (/^rect\(0/.test(style.clip) || /inset\(50%/.test(style.clipPath)) return true;
+			}
+			// Invisible or transparent, the text's element or any around it: the browser's own test, on the nearest with a
+			// box of its own (one with display: contents has none, and the test says it is not visible).
+			let holder = node.parentElement;
+			while (holder && getComputedStyle(holder).display === "contents") holder = holder.parentElement;
+			return holder?.checkVisibility?.({ opacityProperty: true, visibilityProperty: true }) === false;
+		};
+		// The text between the two boxes only: from the first on, until past the second.
+		const walker = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
+		walker.currentNode = one;
+		let words = "";
+		for (let node = walker.nextNode(); node && between.intersectsNode(node); node = walker.nextNode()) {
+			if (node.textContent.trim() === "") continue;
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			// On the page: not moved off any of its edges (left: -9999px, or right: -9999px on a right-to-left page).
+			const page = document.documentElement;
+			const shown = [...range.getClientRects()].some((rect) => rect.width > 1 && rect.height > 1 && rect.right + scrollX > 0 && rect.bottom + scrollY > 0 && rect.left + scrollX < page.scrollWidth && rect.top + scrollY < page.scrollHeight);
+			if (shown && !hidden(node)) words += node.textContent.replace(/\s+/g, "");
+			// Words are letters and digits; marks ("-", "•", "|") join boxes, however many. Two settle it.
+			if ([...words].filter((each) => /[\p{L}\p{N}]/u.test(each)).length > 1) return true;
+		}
+		return words.length === 0 && below;
+	};
+	// The run of boxes next to a box in page order: another field, or words between, ends it.
+	// The page's fields, once for typing's start (a row found again after a redraw reads the page afresh).
+	const pageFields = all(document);
+	const rowOf = (box0, everything = all(document)) => {
+		const fields = everything.filter((each) => each === box0 || (typed(each) && seen(each)));
+		const at = fields.indexOf(box0);
+		let start = at;
+		let end = at;
+		while (start > 0 && box(fields[start - 1]) && !apart(fields[start - 1], fields[start])) start--;
+		while (end < fields.length - 1 && box(fields[end + 1]) && !apart(fields[end], fields[end + 1])) end++;
+		return fields.slice(start, end + 1);
+	};
+	const row = rowOf(el, pageFields);
 	// One box alone (a middle initial) is a field like any other: it takes one insert, as before.
-	if (end === start) return { box: false };
-	const row = fields.slice(start, end + 1);
-	const typing = { field: el, row, submitted: false };
+	if (row.length < 2) return { box: false };
+	const typing = { row, values: row.map((each) => each.value), submitted: false };
+	// The row now: a widget that draws its boxes again, as new elements, is found again where it was (or around the
+	// box with focus), its boxes in the same places, holding what they held (give or take the box a key just went to).
+	// Another widget put in its place (other boxes, other digits) is not the row: null, as a row gone.
+	// Where the row sits, to find it again: the elements around its first box, nearest first, and the first box's place
+	// among the boxes in each (from one list of the page's boxes, and each box's own elements around it).
+	const boxesIn = (holder) => all(holder).filter((each) => box(each) && seen(each));
+	const chain = (el) => {
+		const ups = [];
+		for (let up = el.parentNode; up; up = up.parentNode ?? up.host) ups.push(up);
+		return ups;
+	};
+	const pageBoxes = pageFields.filter((each) => box(each) && seen(each)).map((each) => ({ each, ups: new Set(chain(each)) }));
+	const first = pageBoxes.findIndex((entry) => entry.each === row[0]);
+	const before = pageBoxes.slice(0, Math.max(0, first));
+	const around = chain(row[0]).map((holder) => ({ holder, place: first < 0 ? -1 : before.filter((entry) => entry.ups.has(holder)).length }));
+	typing.current = () => {
+		if (typing.row.every((each) => each.isConnected)) return typing.row;
+		// The row now at the same place in the nearest of those still in the page, else around the box with focus.
+		const near = around.find((each) => each.holder.isConnected);
+		const focused = deepActive();
+		const candidates = [
+			...(near && near.place >= 0 ? [boxesIn(near.holder)[near.place]] : []),
+			...(focused && box(focused) ? [focused] : []),
+		].filter(Boolean);
+		for (const candidate of candidates) {
+			const again = rowOf(candidate);
+			const differ = again.filter((each, index) => each.value !== typing.values[index]).length;
+			if (again.length === typing.row.length && differ <= 1) {
+				typing.row = again;
+				return again;
+			}
+		}
+		return null;
+	};
 	window.__piPocketTyping = typing;
 	// A form submitted while the code goes in, by the widget itself (on the last digit, or a moment after it).
 	// Only the latest typing listens: the one before lets go.
@@ -289,18 +387,26 @@ export const TYPING_FIELD_SCRIPT = String.raw`(() => {
 
 /**
  * Where typing a code stands (`TYPING_FIELD_SCRIPT`): which of the row's boxes has focus (-1 for none), what each box
- * holds (null once the row left the page, as a page that moved on does), and whether a form was submitted since
+ * holds (null once the row left the page, as a page that moved on does: a row drawn again is found again where it
+ * was, focused or not), and whether a form was submitted since
  * typing began. With `select`, the focused box's text is selected first, so the next key replaces it.
  */
 export const TYPING_STATE_SCRIPT = String.raw`((select) => {
 	${DEEP_ACTIVE}
 	const typing = window.__piPocketTyping;
-	if (!typing || !typing.field.isConnected) return { at: -1, values: null, submitted: Boolean(typing?.submitted) };
-	const { row } = typing;
+	if (!typing) return { at: -1, values: null, submitted: false };
 	const el = deepActive();
+	// A row gone (and not drawn again: see current) is a page that moved on.
+	const row = typing.current();
+	if (row === null) return { at: -1, values: null, submitted: typing.submitted };
 	const at = row.indexOf(el);
+	if (at >= 0) typing.focused = el;
 	if (select && at >= 0) el.select();
-	return { at, values: row.map((each) => each.value), submitted: typing.submitted };
+	typing.values = row.map((each) => each.value);
+	// Nothing has focus because the widget drew its boxes again (the box that had it is gone), rather than another
+	// element taking it, or the widget letting go of it on purpose (a blur, to hide a phone's keyboard).
+	const idle = (!el || el === document.body || el === document.documentElement) && typing.focused?.isConnected === false;
+	return { at, values: typing.values, submitted: typing.submitted, idle };
 })`;
 
 /**
@@ -310,13 +416,18 @@ export const TYPING_STATE_SCRIPT = String.raw`((select) => {
  */
 export const TYPING_CLEAR_SCRIPT = String.raw`((from, count) => {
 	const typing = window.__piPocketTyping;
-	if (!typing || !typing.field.isConnected) return false;
+	if (!typing || typing.current() === null) return false;
 	const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
-	for (const box of typing.row.slice(from, from + count)) {
+	// Box by box, the row found again after each: a widget may draw its boxes again on every input event.
+	for (let index = from; index < from + count; index++) {
+		const box = typing.current()?.[index];
+		if (!box) break;
 		// Read-only boxes too: some are read-only until focused, against autofill, and hold an old code all the same.
 		if (box.value === "") continue;
 		set.call(box, "");
 		box.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "deleteContentBackward" }));
+		// What it holds now: a widget may put its value back (then Backspace clears it).
+		typing.values[index] = typing.current()?.[index]?.value ?? "";
 	}
 	return true;
 })`;
@@ -327,7 +438,7 @@ export const TYPING_CLEAR_SCRIPT = String.raw`((from, count) => {
  */
 export const TYPING_FOCUS_BOX_SCRIPT = String.raw`((index) => {
 	${DEEP_ACTIVE}
-	const box = window.__piPocketTyping?.row[index];
+	const box = window.__piPocketTyping?.current()?.[index];
 	if (!box || !box.isConnected) return false;
 	deepActive()?.blur();
 	box.focus();
@@ -335,6 +446,19 @@ export const TYPING_FOCUS_BOX_SCRIPT = String.raw`((index) => {
 	box.select?.();
 	return true;
 })`;
+
+/**
+ * What the field `SELECT_ALL_SCRIPT` noted keeps of an insert, when it may have dropped part of it: a number field (it
+ * keeps what makes a number), or one with a length limit. Null for any other field.
+ */
+export const KEPT_VALUE_SCRIPT = String.raw`(() => {
+	const el = window.__piPocketTyped;
+	window.__piPocketTyped = undefined;
+	if (!el?.isConnected || !["INPUT", "TEXTAREA"].includes(el.tagName)) return null;
+	if (el.tagName === "INPUT" && el.type === "number") return { value: el.value, number: true };
+	const text = el.tagName === "TEXTAREA" || ["text", "tel", "password", "search", "email", "url"].includes(el.type);
+	return text && el.maxLength > 0 ? { value: el.value, number: false, limit: el.maxLength, password: el.type === "password", single: el.tagName === "INPUT" } : null;
+})()`;
 
 /** Picks an option of a select element by its value or text. */
 export const SELECT_OPTION_SCRIPT = String.raw`((target, wanted) => {
