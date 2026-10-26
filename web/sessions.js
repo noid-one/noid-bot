@@ -6,7 +6,7 @@ import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
 import { Face } from "./faces/face.js";
 import { useDragToClose } from "./gestures.js";
-import { sessionForest, unfolded } from "./session-tree.js";
+import { foldedUnder, sessionForest, unfolded } from "./session-tree.js";
 import { Splitter } from "./splitter.js";
 import {
     actions,
@@ -1599,10 +1599,31 @@ export const toggleBoard = () =>
  * The folded sidebar's sessions: noid: the bots first, by their faces, as Grok's folded sidebar keeps them; then the
  * other sessions, numbered like Waybar's workspaces (their Alt+1…9 places, which count the bots too).
  */
+/**
+ * noid: what waits for you or failed among the sessions folded away, by the shown session they are folded under: the
+ * rail leaves them out, as the list does, and its tile says so with a dot.
+ */
+function railTroubles(sessions, order) {
+    if (foldsNow().size === 0) {
+        return new Map();
+    }
+
+    return foldedUnder(
+        sessions.filter((session) => !session.archived),
+        new Set(order.map((session) => session.id)),
+        (session) => {
+            const shape = sessionMark(session).shape;
+
+            return shape === "waiting" || shape === "failed" ? shape : undefined;
+        },
+    );
+}
+
 function RailTiles() {
     const { sessions, conversationId } = store.state;
     const items = useRef(null);
     const order = workspaceOrder();
+    const troubles = railTroubles(sessions, order);
     const bots = botSessions(sessions);
     const indicator = useSlide(items, ".ws.active");
     const unread = (session) =>
@@ -1649,12 +1670,19 @@ function RailTiles() {
                 class=${`ws ${session.id === conversationId ? "active" : ""} ${session.busy ? "busy" : ""} ${session.waiting ? "waiting" : ""}`}
                 style=${`--i:${index}`}
                 title=${`${session.title ?? "New session"}${index < 9 ? ` (Alt+${index + 1})` : ""}`}
-                aria-label=${`${session.title ?? "New session"}${session.waiting ? ", needs you" : session.busy ? ", working" : ""}`}
+                aria-label=${`${session.title ?? "New session"}${session.waiting ? ", needs you" : session.busy ? ", working" : ""}${
+                    troubles.get(session.id) === "waiting"
+                        ? ", one folded under it needs you"
+                        : troubles.get(session.id) === "failed"
+                          ? ", one folded under it failed"
+                          : ""
+                }`}
                 aria-current=${session.id === conversationId ? "page" : undefined}
                 onClick=${() => navigate(session.id)}
             >
                 ${index < 9 ? index + 1 : initials(session.title ?? "New session")}
                 ${unread(session) && html`<span class="unread-dot"></span>`}
+                ${troubles.has(session.id) && html`<span class="rail-trouble" aria-hidden="true"></span>`}
             </button>`,
         )}
     </div>`;
