@@ -460,7 +460,7 @@ export class NoidCompaction {
                     sessionId,
                     maxTokens: Math.min(
                         SUMMARY_TOKENS,
-                        Math.floor(0.8 * this.#reserveTokens()),
+                        Math.floor(0.8 * this.#policy(model).reserveTokens),
                         model.maxTokens > 0 ? model.maxTokens : SUMMARY_TOKENS,
                     ),
                     cacheRetention: "none",
@@ -567,7 +567,10 @@ export class NoidCompaction {
         const conversation = await app.conversation(id);
         const view = await conversation.context(context);
         const tokens = contextTokens(view);
-        const keep = this.#policy().keepRecentTokens;
+        const ref = (await app.agentState(id))?.model;
+        const keep = this.#policy(
+            ref === undefined ? undefined : { provider: ref.provider, id: ref.modelId },
+        ).keepRecentTokens;
         const compactions = (await app.harness.snapshot(LiveDoc, id, context))?.compactions ?? [];
         const failed = this.#failed.get(id);
 
@@ -603,12 +606,24 @@ export class NoidCompaction {
         return true;
     }
 
-    /** Pi's compaction settings, over Pi Durable's defaults. */
-    #policy(): { keepRecentTokens: number; reserveTokens: number } {
-        return { ...DEFAULT_COMPACTION_POLICY, ...this.#app.settings.getCompactionSettings() };
-    }
+    /**
+     * Pi's compaction settings for Noid's model, over Pi Durable's defaults: its `compaction.modelOverrides` entry
+     * counts, and one that Pi refuses is passed over for the general values, as sessions do (`compaction.ts`; Pi Pocket
+     * a0a7f6c).
+     */
+    #policy(model: { provider: string; id: string } | undefined): {
+        keepRecentTokens: number;
+        reserveTokens: number;
+    } {
+        const settings = this.#app.settings;
+        let own;
 
-    #reserveTokens(): number {
-        return this.#policy().reserveTokens;
+        try {
+            own = settings.getCompactionSettings(model);
+        } catch {
+            own = settings.getCompactionSettings();
+        }
+
+        return { ...DEFAULT_COMPACTION_POLICY, ...own };
     }
 }

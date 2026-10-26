@@ -100,6 +100,20 @@ Existing sessions do not change when files or folders change. Imports, forks, su
 - A model that the person named to a bot overrides project settings.
 - A session that a bot starts without a named model uses the same order as each new session, with trusted projects, also when the owner trusts all projects.
 
+### When a model's context is compacted
+
+noid compacts a session's context with Pi's settings in `~/.pi/agent/settings.json`: `compaction.reserveTokens` (the room kept free; compaction starts above the model's context window minus it) and `compaction.keepRecentTokens`. `compaction.modelOverrides` gives one model its own values, keyed by `provider/modelId` (from Pi Pocket 0.25.0), for example to compact a model with a large window much earlier:
+
+```json
+{
+    "compaction": {
+        "modelOverrides": { "openai-codex/gpt-6.1-sol": { "reserveTokens": 350000 } }
+    }
+}
+```
+
+Other models keep the general values. An entry that Pi refuses (not a whole number, or a name with no provider) is left out, and the server log says so. Noid's own compaction uses its model's values too. See Pi's `settings.md` for each setting.
+
 **Pi Pocket does not support these yet:** extra skill and prompt paths from each session folder's settings, and run policy per project (compaction, retries, stream timeouts, steering, and follow-up mode). The usual project folders for skills and prompts still work.
 
 ## Other switches

@@ -76,6 +76,7 @@ import { type ApprovalRequest, Approvals, type PocketHost, type WebAccess } from
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
+import { compactionReader } from "./compaction.ts";
 import {
     alwaysAsks,
     ApprovalRulesDoc,
@@ -1089,6 +1090,8 @@ export class PocketApp {
 
     #harnessSettings(): HarnessSettings {
         const settings = this.settings;
+        // Each model's own compaction values from Pi's settings, too (Pi Pocket a0a7f6c).
+        const compaction = compactionReader(settings, (line) => this.#log(line));
 
         const safe = <T>(read: () => T): T | undefined => {
             try {
@@ -1122,7 +1125,7 @@ export class PocketApp {
                 return stream();
             },
             get compaction() {
-                return safe(() => settings.getCompactionSettings()) ?? {};
+                return safe(compaction) ?? {};
             },
             get retry() {
                 return safe(() => settings.getRetrySettings()) ?? {};
