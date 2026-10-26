@@ -12205,6 +12205,13 @@ textarea.notes {
     border-top: 1px solid var(--hair);
 }
 
+/* noid: a group's heading, as a run of working subagents has. */
+.pop-heading {
+    padding: 6px 10px 2px;
+    color: var(--faint);
+    font-size: 11px;
+}
+
 .pop-row {
     display: flex;
     align-items: center;

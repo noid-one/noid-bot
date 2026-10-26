@@ -225,6 +225,21 @@ test("the board shows a sub-tile for each subagent at work, with what it does", 
     );
 });
 
+// noid: the conversation menu lists only the subagents at work, a group per run; the board has the rest.
+test("the menu lists the subagents at work, under their run", real, async () => {
+    await started(0);
+    await says(".agents-count", /^1 working · 1 done$/);
+    await settled();
+    await page.click({ selector: ".title-open" });
+    await says(".pop-heading", /^1 subagent working · since \d/);
+    assert.deepEqual(
+        await inPage<string[]>(
+            `return JSON.stringify([...document.querySelectorAll('[data-row^="subagent:"]')].map((row) => row.textContent.trim()))`,
+        ),
+        ["slow"],
+    );
+});
+
 test(
     "a person's message that looks like a report is theirs: a steer in the queue, a message in the conversation",
     real,

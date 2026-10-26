@@ -7,7 +7,8 @@ import { schedulesAvailable, watchAvailable, watchPr } from "../commands.js";
 import { useChanges } from "../diff.js";
 import { filesAvailable, setFilesOpen } from "../files-panel.js";
 import { peeksOn, togglePeeks } from "../peeks.js";
-import { openSubagent } from "../subagents.js";
+import { openSubagent, workingRuns } from "../subagents.js";
+import { fromServer } from "../seen.js";
 import {
     actions,
     attempt,
@@ -179,8 +180,8 @@ const instead = (sheet) => () => {
  *
  * `anchor` is the selector of the button that opens it. `beside` puts it to that button's right, its bottom at the
  * button's (the rail's avatar); otherwise it hangs below the button, right edges together (the top bar's ⋯). `groups`
- * are lists of rows, `{ id, icon, label, value?, keys?, run?, href?, danger? }`: falsy rows and empty groups are left
- * out.
+ * are lists of rows, `{ id, icon, label, value?, keys?, run?, href?, danger? }`, or a heading, `{ id, heading }`: falsy
+ * rows and empty groups are left out.
  */
 function PopMenu({ title, anchor, beside = false, width, label, header = null, groups }) {
     const host = useRef(null);
@@ -311,12 +312,27 @@ function PopMenu({ title, anchor, beside = false, width, label, header = null, g
             <div role="menu" aria-label=${label ?? title}>
                 ${shown.map(
                     (group, at) => html`<div class="pop-group" role="group" key=${at}>
-                        ${group.map((row) => html`<${PopRow} key=${row.id} ...${row} />`)}
+                        ${group.map((row) =>
+                            row.heading
+                                ? html`<div class="pop-heading" key=${row.id}>${row.heading}</div>`
+                                : html`<${PopRow} key=${row.id} ...${row} />`,
+                        )}
                     </div>`,
                 )}
             </div>
         <//>
     </div>`;
+}
+
+/** noid: a run of working subagents' heading: "3 subagents working · since 14:23". */
+function runHeading(run) {
+    const since = new Date(fromServer(run[0].askedAt ?? 0)).toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+    });
+    const count = run.length === 1 ? "1 subagent" : `${run.length} subagents`;
+
+    return `${count} working · since ${since}`;
 }
 
 /** One row of a menu: a button, or a link when it downloads something. */
@@ -575,16 +591,19 @@ export function MenuSheet() {
                         },
                     },
             ],
-            view.subagents.map((agent) => ({
-                id: `subagent:${agent.conversationId}`,
-                icon: "bot",
-                label: agent.name,
-                value: agent.busy ? "Working" : "",
-                run: () => {
-                    closeSheet();
-                    openSubagent(agent.conversationId);
-                },
-            })),
+            // noid: only the subagents at work, a group per run; the rest are on the subagents board.
+            ...workingRuns(view.subagents).map((run) => [
+                { id: `run:${run[0].conversationId}`, heading: runHeading(run) },
+                ...run.map((agent) => ({
+                    id: `subagent:${agent.conversationId}`,
+                    icon: "bot",
+                    label: agent.name,
+                    run: () => {
+                        closeSheet();
+                        openSubagent(agent.conversationId);
+                    },
+                })),
+            ]),
             [
                 !bot &&
                     session && {
