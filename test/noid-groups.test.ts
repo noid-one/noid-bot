@@ -118,6 +118,14 @@ test("who answers: everyone, or the ones a message names", () => {
     // Both, when each is written.
     assert.deepEqual(addressed("@Design and @Design Review", pair), ["d", "r"]);
     assert.deepEqual(addressed("@Design Review and @Design", pair), ["d", "r"]);
+    // A mention is the name as Unicode folds case, not only as toLowerCase does: the long s, a final sigma.
+    const unicode = [
+        { id: "s", name: "Support" },
+        { id: "o", name: "ΟΔΟΣ" },
+    ];
+
+    assert.deepEqual(addressed("@ſupport team", unicode), ["s"]);
+    assert.deepEqual(addressed("@Οδος please", unicode), ["o"]);
 });
 
 test("only the owner makes groups, of two or more of their bots", async () => {

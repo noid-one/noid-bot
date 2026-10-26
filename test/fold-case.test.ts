@@ -25,5 +25,7 @@ test("a match only the whole text lowercased finds is not lost", () => {
     // A capital sigma at a word's end lowercases whole to a final sigma (ς), alone to a plain one (σ).
     assert.equal("ΟΔΟΣ İ".toLowerCase().slice(0, 4), "οδος");
     assert.equal(marked("ΟΔΟΣ İ", "οδος"), "ΟΔΟΣ");
-    assert.equal(marked("ΟΔΟΣ İ", "οδοσ"), "ΟΔΟΣ");
+    assert.equal(marked("ΟΔΟΣ İ", "οδοσ"), null, "lowercased whole, the last letter is ς");
+    // After a letter that grew, still in its place.
+    assert.equal(marked("İ ΟΔΟΣ", "οδος"), "ΟΔΟΣ");
 });

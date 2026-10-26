@@ -13,30 +13,28 @@ export function foldedMatch(text, needle) {
         return at === -1 ? null : [at, at + needle.length];
     }
 
-    // Each character lowercased on its own, with where it came from.
-    let low = "";
+    // Where each character of the lowercased text came from: each character lowercases to as many as it does alone
+    // (context changes which letter, a Greek final sigma, never how many), so the whole text lowercased lines up.
     const origin = [];
+    let start = 0;
 
     for (const character of text) {
-        const start = origin.length === 0 ? 0 : origin.at(-1).end;
-        const lower = character.toLowerCase();
-
-        for (let unit = 0; unit < lower.length; unit++) {
+        for (let unit = 0; unit < character.toLowerCase().length; unit++) {
             origin.push({ start, end: start + character.length });
         }
 
-        low += lower;
+        start += character.length;
     }
 
-    const at = low.indexOf(needle);
+    const at = lowered.indexOf(needle);
 
     if (at === -1 || needle.length === 0) {
-        // Lowercased whole, a letter can read otherwise (a Greek final sigma): found there, it is not lost, near enough.
-        const whole = lowered.indexOf(needle);
+        return null;
+    }
 
-        return whole === -1
-            ? null
-            : [Math.min(whole, text.length), Math.min(whole + needle.length, text.length)];
+    // Should they not line up after all, the place as found, as before: the match is still shown.
+    if (origin.length !== lowered.length) {
+        return [Math.min(at, text.length), Math.min(at + needle.length, text.length)];
     }
 
     // From the character the match starts in to the end of the one it ends in.

@@ -113,13 +113,19 @@ export function addressed(text: string, members: { id: string; name: string }[])
         return members.map((member) => member.id);
     }
 
+    const escape = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const pattern = new RegExp(
-        `(?<=^|\\s)@(${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![\\p{L}\\p{N}_])`,
+        `(?<=^|\\s)@(${names.map(escape).join("|")})(?![\\p{L}\\p{N}_])`,
         "giu",
     );
-    const mentions = new Set([...text.matchAll(pattern)].map((match) => match[1]!.toLowerCase()));
+    const mentions = [...text.matchAll(pattern)].map((match) => match[1]!);
+    // Compared as the pattern found them (Unicode case folding: "@ſupport" is Support), not by toLowerCase.
     const named = members.filter((member) =>
-        spellings(member).some((name) => mentions.has(name.toLowerCase())),
+        spellings(member).some((name) => {
+            const exactly = new RegExp(`^${escape(name)}$`, "iu");
+
+            return mentions.some((mention) => exactly.test(mention));
+        }),
     );
 
     return (named.length > 0 ? named : members).map((member) => member.id);
