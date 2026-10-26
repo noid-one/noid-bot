@@ -684,25 +684,28 @@ test(
             assert.equal(await values("rtl"), "482913");
             await page.type({ label: "emoji 1" }, "135791");
             assert.equal(await values("emoji"), "135791");
-            // A field with a length limit that cuts the text says so.
-            await assert.rejects(
-                page.type({ selector: "#short" }, "123456"),
+            // A field with a length limit that cuts the text says so, in a note: the text went in as before.
+            assert.match(
+                (await page.type({ selector: "#short" }, "123456")).note ?? "",
                 /takes 4 characters: it kept "1234" of "123456"/,
             );
             // A line break or spaces past the limit are nothing kept or lost; an emoji past it is (it counts as two).
-            await page.type({ selector: "#short" }, "1234\n");
+            assert.equal((await page.type({ selector: "#short" }, "1234\n")).note, undefined);
             assert.equal(await page.evaluate("document.getElementById('short').value"), "1234");
-            await assert.rejects(
-                page.type({ selector: "#short" }, "abc😀"),
+            assert.match(
+                (await page.type({ selector: "#short" }, "abc😀")).note ?? "",
                 /takes 4 characters: it kept "abc"/,
             );
             // Each line break is a space of its own in a one-line field: two of them leave less room.
-            await assert.rejects(
-                page.type({ selector: "#short" }, "ab\n\nc"),
+            assert.match(
+                (await page.type({ selector: "#short" }, "ab\n\nc")).note ?? "",
                 /takes 4 characters/,
             );
             // A password's trailing space is part of it: cut, it says so.
-            await assert.rejects(page.type({ selector: "#secretShort" }, "abcd "), /kept 4 of 5\./);
+            assert.match(
+                (await page.type({ selector: "#secretShort" }, "abcd ")).note ?? "",
+                /kept 4 of 5\./,
+            );
             // A label right inside an element with display: contents still parts two codes.
             await assert.rejects(
                 page.type({ label: "spanA 1" }, "48291357"),
@@ -723,17 +726,17 @@ test(
             await new Promise((done) => setTimeout(done, 800));
             assert.equal(await page.evaluate("window.blurSent"), "1");
             // A password field's cut says how much went in, never what.
-            await assert.rejects(
-                page.type({ selector: "#secretShort" }, "hunter22"),
-                (error: Error) =>
-                    /kept 4 of 8\./.test(error.message) && !error.message.includes("hunt"),
-            );
+            const secretNote =
+                (await page.type({ selector: "#secretShort" }, "hunter22")).note ?? "";
+
+            assert.match(secretNote, /kept 4 of 8\./);
+            assert.ok(!secretNote.includes("hunt"));
             // The number check reads the field typed into, not the next one the page moves focus to.
             await page.type({ selector: "#day" }, "12");
             assert.equal(await page.evaluate("document.getElementById('day').value"), "12");
             // A number field that keeps only part of the text says so.
-            await assert.rejects(
-                page.type({ selector: "#amount" }, "12a"),
+            assert.match(
+                (await page.type({ selector: "#amount" }, "12a")).note ?? "",
                 /number field: it kept "12" of "12a"/,
             );
             // The same number written another way is what was typed.

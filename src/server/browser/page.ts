@@ -1164,9 +1164,10 @@ export class BrowserPage {
         target: Target | undefined,
         text: string,
         options: { append?: boolean; submit?: boolean; signal?: AbortSignal } = {},
-    ): Promise<{ label: string; pageSubmitted: boolean }> {
+    ): Promise<{ label: string; pageSubmitted: boolean; note?: string }> {
         this.usedAt = Date.now();
         let label = "the focused element";
+        let note: string | undefined;
 
         if (
             target !== undefined &&
@@ -1229,7 +1230,9 @@ export class BrowserPage {
 
             // A field that drops part of the text says so rather than keep it silently: a number field what is not a
             // number ("12a" leaves "12"; spaces aside, and the same number written another way is what was typed), a
-            // field with a length limit what goes past it. The field was noted as select-all ran.
+            // field with a length limit what goes past it. The field was noted as select-all ran. It is a note, not an
+            // error: the text went in as before, and Enter still follows with submit (neither upstream checks plain
+            // fields; a page may clamp or cut on purpose).
             if (options.append !== true) {
                 const kept = (await this.#evaluate(KEPT_VALUE_SCRIPT).catch(
                     () => null,
@@ -1261,16 +1264,14 @@ export class BrowserPage {
                         !(kept.value !== "" && Number(kept.value) === Number(typed));
 
                     if (cut || dropped) {
-                        throw new BrowserError(
-                            kept.number
-                                ? `${label} is a number field: it kept "${kept.value}" of "${text}".`
-                                : `${label} takes ${String(kept.limit)} ${kept.limit === 1 ? "character" : "characters"}: it kept ${
-                                      // A password is not repeated: only how much of it went in.
-                                      kept.password === true
-                                          ? `${String(kept.value.length)} of ${String(taken.length)}`
-                                          : `"${kept.value}" of "${text}"`
-                                  }.`,
-                        );
+                        note = kept.number
+                            ? `${label} is a number field: it kept "${kept.value}" of "${text}".`
+                            : `${label} takes ${String(kept.limit)} ${kept.limit === 1 ? "character" : "characters"}: it kept ${
+                                  // A password is not repeated: only how much of it went in.
+                                  kept.password === true
+                                      ? `${String(kept.value.length)} of ${String(taken.length)}`
+                                      : `"${kept.value}" of "${text}"`
+                              }.`;
                     }
                 }
             }
@@ -1294,7 +1295,7 @@ export class BrowserPage {
             await this.#settle(before, 10_000, options.signal);
         }
 
-        return { label, pageSubmitted: submitted };
+        return { label, pageSubmitted: submitted, ...(note === undefined ? {} : { note }) };
     }
 
     /**

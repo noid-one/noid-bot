@@ -401,6 +401,11 @@ export default function createBrowser(host: PocketHost) {
                               ? `Typed into ${typed.label}; the page submitted the code itself${args.submit === true ? ", so Enter was not pressed" : ""}.`
                               : `Typed into ${typed.label}${args.submit === true ? " and pressed Enter" : ""}.`,
                     );
+
+                    if (typed.note !== undefined) {
+                        lines.push(`Note: ${typed.note}`);
+                    }
+
                     break;
                 }
 
