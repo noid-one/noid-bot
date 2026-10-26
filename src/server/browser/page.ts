@@ -1257,15 +1257,15 @@ export class BrowserPage {
                         taken.length > kept.limit &&
                         kept.value.length < taken.length &&
                         code(kept.value) !== code(taken);
-                    // A field with no limit that a script cut: it kept fewer letters and digits than went in, the
-                    // start or the end of them (a box per character that keeps its last, with no maxlength).
+                    // A field with no limit that kept one letter or digit of several, the first or the last: a box per
+                    // character with no maxlength (a chip, or a mask that drops a country code, keeps more than one).
                     const letters = (value: string) =>
                         value.replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
                     const lost =
                         !kept.number &&
                         kept.limit === undefined &&
-                        letters(kept.value) !== "" &&
-                        letters(kept.value).length < letters(taken).length &&
+                        [...letters(kept.value)].length === 1 &&
+                        [...letters(taken)].length > 1 &&
                         (letters(taken).startsWith(letters(kept.value)) ||
                             letters(taken).endsWith(letters(kept.value)));
                     const typed = text.replace(/\s+/g, "");

@@ -185,7 +185,8 @@ export const LOCATE_SCRIPT = String.raw`(async (target) => {
 		if (!el) throw new Error("Nothing matches the selector " + target.selector + ".");
 	} else if (target.label) {
 		const want = target.label.replace(/\s+/g, " ").trim().toLowerCase();
-		const text = (each) => (each.getAttribute("aria-label") || each.innerText || valueOf(each) || each.getAttribute("placeholder") || each.getAttribute("title") || "").replace(/\s+/g, " ").trim().toLowerCase();
+		// A code field with no name of its own goes by the name snapshots give it.
+		const text = (each) => (each.getAttribute("aria-label") || each.innerText || valueOf(each) || each.getAttribute("placeholder") || each.getAttribute("title") || (each.tagName === "INPUT" && each.autocomplete === "one-time-code" ? "One-time code" : "")).replace(/\s+/g, " ").trim().toLowerCase();
 		const seen = (each) => each.getClientRects().length > 0 && getComputedStyle(each).visibility !== "hidden";
 		const controls = [...document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, label, [role], [onclick], [tabindex]')].filter(seen);
 		el = controls.find((each) => text(each) === want) ?? controls.find((each) => text(each).includes(want)) ?? null;

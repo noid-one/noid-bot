@@ -300,6 +300,7 @@ test(
         <div id="emoji">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="emoji${i}" maxlength="1" aria-label="emoji ${i}" oninput="this.value && document.getElementById('emoji${i + 1}')?.focus()">${i === 3 ? "<span>🔒</span>" : ""}`).join("")}</div>
         <label>Short <input id="short" maxlength="4" aria-label="Short"></label>
         <label>Upper <input id="upper" aria-label="Upper" oninput="this.value = this.value.toUpperCase().replace(/-/g, '')"></label>
+        <label>Chip <input id="chip" aria-label="Chip" oninput="if (this.value.includes(',')) this.value = this.value.split(',').pop().trim()"></label>
         <div id="loose">${[1, 2, 3, 4, 5, 6].map((i) => `<input id="loose${i}" style="width:30px" aria-label="loose ${i}" oninput="this.value = this.value.slice(-1); this.value && document.getElementById('loose${i + 1}')?.focus()">`).join("")}</div>
         <label>Secret <input id="secretShort" type="password" maxlength="4" aria-label="Secret"></label>
         <label>Phone mask <input id="phoneMask" type="tel" maxlength="10" aria-label="Phone mask" onbeforeinput="if (event.inputType === 'insertText') { event.preventDefault(); this.value = (this.value + event.data).replace(/[^0-9]/g, '').slice(0, 10); }"></label>
@@ -569,6 +570,8 @@ test(
                 (await page.snapshot()).lines.match(/textbox "One-time code"/g)?.length,
                 2,
             );
+            // And a label finds it by that name.
+            assert.match((await page.locate({ label: "One-time code" })).label, /^input/);
 
             // A hidden autofill input under the boxes, a code split in wrapped halves, and a widget slow to move focus.
             for (const [id, code] of [
@@ -706,6 +709,11 @@ test(
             );
             // A mask that drops what is not a digit, or a field that changes case, lost nothing.
             assert.equal((await page.type({ selector: "#upper" }, "ab-cd")).note, undefined);
+            // A field that keeps more than one character of it (a chip took the first address) is no box: no note.
+            assert.equal(
+                (await page.type({ selector: "#chip" }, "a@x.com, b@y.com")).note,
+                undefined,
+            );
             assert.equal(await page.evaluate("document.getElementById('upper').value"), "ABCD");
             // A line break or spaces past the limit are nothing kept or lost; an emoji past it is (it counts as two).
             assert.equal((await page.type({ selector: "#short" }, "1234\n")).note, undefined);
