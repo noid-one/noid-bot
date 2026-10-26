@@ -326,8 +326,13 @@ export async function review(
         const usable = (model: { provider: string }) =>
             app.models.hasConfiguredAuth(model.provider) && !app.signInNeeded(model.provider);
         // The bot's own model, when it checks first, is tried as it always was.
-        let models = resolve([settings?.model ?? (await own()), settings?.backup]).filter(
-            (model, index) => (index === 0 && settings?.model === undefined) || usable(model),
+        const ownFirst = settings?.model === undefined ? await own() : undefined;
+        let models = resolve([settings?.model ?? ownFirst, settings?.backup]).filter(
+            (model) =>
+                (ownFirst !== undefined &&
+                    model.provider === ownFirst.provider &&
+                    model.id === ownFirst.modelId) ||
+                usable(model),
         );
 
         if (models.length === 0 && settings?.model !== undefined) {
