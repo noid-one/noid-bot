@@ -20,12 +20,16 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
         }
     }
 
-    // Stored links should be acyclic, but malformed input must not hide rows or loop forever.
+    // Stored links should be acyclic, but malformed input must not hide rows or loop forever. noid: a session whose
+    // links are known to end at a root is not walked again (taking links away never makes a loop), so a long chain
+    // costs its length, not its length squared.
+    const ends = new Set();
+
     for (const session of shown) {
         const seen = new Set([session.id]);
         let at = parents.get(session.id);
 
-        while (at !== undefined) {
+        while (at !== undefined && !ends.has(at)) {
             if (seen.has(at)) {
                 parents.delete(session.id);
                 break;
@@ -33,6 +37,12 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
 
             seen.add(at);
             at = parents.get(at);
+        }
+
+        if (at === undefined || ends.has(at)) {
+            for (const each of seen) {
+                ends.add(each);
+            }
         }
     }
 
@@ -46,15 +56,26 @@ export function sessionForest(shown, { pinned = [], folders = false } = {}) {
         }
     }
 
-    // How many rows a row has under it, at any depth: what folding it hides.
+    // How many rows a row has under it, at any depth: what folding it hides. noid: worked out without recursion, so a
+    // chain of links however long cannot run out of stack.
     const counted = new Map();
 
     const count = (id) => {
-        if (!counted.has(id)) {
-            counted.set(
-                id,
-                children.get(id).reduce((sum, child) => sum + 1 + count(child.id), 0),
-            );
+        const stack = [id];
+
+        while (stack.length > 0) {
+            const at = stack.at(-1);
+            const waiting = children.get(at).filter((child) => !counted.has(child.id));
+
+            if (waiting.length > 0) {
+                stack.push(...waiting.map((child) => child.id));
+            } else {
+                stack.pop();
+                counted.set(
+                    at,
+                    children.get(at).reduce((sum, child) => sum + 1 + counted.get(child.id), 0),
+                );
+            }
         }
 
         return counted.get(id);

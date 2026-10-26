@@ -30,6 +30,58 @@ test("each row counts the rows under it, at any depth", () => {
     assert.equal(rows.get(5)![0]!.descendants, 0);
 });
 
+test("noid: a chain of links however long is counted, not run out of stack", () => {
+    const length = 15_000;
+    const chain = Array.from({ length }, (_, index) =>
+        session(index + 1, index, index === 0 ? undefined : index),
+    );
+    const { rows } = sessionForest(chain) as { rows: Map<number, Row[]> };
+
+    assert.equal(rows.get(1)![0]!.descendants, length - 1);
+});
+
+test("links that loop still show every session once, with what is under each counted", () => {
+    // 1 and 2 name each other; 3 hangs off 1, 4 off 3, and 6 off the loop 5 ↔ 6 by way of 7.
+    const looped = [
+        session(1, 10, 2),
+        session(2, 20, 1),
+        session(3, 30, 1),
+        session(4, 40, 3),
+        session(5, 50, 6),
+        session(6, 60, 7),
+        session(7, 70, 6),
+    ];
+    const { roots, rows } = sessionForest(looped) as {
+        roots: { id: number }[];
+        rows: Map<number, Row[]>;
+    };
+    const shape = roots.map((root) =>
+        rows.get(root.id)!.map((row) => [row.session.id, row.descendants]),
+    );
+
+    assert.deepEqual(
+        shape
+            .flat()
+            .map(([id]) => id)
+            .sort(),
+        [1, 2, 3, 4, 5, 6, 7],
+    );
+    // As before links that end were remembered: each loop is broken where it was found first.
+    assert.deepEqual(shape, [
+        [
+            [6, 1],
+            [7, 0],
+        ],
+        [[5, 0]],
+        [
+            [1, 3],
+            [2, 0],
+            [3, 1],
+            [4, 0],
+        ],
+    ]);
+});
+
 test("a folded row hides the rows under it, and only those", () => {
     const { rows } = sessionForest(sessions) as { rows: Map<number, Row[]> };
     const family = rows.get(1)!;

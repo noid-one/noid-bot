@@ -316,8 +316,11 @@ export function holdsOpen(state = store.state) {
 /** Fold a session's linked sessions away in the list, or show them again; kept for this browser, its other tabs too. */
 export function toggleFoldedLinked(id) {
     const known = new Set(store.state.sessions.map((session) => session.id));
-    // Sessions that are gone are let go of as the choice is saved.
-    const next = store.state.foldedLinked.filter((each) => each !== id && known.has(each));
+    // Sessions that are gone are let go of as the choice is saved; noid: only once the list is in, so a fold made
+    // before it arrives keeps the others.
+    const next = store.state.foldedLinked.filter(
+        (each) => each !== id && (!store.state.sessionsLoaded || known.has(each)),
+    );
 
     if (!store.state.foldedLinked.includes(id)) {
         next.push(id);
