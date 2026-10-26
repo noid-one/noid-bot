@@ -554,3 +554,40 @@ test("the auto review route tells someone else only that it is the owner's", asy
         await new Promise((resolve) => server.close(resolve));
     }
 });
+
+test("an email address names no site, neither its name part nor its domain (rakazo 6457c7fe7)", () => {
+    for (const email of [
+        "ada.li@example.org",
+        "ada.li@例子.测试",
+        "ada.li+tag@example.org",
+        "ada.li+标签@example.org",
+        "ada.li/part@example.org",
+        '"ada.li"@example.org',
+        '"ada.li\\" contact"@example.org',
+        "mailto:ada.li@example.org",
+        "<ada.li@example.org>",
+        "ada.li@localhost",
+        "ada.li@[203.0.113.7]",
+        "evil.example@gmail.com",
+    ]) {
+        assert.deepEqual([...sitesInText(`Email ${email}`)], [], email);
+    }
+
+    // Sites named apart from an address still count, and a link's host is read before addresses go.
+    assert.deepEqual(
+        [...sitesInText("Email ada.li@example.org, then visit ada.li and example.org.")],
+        ["ada.li", "example.org"],
+    );
+    assert.deepEqual(
+        [...sitesInText("example.com，ada.li@例子.测试；example.org")],
+        ["example.com", "example.org"],
+    );
+    assert.deepEqual(
+        [
+            ...sitesInText(
+                "Read https://ada.li@example.org/path and https://example.com/?email=ada.li@example.net",
+            ),
+        ],
+        ["example.org", "example.com"],
+    );
+});

@@ -118,6 +118,9 @@ export function urlSite(address: string): string | undefined {
 }
 
 const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`]+/gi;
+// An email address, its name part quoted or not (rakazo 6457c7fe7): neither part of it names a site.
+const EMAIL_IN_TEXT =
+    /(?:"(?:[^"\\\r\n]|\\.)*"|(?<![^\s<>()[\]\\,;:"@，；、！？])[^\s<>()[\]\\,;:"@，；、！？]+)@(?:\[[^\]\r\n]+\]|[^\s<>()[\]\\,;:"@，；、！？]+)/g;
 const DOMAIN_IN_TEXT =
     /(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}[a-z0-9](?![\w-])/gi;
 
@@ -136,7 +139,10 @@ export function sitesInText(text: string): Set<string> {
         }
     }
 
-    for (const [match] of text.replace(URL_IN_TEXT, " ").matchAll(DOMAIN_IN_TEXT)) {
+    for (const [match] of text
+        .replace(URL_IN_TEXT, " ")
+        .replace(EMAIL_IN_TEXT, " ")
+        .matchAll(DOMAIN_IN_TEXT)) {
         const site = hostSite(match);
 
         if (site !== undefined) {
