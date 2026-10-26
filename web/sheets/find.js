@@ -1,6 +1,7 @@
 // Find in session: messages, commands, and files, through the whole history.
 import { useEffect, useRef, useState } from "preact/hooks";
 import { jumpToEntry } from "../chat.js";
+import { foldedMatch } from "../fold-case.js";
 import { actions, closeSheet, isRow, loadEarlier, store } from "../store.js";
 import { html, Icon, Marked, plainText, Sheet, Spinner, writtenText } from "../ui.js";
 
@@ -159,20 +160,22 @@ export function FindSheet({ initial }) {
 
         for (let index = entries.length - 1; index >= 0 && results.length < 100; index--) {
             const text = searchText(entries[index]).replace(/\s+/g, " ");
-            const at = text.toLowerCase().indexOf(needle);
+            // noid: the place in the text as written, which lowercasing may have moved.
+            const found = foldedMatch(text, needle);
 
-            if (at === -1) {
+            if (found === null) {
                 continue;
             }
 
+            const [at, end] = found;
             const start = Math.max(0, at - 50);
-            const snippet = `${start > 0 ? "…" : ""}${text.slice(start, at + needle.length + 90)}`;
+            const snippet = `${start > 0 ? "…" : ""}${text.slice(start, end + 90)}`;
             const from = at - start + (start > 0 ? 1 : 0);
 
             results.push({
                 entry: entries[index],
                 snippet,
-                hits: Array.from({ length: needle.length }, (_, offset) => from + offset),
+                hits: Array.from({ length: end - at }, (_, offset) => from + offset),
             });
         }
     }

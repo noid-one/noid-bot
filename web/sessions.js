@@ -6,6 +6,7 @@ import { goHome, useBack } from "./back.js";
 import { ExtensionRailButtons } from "./extension-ui.js";
 import { Face } from "./faces/face.js";
 import { useDragToClose } from "./gestures.js";
+import { foldedMatch } from "./fold-case.js";
 import { foldedUnder, sessionForest, unfolded } from "./session-tree.js";
 import { Splitter } from "./splitter.js";
 import {
@@ -270,15 +271,18 @@ function Highlight({ text, needle }) {
         return text;
     }
 
-    const at = text.toLowerCase().indexOf(needle);
+    // noid: the place in the text as written, which lowercasing may have moved.
+    const found = foldedMatch(text, needle);
 
-    if (at === -1) {
+    if (found === null) {
         return text;
     }
 
+    const [at, end] = found;
+
     return html`${text.slice(0, at)}
-    <mark>${text.slice(at, at + needle.length)}</mark>
-    ${text.slice(at + needle.length)}`;
+    <mark>${text.slice(at, end)}</mark>
+    ${text.slice(end)}`;
 }
 
 /** Failed subagents nobody has dealt with (seen or dismissed), of a session's counts or the rail's totals. */
