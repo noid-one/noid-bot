@@ -41,7 +41,8 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
 		if (el.tagName === "INPUT" && ["button", "submit", "reset"].includes(el.type)) return el.value;
 		if (el.tagName === "IMG") return el.alt;
 		if (el.tagName !== "SELECT" && el.tagName !== "TEXTAREA" && el.tagName !== "INPUT") { const text = el.innerText; if (text && text.trim()) return text; }
-		return el.getAttribute("title") || el.getAttribute("placeholder") || el.querySelector?.("img[alt]")?.alt || "";
+		// A code field with no name of its own says what it is for (rakazo b89c3e71).
+		return el.getAttribute("title") || el.getAttribute("placeholder") || el.querySelector?.("img[alt]")?.alt || (el.tagName === "INPUT" && el.autocomplete === "one-time-code" ? "One-time code" : "");
 	};
 	const clickable = new Set();
 	const holders = new Set();

@@ -561,6 +561,13 @@ test(
             assert.equal(await values("deep"), "121212");
             assert.equal(await page.evaluate("window.submits ?? 0"), "0");
 
+            // A code field with no name of its own is named for what it is (two on this page: behind the boxes, and
+            // autofill's).
+            assert.equal(
+                (await page.snapshot()).lines.match(/textbox "One-time code"/g)?.length,
+                2,
+            );
+
             // A hidden autofill input under the boxes, a code split in wrapped halves, and a widget slow to move focus.
             for (const [id, code] of [
                 ["autofill", "102938"],
