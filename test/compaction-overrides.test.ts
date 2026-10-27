@@ -53,6 +53,35 @@ test("each model's own values are read, and one that Pi refuses is left out once
     assert.match(warnings[1]!, /modelOverrides\["no-provider"\] is left out/);
 });
 
+test("one refused general value leaves out only itself", () => {
+    const warnings: string[] = [];
+    const read = compactionReader(
+        SettingsManager.inMemory({
+            compaction: {
+                enabled: false,
+                reserveTokens: -1,
+                keepRecentTokens: 7_000,
+                modelOverrides: {
+                    "faux/own": { reserveTokens: 5_000 },
+                    "faux/broken": { keepRecentTokens: -1 },
+                },
+            },
+        }),
+        (line) => warnings.push(line),
+    );
+    const settings = read();
+
+    read();
+    assert.equal(settings.enabled, false, "the owner's switch stays");
+    assert.equal(settings.reserveTokens, undefined, "Pi Durable's value stands in");
+    assert.equal(settings.keepRecentTokens, 7_000);
+    assert.deepEqual(settings.modelOverrides, {
+        "faux/own": { reserveTokens: 5_000, keepRecentTokens: 7_000 },
+    });
+    assert.equal(warnings.length, 2, warnings.join("\n"));
+    assert.match(warnings[0]!, /compaction\.reserveTokens is left out/);
+});
+
 test("a refused name with a line break stays on one line of the log", () => {
     const warnings: string[] = [];
     const read = compactionReader(
