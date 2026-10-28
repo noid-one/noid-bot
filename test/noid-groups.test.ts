@@ -34,7 +34,10 @@ const route: FauxResponseStep = (request) => {
     }
 
     if (thread !== undefined && text.includes("RAMBLE")) {
-        return fauxAssistantMessage([fauxText("and then, and")], { stopReason: "length" });
+        return fauxAssistantMessage(
+            [fauxText(text.includes("LONG") ? "and then, ".repeat(1000) : "and then, and")],
+            { stopReason: "length" },
+        );
     }
 
     if (thread !== undefined && text.includes("ANSWER THEN LOOK")) {
@@ -261,6 +264,15 @@ test("an answer written before a last tool call is the bot's answer, not one wit
         (await replies(group.id))[1]!.text,
         "and then, and\n\n(Cut off at the model's output limit.)",
     );
+
+    // A long one too: the note is kept when the reply is clipped to fit the thread.
+    await app.groups.send(owner(app), group.id, { text: "@looker RAMBLE LONG" });
+    await until(async () => (await replies(group.id)).length === 3, "the long cut answer");
+
+    const long = (await replies(group.id))[2]!.text;
+
+    assert.ok(long.length <= 8000, String(long.length));
+    assert.ok(long.endsWith("…\n\n(Cut off at the model's output limit.)"), long.slice(-60));
 });
 
 test("a bot cannot speak for the owner in the thread", async () => {

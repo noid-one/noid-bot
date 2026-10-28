@@ -28,15 +28,15 @@ const quoted = (value: unknown) => JSON.stringify(oneLine(String(value)));
 
 /**
  * Typed text as a bot must type it again: every space, tab and line break kept (an indented line, a pasted paragraph),
- * escaped in its quotes so the step stays one line of markdown. Only invisible format characters go, which could make
- * the step read otherwise than it types.
+ * escaped in its quotes so the step stays one line of markdown. Only the marks that set which way text runs go, which
+ * could make the step read otherwise than it types; joiners stay (an emoji family, Persian words).
  */
 const typed = (text: string) =>
     JSON.stringify(
         text
             .toWellFormed()
             .replace(/[\p{Zl}\p{Zp}]/gu, "\n")
-            .replace(/\p{Cf}/gu, ""),
+            .replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu, ""),
     );
 
 /** The most text one kept `type` step joins, as the desktop tool types (`MAX_TYPE` in desktop.ts). */
@@ -222,12 +222,14 @@ export class Teaching {
             const last = steps.at(-1);
 
             // Typing reaches the server in pieces (a pause between words, a long paste): one step again, with the
-            // spaces between them, and judged secret or not as a whole.
-            if (
+            // spaces between them, and judged secret or not as a whole. Typing that goes on from a secret is part of
+            // it ("password " and then "hunter2"), so it is dropped too: the step stays a secret, with no text.
+            if (step.action === "type" && last?.action === "type" && last.secret === true) {
+                steps[steps.length - 1] = { action: "type", secret: true };
+            } else if (
                 step.action === "type" &&
                 step.secret !== true &&
                 last?.action === "type" &&
-                last.secret !== true &&
                 String(last.text).length + String(step.text).length <= JOIN_UP_TO
             ) {
                 steps[steps.length - 1] = keptStep({

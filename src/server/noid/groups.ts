@@ -37,6 +37,8 @@ const MAX_MEMBERS = 8;
 const MAX_TEXT = 4000;
 /** The most of a bot's answer a group keeps. */
 const MAX_REPLY = 8000;
+/** After the words of an answer the output limit cut; within `MAX_REPLY`, so a long answer's clip keeps it. */
+const CUT_NOTE = "\n\n(Cut off at the model's output limit.)";
 /** How many messages a bot reads before it answers, at most: those since its last answer. */
 const HISTORY = 20;
 /** How much of each one it reads. */
@@ -91,7 +93,7 @@ type Runtime = TaskRuntime<RoundInput, RoundState, null, object>;
 const finished = { status: "terminal", outcome: { status: "completed", result: null } } as const;
 
 /** How many of a bot's newest entries are read back for words its last message lacked: one run's worth, or so. */
-const ANSWER_LOOKBACK = 64;
+const ANSWER_LOOKBACK = 128;
 
 /** The text of an assistant message. */
 const textOf = (message: AssistantMessage | undefined) =>
@@ -380,7 +382,7 @@ export class Groups {
         // Said in the thread, so the owner and the bots after it know the words end mid-way.
         return text === ""
             ? { text: "answered without words.", failed: true }
-            : { text: cut ? `${text}\n\n(Cut off at the model's output limit.)` : text };
+            : { text: cut ? `${clip(text, MAX_REPLY - CUT_NOTE.length)}${CUT_NOTE}` : text };
     }
 
     /**

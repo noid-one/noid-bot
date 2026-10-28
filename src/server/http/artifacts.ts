@@ -68,7 +68,7 @@ export async function renderMarkdown(text: string): Promise<string> {
     try {
         return await marked.parse(text);
     } catch (error) {
-        if (!(error instanceof RangeError)) {
+        if (!(error instanceof RangeError && /call stack/i.test(error.message))) {
             throw error;
         }
 

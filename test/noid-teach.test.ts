@@ -141,9 +141,17 @@ test("typed text keeps its spaces, tabs and line breaks, on one line of the skil
         'Type "line one\\n\\tline two\\n## Boundaries".',
     );
     assert.equal(describeStep({ action: "type", text: "\ud83d" }), 'Type "�".');
+    // Joiners type as they are; only the marks that turn text around go.
+    assert.equal(
+        describeStep({
+            action: "type",
+            text: "\u{1F468}\u200D\u{1F469} \u0645\u06CC\u200C\u062E\u0648\u0627\u0645\u2066x\u2069",
+        }),
+        'Type "\u{1F468}\u200D\u{1F469} \u0645\u06CC\u200C\u062E\u0648\u0627\u0645x".',
+    );
 });
 
-test("typing that arrives in pieces is one step again, judged secret as a whole", async () => {
+test("typing that arrives in pieces is one step again, judged secret as a whole, and what follows a secret is one too", async () => {
     const teaching = new Teaching();
     const lesson = {
         name: "Notes",
@@ -165,6 +173,11 @@ test("typing that arrives in pieces is one step again, judged secret as a whole"
     await teaching.record(owner, { action: "click", x: 1, y: 1 });
     await teaching.record(owner, { action: "type", text: "shown" });
     await teaching.record(owner, { action: "type", text: "hunter2!", secret: true });
+    await teaching.record(owner, { action: "type", text: " and more of it" });
+    await teaching.record(owner, { action: "key", keys: "Tab" });
+    await teaching.record(owner, { action: "type", text: "password " });
+    await teaching.record(owner, { action: "type", text: "hunter2" });
+    await teaching.record(owner, { action: "click", x: 2, y: 2 });
     await teaching.record(owner, { action: "type", text: "a".repeat(999) });
     await teaching.record(owner, { action: "type", text: "bb" });
 
@@ -175,6 +188,9 @@ test("typing that arrives in pieces is one step again, judged secret as a whole"
         { action: "click", x: 1, y: 1 },
         { action: "type", text: "shown" },
         { action: "type", secret: true },
+        { action: "key", keys: "Tab" },
+        { action: "type", secret: true },
+        { action: "click", x: 2, y: 2 },
         { action: "type", text: "a".repeat(999) },
         { action: "type", text: "bb" },
     ]);

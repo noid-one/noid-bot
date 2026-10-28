@@ -430,11 +430,16 @@ function markdownParts(
 }
 
 /**
- * Text that nests too deeply for the parser (thousands of `>` or list levels run it out of stack) as it is written, so
- * one such message does not break the whole transcript. Anything else the parser throws is a bug, thrown on.
+ * Text that nests too deeply for the parser (thousands of `>` or list levels run it out of stack: a `RangeError` in
+ * Chromium and Safari, an `InternalError` "too much recursion" in Firefox) as it is written, so one such message does
+ * not break the whole transcript. Anything else the parser throws is a bug, thrown on.
  */
 function plainParts(text, error) {
-    if (!(error instanceof RangeError)) {
+    const overflow =
+        (error instanceof RangeError && /call stack/i.test(error.message)) ||
+        error?.name === "InternalError";
+
+    if (!overflow) {
         throw error;
     }
 
