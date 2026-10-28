@@ -463,6 +463,45 @@ test(
 );
 
 test(
+    "a display or desktop that stops comes back by itself, and the desktop works again",
+    { skip },
+    async () => {
+        const pid = async (name: string) => (await onComputer(`pgrep -x ${name} || true`)).trim();
+        // Seen once (the owner's view starts the computer if a test before stopped it): what runs now.
+        await app!.desktop.view(owner(app!));
+        const display = await pid("Xvfb");
+        const desktop = await pid("fluxbox");
+
+        assert.notEqual(display, "");
+        await onComputer("pkill -9 -x Xvfb");
+        await until(async () => {
+            const now = await pid("Xvfb");
+
+            return now !== "" && now !== display && (await pid("fluxbox")) !== "";
+        }, "the display and desktop to start again");
+        assert.ok(
+            (await app!.desktop.view(owner(app!))).image.startsWith("iVBORw0KGgo"),
+            "a PNG, from the new display",
+        );
+        assert.notEqual(await pid("fluxbox"), desktop, "the desktop started again with it");
+
+        const before = await pid("fluxbox");
+
+        await onComputer("pkill -9 -x fluxbox");
+        await until(
+            async () => ![before, ""].includes(await pid("fluxbox")),
+            "the desktop to start again",
+        );
+        assert.match(
+            await onComputer(
+                "tail -n 1 /tmp/noid/fluxbox.log; grep -c 'starting it again' /tmp/noid/xvfb.log",
+            ),
+            /^1$/m,
+        );
+    },
+);
+
+test(
     "the owner shows a task on the desktop, and every bot gets it as a skill",
     { skip },
     async () => {

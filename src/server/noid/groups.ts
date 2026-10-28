@@ -367,7 +367,8 @@ export class Groups {
                 AssistantMessage | undefined;
 
             text = textOf(message);
-            cut = message?.stopReason === "length";
+            // Only words of the cut message itself end mid-way, not earlier ones found below.
+            cut = message?.stopReason === "length" && text !== "";
 
             return undefined;
         }, context);
