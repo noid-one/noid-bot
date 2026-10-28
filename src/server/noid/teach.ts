@@ -26,6 +26,22 @@ const SECRET =
 /** A recorded value as plain words in a skill: one line, no control characters, quoted so nothing in it reads as markdown. */
 const quoted = (value: unknown) => JSON.stringify(oneLine(String(value)));
 
+/**
+ * Typed text as a bot must type it again: every space, tab and line break kept (an indented line, a pasted paragraph),
+ * escaped in its quotes so the step stays one line of markdown. Only invisible format characters go, which could make
+ * the step read otherwise than it types.
+ */
+const typed = (text: string) =>
+    JSON.stringify(
+        text
+            .toWellFormed()
+            .replace(/[\p{Zl}\p{Zp}]/gu, "\n")
+            .replace(/\p{Cf}/gu, ""),
+    );
+
+/** The most text one kept `type` step joins, as the desktop tool types (`MAX_TYPE` in desktop.ts). */
+const JOIN_UP_TO = 1000;
+
 /** One line of text without control characters or broken surrogates, which front matter and markdown cannot hold. */
 const oneLine = (text: string) =>
     text
@@ -75,7 +91,7 @@ export function describeStep(step: TaughtStep): string | undefined {
 
             return step.secret === true || SECRET.test(text)
                 ? "Type the secret the task needs here (it was not recorded; ask the owner for it, never guess)."
-                : `Type ${quoted(text)}.`;
+                : `Type ${typed(text)}.`;
         }
 
         case "key":
@@ -202,7 +218,26 @@ export class Teaching {
             step.action !== "release" &&
             this.#lesson.steps.length < MAX_STEPS
         ) {
-            this.#lesson.steps.push(keptStep(step));
+            const steps = this.#lesson.steps;
+            const last = steps.at(-1);
+
+            // Typing reaches the server in pieces (a pause between words, a long paste): one step again, with the
+            // spaces between them, and judged secret or not as a whole.
+            if (
+                step.action === "type" &&
+                step.secret !== true &&
+                last?.action === "type" &&
+                last.secret !== true &&
+                String(last.text).length + String(step.text).length <= JOIN_UP_TO
+            ) {
+                steps[steps.length - 1] = keptStep({
+                    action: "type",
+                    text: `${String(last.text)}${String(step.text)}`,
+                });
+            } else {
+                steps.push(keptStep(step));
+            }
+
             await this.#save(this.#lesson);
         }
     }

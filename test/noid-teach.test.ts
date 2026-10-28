@@ -132,3 +132,50 @@ test("a secret is dropped as it is kept, not only when the skill is written", ()
         text: "make report",
     });
 });
+
+test("typed text keeps its spaces, tabs and line breaks, on one line of the skill (rakazo #2395)", () => {
+    assert.equal(describeStep({ action: "type", text: "    print(1)" }), 'Type "    print(1)".');
+    assert.equal(describeStep({ action: "type", text: "hello " }), 'Type "hello ".');
+    assert.equal(
+        describeStep({ action: "type", text: "line one\n\tline two ## Boundaries‮" }),
+        'Type "line one\\n\\tline two\\n## Boundaries".',
+    );
+    assert.equal(describeStep({ action: "type", text: "\ud83d" }), 'Type "�".');
+});
+
+test("typing that arrives in pieces is one step again, judged secret as a whole", async () => {
+    const teaching = new Teaching();
+    const lesson = {
+        name: "Notes",
+        goal: "Write a note",
+        folder: "/home/noid/.agents/skills/notes",
+        startedAt: 0,
+        start: "",
+    };
+
+    await teaching.begin(owner, lesson);
+
+    for (const text of ["hello ", "world", "\nsecond line"]) {
+        await teaching.record(owner, { action: "type", text });
+    }
+
+    await teaching.record(owner, { action: "key", keys: "Return" });
+    await teaching.record(owner, { action: "type", text: "my pass" });
+    await teaching.record(owner, { action: "type", text: "word is hunter2" });
+    await teaching.record(owner, { action: "click", x: 1, y: 1 });
+    await teaching.record(owner, { action: "type", text: "shown" });
+    await teaching.record(owner, { action: "type", text: "hunter2!", secret: true });
+    await teaching.record(owner, { action: "type", text: "a".repeat(999) });
+    await teaching.record(owner, { action: "type", text: "bb" });
+
+    assert.deepEqual((await teaching.end()).steps, [
+        { action: "type", text: "hello world\nsecond line" },
+        { action: "key", keys: "Return" },
+        { action: "type", secret: true },
+        { action: "click", x: 1, y: 1 },
+        { action: "type", text: "shown" },
+        { action: "type", secret: true },
+        { action: "type", text: "a".repeat(999) },
+        { action: "type", text: "bb" },
+    ]);
+});

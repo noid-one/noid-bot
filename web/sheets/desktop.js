@@ -362,13 +362,19 @@ export function DesktopPage() {
         if (text !== "") {
             flushTyped();
 
-            for (let from = 0; from < text.length; from += 1000) {
+            for (let from = 0; from < text.length;) {
+                // Up to 1000 at a time, as the desktop types, never parting an emoji's two halves.
+                const to = /[\uD800-\uDBFF]/.test(text[from + 999] ?? "")
+                    ? from + 999
+                    : from + 1000;
+
                 void act({
                     action: "type",
-                    text: text.slice(from, from + 1000),
+                    text: text.slice(from, to),
                     // A pasted password (from a password manager) is as secret as a typed one.
                     ...(teaching && secret ? { secret: true } : {}),
                 });
+                from = to;
             }
         }
     };
