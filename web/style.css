@@ -1657,6 +1657,11 @@ kbd {
     margin: 0.45rem 0;
 }
 
+/* Text that nested too deeply to parse, shown as written. */
+.md .md-plain {
+    white-space: pre-wrap;
+}
+
 /* Real lists, with a 20px column for the marker (`1.` or `•`), quiet. */
 .md ul,
 .md ol {

@@ -63,6 +63,19 @@ function markdownTheme(query: URLSearchParams): string {
         .join(";")}}`;
 }
 
+/** A Markdown artifact as HTML; one that nests too deeply for the parser (it runs out of stack) shows as written. */
+export async function renderMarkdown(text: string): Promise<string> {
+    try {
+        return await marked.parse(text);
+    } catch (error) {
+        if (!(error instanceof RangeError)) {
+            throw error;
+        }
+
+        return `<pre style="white-space:pre-wrap">${escapeHtml(text)}</pre>`;
+    }
+}
+
 /**
  * The page a reply's HTML runs in once someone taps Run (`web/run-frame.js`). It runs only what its parent sends it, and
  * only as the app's own sandboxed frame: with an opaque origin, from a parent at the app's address. The HTML then
@@ -138,7 +151,7 @@ export async function artifact(
     }
 
     if (found.meta.type === "markdown") {
-        const rendered = await marked.parse(found.content);
+        const rendered = await renderMarkdown(found.content);
         const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(found.meta.title)}</title><style>${MARKDOWN_STYLE}${markdownTheme(query)}</style></head><body>${rendered}</body></html>`;
 
         return send(response, 200, html, "text/html; charset=utf-8", headers);

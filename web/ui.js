@@ -429,6 +429,18 @@ function markdownParts(
     return out;
 }
 
+/**
+ * Text that nests too deeply for the parser (thousands of `>` or list levels run it out of stack) as it is written, so
+ * one such message does not break the whole transcript. Anything else the parser throws is a bug, thrown on.
+ */
+function plainParts(text, error) {
+    if (!(error instanceof RangeError)) {
+        throw error;
+    }
+
+    return [{ html: `<p class="md-plain">${escapeHtml(text)}</p>` }];
+}
+
 /** Markdown parsed, sanitized, and split into parts (`partsOf`), for the conversation and folder given. */
 function renderParts(text, conversationId, base, breaks, fold) {
     rendering = conversationId ?? null;
@@ -436,6 +448,8 @@ function renderParts(text, conversationId, base, breaks, fold) {
 
     try {
         return partsOf(sanitize(marked.parse(text, { async: false, breaks }), fold));
+    } catch (error) {
+        return plainParts(text, error);
     } finally {
         rendering = null;
         linkBase = null;
@@ -450,9 +464,18 @@ function renderParts(text, conversationId, base, breaks, fold) {
  * definition is in another block shows as written until the text is whole. Returns `{ key, parts }` for each block.
  */
 function liveBlocks(text, conversationId, base, breaks, kept) {
-    const blocks = new marked.Lexer(marked.defaults)
-        .blockTokens(text.replace(/\r\n|\r/g, "\n"), [])
-        .filter((token) => token.type !== "space");
+    let blocks;
+
+    try {
+        blocks = new marked.Lexer(marked.defaults)
+            .blockTokens(text.replace(/\r\n|\r/g, "\n"), [])
+            .filter((token) => token.type !== "space");
+    } catch (error) {
+        kept.clear();
+
+        return [{ key: 0, parts: plainParts(text, error) }];
+    }
+
     const next = new Map();
     const out = blocks.map((token, index) => {
         const parts =
