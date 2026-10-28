@@ -33,6 +33,10 @@ const route: FauxResponseStep = (request) => {
         return fauxAssistantMessage([fauxText("")]);
     }
 
+    if (thread !== undefined && text.includes("RAMBLE")) {
+        return fauxAssistantMessage([fauxText("and then, and")], { stopReason: "length" });
+    }
+
     if (thread !== undefined && text.includes("ANSWER THEN LOOK")) {
         return fauxAssistantMessage(
             [
@@ -249,6 +253,14 @@ test("an answer written before a last tool call is the bot's answer, not one wit
 
     assert.equal(answer!.text, "the answer, before a last look");
     assert.equal(answer!.failed, undefined);
+
+    // One the output limit cut says so, for the owner and the bots after it.
+    await app.groups.send(owner(app), group.id, { text: "@looker RAMBLE" });
+    await until(async () => (await replies(group.id)).length === 2, "the cut answer");
+    assert.equal(
+        (await replies(group.id))[1]!.text,
+        "and then, and\n\n(Cut off at the model's output limit.)",
+    );
 });
 
 test("a bot cannot speak for the owner in the thread", async () => {

@@ -10,7 +10,9 @@ const runLine = (run) =>
             ? `failed: ${run.error}`
             : run.status === "running"
               ? "running"
-              : "done"
+              : run.cut
+                ? "done, cut off at the model's output limit"
+                : "done"
     }`;
 
 /** Messages that go to Pi later or on repeat: set one up, see what is coming and what came of it, run one now, cancel one. */

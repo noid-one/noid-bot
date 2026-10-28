@@ -80,13 +80,15 @@ test("cron's five fields: lists, ranges, steps, names, and either day when both 
     }
 });
 
-/** A message that says "fail" stops with an error; anything else is echoed. */
+/** A message that says "fail" stops with an error, one that says "ramble" at the output limit; anything else is echoed. */
 const route: FauxResponseStep = (request) => {
     const { text } = lastText(request as never);
 
     return text.includes("fail")
         ? fauxAssistantMessage([], { stopReason: "error", errorMessage: "Bad request" })
-        : fauxAssistantMessage([fauxText(`echo: ${text}`)]);
+        : text.includes("ramble")
+          ? fauxAssistantMessage([fauxText("and then, and then, and")], { stopReason: "length" })
+          : fauxAssistantMessage([fauxText(`echo: ${text}`)]);
 };
 
 const model = scriptedModel(route);
@@ -205,6 +207,22 @@ test("a routine with no model to ask fails, and says so", async () => {
         await until(() => routineFailed(sent) !== undefined, "the push");
         assert.match(routineFailed(sent)!.message.body, /“x”: its model is not available here/);
     });
+});
+
+test("a routine whose answer the output limit cut is done, and says it was cut (rakazo #2342)", async () => {
+    const id = await newSession(app);
+    const routine = await app.commands.schedule(id, owner(app), {
+        when: "every day 8:00 ramble on",
+    });
+    const plain = await app.commands.schedule(id, owner(app), { when: "every day 8:30 short" });
+
+    await app.commands.runSchedule(id, owner(app), routine.id);
+    assert.deepEqual(
+        (({ status, cut }) => ({ status, cut }))((await settled(id, routine.id))[0]!),
+        { status: "done", cut: true },
+    );
+    await app.commands.runSchedule(id, owner(app), plain.id);
+    assert.equal((await settled(id, plain.id))[0]?.cut, undefined);
 });
 
 test("a routine that fails says so in its runs and pushes Routine failed", async () => {

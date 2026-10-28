@@ -41,10 +41,14 @@ const MAX_TEXT = 4000;
 /** How many sendings a schedule remembers. */
 const HISTORY = 10;
 
-/** What came of a sending: still going, answered, stopped by someone, or failed (and why). */
+/**
+ * What came of a sending: still going, answered, stopped by someone, or failed (and why). `cut` is an answer the model's
+ * output limit ended mid-way.
+ */
 export type RunOutcome = ScheduleRun & {
     status: "running" | "done" | "stopped" | "failed";
     error?: string;
+    cut?: true;
 };
 
 /** A schedule's sendings go out as the person who set it up; Pi's as Pi's, but as the work of whom Pi worked for. */
@@ -491,7 +495,9 @@ export class Schedules {
                                   }
                                 : answer?.stopReason === "aborted"
                                   ? { ...run, status: "stopped" }
-                                  : { ...run, status: "done" },
+                                  : answer?.stopReason === "length"
+                                    ? { ...run, status: "done", cut: true }
+                                    : { ...run, status: "done" },
                         );
                     }
                 }

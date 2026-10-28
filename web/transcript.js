@@ -1698,7 +1698,10 @@ function AnswerActions({ entry }) {
     </div>`;
 }
 
-/** How one of Pi's answers ended, under its last words: a failed request, a stop, or the answer's actions. */
+/**
+ * How one of Pi's answers ended, under its last words: a failed request, a stop, a cut at the output limit (the words
+ * end mid-way), or the answer's actions.
+ */
 function AnswerEnd({ entry }) {
     // A final answer (not a step between tool calls) with something to say gets reactions and the discuss row.
     const answer = collab() && entry.stopReason !== "toolUse" && entry.blocks.some(says);
@@ -1708,6 +1711,7 @@ function AnswerEnd({ entry }) {
         html`<div class="error-box">${entry.error ?? "The model request failed."}</div>`
     }
     ${entry.stopReason === "aborted" && html`<div class="muted small">Stopped.</div>`}
+    ${entry.stopReason === "length" && html`<div class="muted small">Cut off at the model's output limit.</div>`}
     ${answer && html`<${AnswerActions} entry=${entry} />`}`;
 }
 

@@ -1,4 +1,13 @@
-import { type App, cleanUp, newSession, openApp, root, scriptedModel, until } from "./helpers.ts";
+import {
+    type App,
+    cleanUp,
+    lastText,
+    newSession,
+    openApp,
+    root,
+    scriptedModel,
+    until,
+} from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -36,7 +45,13 @@ before(async () => {
         return;
     }
 
-    app = await openApp(scriptedModel(() => fauxAssistantMessage([fauxText(DEEP)])));
+    app = await openApp(
+        scriptedModel((request) =>
+            lastText(request as never).text.includes("ramble")
+                ? fauxAssistantMessage([fauxText("and then, and")], { stopReason: "length" })
+                : fauxAssistantMessage([fauxText(DEEP)]),
+        ),
+    );
     id = await newSession(app);
     const handler = createHandler({
         app,
@@ -130,3 +145,20 @@ test(
         assert.deepEqual(shown, { asked: true, quotes: 0, wraps: "pre-wrap" });
     },
 );
+
+test("a reply the output limit cut says so under its words (rakazo #2342)", real, async () => {
+    await page.type({ selector: ".composer textarea" }, "ramble");
+    await page.press("Enter");
+    await until(
+        async () =>
+            await inPage<boolean>(`
+                return JSON.stringify(
+                    [...document.querySelectorAll(".reply .muted.small")].some(
+                        (note) => note.textContent === "Cut off at the model's output limit.",
+                    ),
+                );
+            `),
+        "the cut note",
+        20_000,
+    );
+});

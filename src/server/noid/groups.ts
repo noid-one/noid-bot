@@ -360,12 +360,14 @@ export class Groups {
 
         const answerId = settled.answer;
         let text = "";
+        let cut = false;
 
         await runtime.commit(async (tx) => {
-            text = textOf(
-                (await tx.entry(AssistantEntry, answerId))?.model?.[0] as
-                    AssistantMessage | undefined,
-            );
+            const message = (await tx.entry(AssistantEntry, answerId))?.model?.[0] as
+                AssistantMessage | undefined;
+
+            text = textOf(message);
+            cut = message?.stopReason === "length";
 
             return undefined;
         }, context);
@@ -374,7 +376,10 @@ export class Groups {
             text = await this.#earlierWords(id, Number(settled.entry), Number(answerId));
         }
 
-        return text === "" ? { text: "answered without words.", failed: true } : { text };
+        // Said in the thread, so the owner and the bots after it know the words end mid-way.
+        return text === ""
+            ? { text: "answered without words.", failed: true }
+            : { text: cut ? `${text}\n\n(Cut off at the model's output limit.)` : text };
     }
 
     /**
