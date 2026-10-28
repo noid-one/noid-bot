@@ -28,6 +28,7 @@ import type { User } from "../config.ts";
 import { describe, HttpError } from "../errors.ts";
 import { ownerOf, requireOwner } from "./owner.ts";
 import { attribute, clip } from "../fence.ts";
+import { projectEntry } from "../projection.ts";
 import { clientKey } from "../requests.ts";
 
 export const GROUPS_EXTENSION = "noid-groups";
@@ -88,6 +89,9 @@ type RoundState = { phase: "ask"; index: number };
 type Runtime = TaskRuntime<RoundInput, RoundState, null, object>;
 
 const finished = { status: "terminal", outcome: { status: "completed", result: null } } as const;
+
+/** How many of a bot's newest entries are read back for words its last message lacked: one run's worth, or so. */
+const ANSWER_LOOKBACK = 64;
 
 /** The text of an assistant message. */
 const textOf = (message: AssistantMessage | undefined) =>
@@ -366,7 +370,47 @@ export class Groups {
             return undefined;
         }, context);
 
+        if (text === "") {
+            text = await this.#earlierWords(id, Number(settled.entry), Number(answerId));
+        }
+
         return text === "" ? { text: "answered without words.", failed: true } : { text };
+    }
+
+    /**
+     * The newest words a bot wrote in answer to a message (input entry `from`), before its last message (`to`) which had
+     * none: it wrote the answer, then made one more tool call, or ended on a picture. From a short newest-first read,
+     * as botmail's last reply; empty when the run wrote no words, or they are further back than that.
+     */
+    async #earlierWords(id: ConversationId, from: number, to: number): Promise<string> {
+        const page = await (
+            await this.#app.conversation(id)
+        ).entries({}, ANSWER_LOOKBACK, undefined, context);
+
+        for (const entry of page.items) {
+            const projected = projectEntry(entry);
+
+            if (projected === undefined || projected.id > to) {
+                continue;
+            }
+
+            if (projected.id <= from) {
+                break;
+            }
+
+            if (projected.kind === "assistant") {
+                const text = projected.blocks
+                    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                    .join("")
+                    .trim();
+
+                if (text !== "") {
+                    return text;
+                }
+            }
+        }
+
+        return "";
     }
 
     /**

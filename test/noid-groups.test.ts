@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
-import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { addressed, GroupsDoc, roundPrompt } from "../src/server/noid/groups.ts";
 
@@ -25,8 +25,23 @@ process.env.NOID_DOCKER = "false";
 
 /** A bot in a group says how many messages of the thread it read; anything else is echoed. */
 const route: FauxResponseStep = (request) => {
-    const { text } = lastText(request as never);
+    const { role, text } = lastText(request as never);
     const thread = /<group-thread>\n([\s\S]*?)\n<\/group-thread>/.exec(text)?.[1];
+
+    // The answer, then one more tool call, then a last message with no words.
+    if (role === "toolResult") {
+        return fauxAssistantMessage([fauxText("")]);
+    }
+
+    if (thread !== undefined && text.includes("ANSWER THEN LOOK")) {
+        return fauxAssistantMessage(
+            [
+                fauxText("the answer, before a last look"),
+                fauxToolCall("read", { path: "README.md" }),
+            ],
+            { stopReason: "toolUse" },
+        );
+    }
 
     return fauxAssistantMessage([
         fauxText(
@@ -217,6 +232,23 @@ test("a bot that cannot answer says so, and the round goes on", async () => {
 
     await app.groups.remove(owner(app), group.id);
     await assert.rejects(app.groups.get(owner(app), group.id), { status: 404 });
+});
+
+test("an answer written before a last tool call is the bot's answer, not one without words", async () => {
+    const one = await bot("Looker");
+    const two = await bot("Witness");
+    const group = await app.groups.create(owner(app), {
+        name: "Look",
+        members: [one.botId, two.botId],
+    });
+
+    await app.groups.send(owner(app), group.id, { text: "@looker ANSWER THEN LOOK" });
+    await until(async () => (await replies(group.id)).length === 1, "Looker's answer");
+
+    const [answer] = await replies(group.id);
+
+    assert.equal(answer!.text, "the answer, before a last look");
+    assert.equal(answer!.failed, undefined);
 });
 
 test("a bot cannot speak for the owner in the thread", async () => {
