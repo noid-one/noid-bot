@@ -298,6 +298,25 @@ function WatchBar() {
     </div>`;
 }
 
+/** Images the server inlines for a model that sees them (`IMAGE_TYPES` in `commands.ts`). */
+const INLINE_IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/**
+ * The name of `model` (`{ provider, modelId }`) when it is known not to take images and `attachments` hold one; else
+ * undefined. A model missing from the list is not known, so nothing is asked (rakazo #1996).
+ */
+export function blindModel(model, attachments) {
+    const found = store.state.models.find(
+        (each) => each.provider === model?.provider && each.id === model?.modelId,
+    );
+
+    return found !== undefined &&
+        !found.images &&
+        attachments.some((file) => INLINE_IMAGES.has(file?.mime))
+        ? found.name || found.id
+        : undefined;
+}
+
 export function Composer() {
     const { view, conversationId } = store.state;
     const historyScope = { person: store.state.me?.id, conversation: conversationId };
@@ -307,6 +326,8 @@ export function Composer() {
     // The queued message tapped open, wrapped: one line each until then. The queue holds only a message's start.
     const [reading, setReading] = useState(null);
     const [sending, setSending] = useState(false);
+    // Images sent to a model that cannot see them: asked once at Send, for these files and this model (`blindModel`).
+    const [blind, setBlind] = useState(null);
     // Slash command suggestions: the highlighted one, and whether Escape hid the list.
     const [pick, setPick] = useState(0);
     const [hideCommands, setHideCommands] = useState(false);
@@ -644,7 +665,7 @@ export function Composer() {
         sent(full);
     };
 
-    const send = async () => {
+    const send = async ({ asFiles = false } = {}) => {
         if (!canSend) {
             return;
         }
@@ -665,10 +686,20 @@ export function Composer() {
             return runShell(full);
         }
 
-        setSending(true);
         const attachments = files
             .filter((file) => file.state === "done")
             .map((file) => file.attachment);
+        const cannotSee = asFiles ? undefined : blindModel(view.agent?.model, attachments);
+
+        // The server sends such images as files the model can open but not see (`commands.ts`): say so first.
+        if (cannotSee !== undefined) {
+            setBlind(cannotSee);
+
+            return;
+        }
+
+        setBlind(null);
+        setSending(true);
         const ok = await attempt(() =>
             actions.submit(
                 full,
@@ -1217,6 +1248,29 @@ export function Composer() {
                             template.args &&
                             html` <span class="command-args">${template.args}</span>`
                         } <span class="muted">· ${template.skill ? "skill · Pi gets its instructions with your request" : "prompt template · Pi gets it filled in"}</span>
+                    </div>`
+                }
+                ${
+                    blind !== null &&
+                    blindModel(
+                        agent?.model,
+                        files.map((file) => file.attachment),
+                    ) === blind &&
+                    html`<div class="image-warning" role="alert">
+                        <span class="grow">
+                            ${blind} cannot see images: they go as files it can open, not look at.
+                        </span>
+                        <span class="trust-actions">
+                            <button class="link small" onClick=${() => send({ asFiles: true })}>
+                                Send as files
+                            </button>
+                            <button
+                                class="button small primary"
+                                onClick=${() => openSheet({ type: "model" })}
+                            >
+                                Change model
+                            </button>
+                        </span>
                     </div>`
                 }
                 <div

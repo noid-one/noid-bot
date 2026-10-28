@@ -7919,6 +7919,7 @@ textarea.notes {
 .goal-bar,
 .watch-bar,
 .trust-bar,
+.image-warning,
 .view-only {
     --tone: var(--warn);
     display: flex;
@@ -7938,6 +7939,7 @@ textarea.notes {
 .goal-bar::before,
 .watch-bar::before,
 .trust-bar::before,
+.image-warning::before,
 .view-only::before {
     content: "";
     flex: none;
@@ -7957,7 +7959,8 @@ textarea.notes {
 }
 
 /* The trust question keeps its words a readable width: on a phone its answers go under them, together, to the right. */
-.trust-bar > .grow {
+.trust-bar > .grow,
+.image-warning > .grow {
     flex: 1 1 15rem;
 }
 
