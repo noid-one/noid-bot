@@ -131,6 +131,7 @@ Environment variables:
 - `NOID_COMPUTER`: the shared computer's container, `noid-computer` by default, with `<name>-home` as its volume. `NOID_DOCKER` is the docker binary, and `NOID_DOCKER_HOST` the engine to run it on.
 - `PI_POCKET_ACCESS`, `PI_POCKET_HOST`, `PI_POCKET_PORT`, and `PI_POCKET_GUARD=off`.
 - `PI_POCKET_BROWSER` and `PI_POCKET_BROWSER_ARGS`: the browser to run and extra flags for it.
+- `PI_POCKET_CACHE_KEEPER=off`: no warming of a model's prompt cache while a run waits on a tool call (on by default; only models whose cache lifetime Pi knows, Anthropic's today, are warmed: [docs/design/cache-keeper.md](docs/design/cache-keeper.md)).
 
 ## Architecture
 

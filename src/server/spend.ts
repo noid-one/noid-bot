@@ -4,7 +4,9 @@
  * the work's usage is committed. The owner can limit a session or a person. Past a limit, new messages are refused,
  * and a run that crosses it is stopped; the model request that crossed it still counts.
  */
+import { copyJson } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import { type ConversationId, UsageDoc, type UsageState } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
 import type { User } from "./config.ts";
@@ -83,11 +85,17 @@ export class Spend {
             const added = (this.#costs.get(id) ?? 0) - (stored?.counted[String(id)] ?? 0);
 
             if (added > 0) {
-                this.#owe(id, this.#payer(id), added);
+                this.#owe(id, this.payer(id), added);
             }
         }
 
         await this.#count();
+        // The totals as stored now, then a limit they are past stops its run, though nothing was owed (Pi Pocket
+        // `d6a03b8`): `#count` returns early then, and the people's totals arrive through `countedChanged`.
+        const counted = await harness.snapshot(SpendDoc, context);
+
+        this.#people = { ...counted?.people };
+        this.#stopOverLimit();
     }
 
     /** Add spend in a conversation to a person, to be stored with the next count. */
@@ -102,15 +110,17 @@ export class Spend {
      * A conversation's usage changed: called from the commit listener, when whom Pi works for is who asked for this
      * work. Storing it waits for a moment.
      */
-    usageChanged(id: ConversationId, usage: UsageState | null): void {
+    usageChanged(id: ConversationId, usage: UsageState | null, alreadyPaid = false): void {
         const cost = usageCost(usage ?? undefined);
-        const added = cost - (this.#costs.get(id) ?? 0);
+        // An auxiliary request (a cache warm) pays all its usage in this commit. Do not infer another debt from rounded
+        // totals.
+        const added = alreadyPaid ? 0 : cost - (this.#costs.get(id) ?? 0);
 
         this.#costs.set(id, cost);
         this.#models.set(id, usage?.models ?? {});
 
         if (added > 0) {
-            this.#owe(id, this.#payer(id), added);
+            this.#owe(id, this.payer(id), added);
         }
 
         this.#timer ??= setTimeout(() => {
@@ -121,8 +131,70 @@ export class Spend {
         }, COUNT_AFTER_MS);
     }
 
+    /** Follow stored spend, including auxiliary requests that pay their captured person atomically. */
+    countedChanged(stored: { people: Record<string, number> }): void {
+        this.#people = { ...stored.people };
+    }
+
+    /**
+     * Record an auxiliary model request (a cache warm, `cache-keeper.ts`) with its captured payer, even if another run
+     * has started since: its usage in the conversation's `pi.usage`, and its cost counted for that person, in one commit.
+     */
+    async recordModelUsage(
+        id: ConversationId,
+        payer: string,
+        message: AssistantMessage,
+    ): Promise<void> {
+        await this.#app.harness.commit(async (tx) => {
+            const models = (await tx.doc(UsageDoc, id)).models as Record<string, Usage>;
+            const key = `${message.provider}/${message.model}`;
+            const usage = message.usage;
+            const total = Object.hasOwn(models, key) ? models[key] : undefined;
+
+            if (total === undefined) {
+                // The provider/model key contains a slash, so it cannot be a prototype setter.
+                models[key] = copyJson(usage, {
+                    omitUndefinedProperties: true,
+                }) as unknown as Usage;
+            } else {
+                for (const field of [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "cacheWrite",
+                    "totalTokens",
+                ] as const) {
+                    total[field] += usage[field];
+                }
+
+                for (const field of ["cacheWrite1h", "reasoning"] as const) {
+                    if (usage[field] !== undefined) {
+                        total[field] = (total[field] ?? 0) + usage[field];
+                    }
+                }
+
+                for (const field of [
+                    "input",
+                    "output",
+                    "cacheRead",
+                    "cacheWrite",
+                    "total",
+                ] as const) {
+                    total.cost[field] += usage.cost[field];
+                }
+            }
+
+            // Atomic with usage: a restart cannot lose the payer or charge this request twice.
+            const spend = await tx.doc(SpendDoc);
+
+            spend.counted[String(id)] = (spend.counted[String(id)] ?? 0) + usage.cost.total;
+            spend.people[payer] = (spend.people[payer] ?? 0) + usage.cost.total;
+        }, context);
+        this.#stopOverLimit();
+    }
+
     /** Who pays for a conversation's work: whoever asked for it, else whoever started the session, else the owner. */
-    #payer(id: ConversationId): string {
+    payer(id: ConversationId): string {
         const app = this.#app;
 
         return (
@@ -143,7 +215,8 @@ export class Spend {
         }
 
         try {
-            this.#people = await this.#app.harness.commit(async (tx) => {
+            // The people's totals follow through `countedChanged`, as the commit is published.
+            await this.#app.harness.commit(async (tx) => {
                 const doc = await tx.doc(SpendDoc);
 
                 for (const [id, payers] of owed) {
@@ -152,8 +225,6 @@ export class Spend {
                         doc.people[payer] = (doc.people[payer] ?? 0) + added;
                     }
                 }
-
-                return { ...doc.people };
             }, context);
         } catch (error) {
             // Still owed: the next count stores it.
@@ -283,7 +354,7 @@ export class Spend {
      * Why work Pi starts with nobody asking (a scheduled message, the next round toward a goal) may not start: a limit
      * the session or its payer reached. `userId` pays when given, else whoever asked last.
      */
-    heldBack(id: ConversationId, userId = this.#payer(id)): string | undefined {
+    heldBack(id: ConversationId, userId = this.payer(id)): string | undefined {
         const reached = this.#reached(id, userId);
 
         if (reached === undefined) {

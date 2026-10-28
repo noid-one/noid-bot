@@ -31,6 +31,7 @@ import {
     type HarnessSettings,
     LiveDoc,
     type LiveState,
+    ProviderDoc,
     type Registry,
     type Storage,
     UsageDoc,
@@ -61,6 +62,7 @@ import {
     MemoryDoc,
     type SessionMeta,
     SessionsDoc,
+    SpendDoc,
     type SubagentRecord,
     SubagentsDoc,
     TurnsDoc,
@@ -110,6 +112,7 @@ import { loadPromptTemplates, type PromptTemplate, type SkillCommand } from "./p
 import { BASE_THEME, Themes } from "./themes.ts";
 import { THEME_ID } from "./themes/format.ts";
 import { measureModelStreams } from "./timing.ts";
+import { CacheKeeper } from "./cache-keeper.ts";
 import { Providers } from "./providers.ts";
 import { PushStore } from "./push.ts";
 import { type ExtensionInfo, ExtensionLoader, linkTypes, prepareDropInFolder } from "./reload.ts";
@@ -309,6 +312,35 @@ export class PocketApp {
     readonly goals = new Goals(this);
     readonly shell = new Shell(this);
     readonly spend = new Spend(this);
+    /** Keeps the prompt cache warm while a run waits on a tool call (`cache-keeper.ts`). */
+    readonly cacheKeeper = new CacheKeeper({
+        log: (line) => this.#log(line),
+        conversationOf: (sessionId) => this.#conversationOfSession(sessionId),
+        isRunning: (conversationId) => this.#busy.has(conversationId as ConversationId),
+        accountFor: (conversationId) => {
+            const id = conversationId as ConversationId;
+            const payer = this.spend.payer(id);
+
+            return {
+                check: () => {
+                    const person = this.config.userById(payer);
+
+                    if (person === undefined || !this.#busy.has(id)) {
+                        return false;
+                    }
+
+                    try {
+                        this.spend.check(person, id);
+
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                },
+                recordUsage: (message) => this.spend.recordModelUsage(id, payer, message),
+            };
+        },
+    });
     /** Who Pi works for in each conversation, and who wrote and queued each message. */
     readonly attribution = new Attribution(this);
     /** The conversation's folder: files, the viewer, changes, and uploads. */
@@ -605,6 +637,8 @@ export class PocketApp {
         }
 
         this.models = await ModelRuntime.create();
+        // Innermost: observe the adapter payload as it is sent.
+        this.cacheKeeper.installPayloadObserver(this.models);
         this.providers.modelRefresh.watch(this.models);
         this.#configureModels?.(this.models);
 
@@ -619,6 +653,8 @@ export class PocketApp {
         }
 
         measureModelStreams(this.models);
+        // Outermost: it sees each real request finish, and replays it through the wrappers below.
+        this.cacheKeeper.install(this.models);
         await this.models.getAvailable().catch(() => []);
 
         const registry = createRegistry();
@@ -863,6 +899,21 @@ export class PocketApp {
     #committed(publication: CommitPublication): void {
         let sessionsChanged = false;
 
+        let alreadyPaid = false;
+
+        // A cache warm pays its captured person in the same commit as its usage, in either document order. A commit
+        // with both documents has paid every usage change in it. Normal spend counts never change UsageDoc.
+        for (const change of publication.changes) {
+            if (
+                change.type === "document" &&
+                change.record.kind === SpendDoc.definition.kind &&
+                change.value !== null
+            ) {
+                this.spend.countedChanged(change.value as { people: Record<string, number> });
+                alreadyPaid = true;
+            }
+        }
+
         // Usage in a commit is from the work that was going on before it: it is counted before a message the same
         // commit places changes whom Pi works for.
         for (const change of publication.changes) {
@@ -871,7 +922,11 @@ export class PocketApp {
                 change.record.kind === UsageDoc.definition.kind &&
                 change.conversationId !== undefined
             ) {
-                this.spend.usageChanged(change.conversationId, change.value as UsageState | null);
+                this.spend.usageChanged(
+                    change.conversationId,
+                    change.value as UsageState | null,
+                    alreadyPaid,
+                );
 
                 // A team's top session with a limit shows the team's spend: it follows a linked session's too.
                 const root = this.rootOf(change.conversationId);
@@ -978,6 +1033,8 @@ export class PocketApp {
 
                 if (!busy) {
                     this.spend.runEnded(id);
+                    // No request follows the last tool call of a run that ended or was stopped (Noid's and bots' too).
+                    this.cacheKeeper.runEnded(Number(id));
                     this.noidCompaction.runEnded(id);
 
                     if (this.#sessions[String(id)] !== undefined) {
@@ -3044,6 +3101,21 @@ export class PocketApp {
         }
     }
 
+    /** The conversation in a run now whose model requests go under provider session `sessionId`, for the cache keeper. */
+    async #conversationOfSession(sessionId: string): Promise<number | undefined> {
+        for (const id of [...this.#busy]) {
+            const mine = await this.harness
+                .snapshot(ProviderDoc, id, context)
+                .catch(() => undefined);
+
+            if (mine?.sessionId === sessionId) {
+                return Number(id);
+            }
+        }
+
+        return undefined;
+    }
+
     // ─── Browser ────────────────────────────────────────────────────────────
 
     /** The browser is on while its extension module is: the owner turns both off together in Extensions. */
@@ -3063,6 +3135,7 @@ export class PocketApp {
             clearInterval(this.#agentFilesTimer);
             this.alerts.close();
             this.themes.close();
+            await this.cacheKeeper.close();
             this.spend.close();
             this.#unsubscribeCommits?.();
             this.#unsubscribeApprovals?.();
