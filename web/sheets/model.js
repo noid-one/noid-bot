@@ -126,7 +126,12 @@ export function ModelPicker({ forDefault: forDefaultProp = false } = {}) {
     const reasoning = forDefault ? defaultModel?.reasoning : agent?.reasoning;
     const shown = choices
         .filter((model) => matches(model, query))
-        .sort((a, b) => Number(isCurrent(b)) - Number(isCurrent(a)));
+        // noid: the server lists them in order; the current one leads, then the rest of its provider's.
+        .sort(
+            (a, b) =>
+                Number(isCurrent(b)) - Number(isCurrent(a)) ||
+                Number(b.provider === current?.provider) - Number(a.provider === current?.provider),
+        );
     // The list can change while the picker is open.
     const active = Math.max(0, Math.min(picked, shown.length - 1));
     // The session's model and level are the default already.

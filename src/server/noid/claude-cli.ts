@@ -32,10 +32,10 @@ import {
 
 export const CLAUDE_CLI_PROVIDER = "claude-code";
 
-/** The models, by what `claude --model` takes. */
+/** The models, by what `claude --model` takes, largest first: the order pickers list them in. */
 const MODELS = [
-    { id: "sonnet", name: "Claude Sonnet (Claude Code)" },
     { id: "opus", name: "Claude Opus (Claude Code)" },
+    { id: "sonnet", name: "Claude Sonnet (Claude Code)" },
     { id: "haiku", name: "Claude Haiku (Claude Code)" },
 ];
 
@@ -500,6 +500,8 @@ export function claudeCliProvider(binary: string) {
     };
 
     provider.setResponses(Array.from({ length: QUEUED }, () => respond));
+    // The faux provider is named by its id; Providers shows this name.
+    Object.assign(provider.provider, { name: "Claude Code" });
 
     return provider;
 }

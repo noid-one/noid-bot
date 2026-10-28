@@ -60,6 +60,72 @@ test("OpenAI signed in with ChatGPT lists the subscription's models only, all of
         modelList(runtime(subscription)).map((each) => `${each.id}${each.recent ? "" : " (old)"}`);
 
     // Pi 1.4's ChatGPT catalog no longer has gpt-5.5, so a subscription does not list it.
-    assert.deepEqual(listed(true), ["gpt-6.1-sol", "sonnet"]);
-    assert.deepEqual(listed(false), ["gpt-4o (old)", "gpt-5.5 (old)", "gpt-6.1-sol", "sonnet"]);
+    assert.deepEqual(listed(true), ["sonnet", "gpt-6.1-sol"]);
+    assert.deepEqual(listed(false), ["sonnet", "gpt-6.1-sol", "gpt-5.5 (old)", "gpt-4o (old)"]);
+});
+
+test("a ChatGPT sign-in also lists OpenAI models at least as new as Pi's ChatGPT catalog, which Pi fixes when published", () => {
+    const model = (id: string) => ({
+        provider: "openai",
+        id,
+        name: id,
+        contextWindow: 1000,
+        reasoning: false,
+        input: ["text"],
+    });
+    const runtime = {
+        // GPT-6.1 Terra came after Pi 1.4's ChatGPT catalog, from pi.dev's.
+        getAvailableSnapshot: () => [
+            model("gpt-6.1-terra"),
+            model("gpt-6.1-sol"),
+            model("gpt-5.5"),
+            model("gpt-daybreak-blue-latest"),
+            model("gpt-realtime-7"),
+        ],
+        isUsingSubscription: () => true,
+    } as never;
+
+    assert.deepEqual(
+        modelList(runtime).map((each) => each.id),
+        ["gpt-6.1-terra", "gpt-6.1-sol"],
+    );
+});
+
+test("models are listed by provider, newest version first, and at one version the dearest first", () => {
+    const model = (provider: string, id: string, input = 0) => ({
+        provider,
+        id,
+        name: id,
+        contextWindow: 1000,
+        reasoning: false,
+        input: ["text"],
+        cost: { input, output: 0, cacheRead: 0, cacheWrite: 0 },
+    });
+    const runtime = {
+        getAvailableSnapshot: () => [
+            model("openai", "gpt-5.6-luna", 0.2),
+            model("openai", "gpt-5.6-sol", 4),
+            model("openai", "gpt-6-luna", 0.1),
+            model("openai", "gpt-6-astra", 10),
+            model("openai", "gpt-6.1-terra", 1),
+            model("openai", "gpt-6.1-sol", 2),
+            model("claude-code", "opus"),
+            model("claude-code", "sonnet"),
+        ],
+        isUsingSubscription: () => false,
+    } as never;
+
+    assert.deepEqual(
+        modelList(runtime).map((each) => each.id),
+        [
+            "opus",
+            "sonnet",
+            "gpt-6.1-sol",
+            "gpt-6.1-terra",
+            "gpt-6-astra",
+            "gpt-6-luna",
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+        ],
+    );
 });

@@ -110,6 +110,25 @@ export function isRecent(id: string, newest: number | undefined): boolean {
 const SUBSCRIPTION_OPENAI: ReadonlySet<string> = new Set(
     Object.values(OPENAI_CODEX_MODELS).map((model) => model.id),
 );
+/**
+ * noid: the newest version in that catalog. It is fixed when Pi is published, while the API's catalog is refreshed from
+ * pi.dev: a model at least this new (GPT-6.1 Terra beside 6.1 Sol in Pi 1.4) is served too, not left out until Pi is.
+ */
+const SUBSCRIPTION_NEWEST = Math.max(
+    ...[...SUBSCRIPTION_OPENAI].map((id) => modelVersion(id) ?? 0),
+);
+
+/**
+ * noid: the order models are listed in: by provider, each one's newest version first, and at one version the dearest
+ * first, the catalogs having no tiers (GPT-6 Astra, Sol, Luna); then as the catalog has them.
+ */
+function byOrder(a: Model<Api>, b: Model<Api>): number {
+    return (
+        a.provider.localeCompare(b.provider) ||
+        (modelVersion(b.id) ?? -1) - (modelVersion(a.id) ?? -1) ||
+        (b.cost?.input ?? 0) - (a.cost?.input ?? 0)
+    );
+}
 
 export function modelList(
     models: ModelRuntime,
@@ -121,10 +140,15 @@ export function modelList(
     // the API's whole catalog for it, back to GPT-4.
     const subscription = models.isUsingSubscription("openai");
     const ofSubscription = (model: Model<Api>) =>
-        subscription && model.provider === "openai" && SUBSCRIPTION_OPENAI.has(model.id);
+        subscription &&
+        model.provider === "openai" &&
+        (SUBSCRIPTION_OPENAI.has(model.id) ||
+            (isRecent(model.id, undefined) &&
+                (modelVersion(model.id) ?? 0) >= SUBSCRIPTION_NEWEST));
     const available = models
         .getAvailableSnapshot()
-        .filter((model) => !subscription || model.provider !== "openai" || ofSubscription(model));
+        .filter((model) => !subscription || model.provider !== "openai" || ofSubscription(model))
+        .sort(byOrder);
     const newest = new Map<string, number>();
 
     for (const model of available) {
