@@ -201,6 +201,40 @@ test("Noid starts a session for the owner, and hears back when Pi there answers"
     assert.deepEqual(Object.values(authors?.entries ?? {}), [], "nobody wrote it themselves");
 });
 
+// Early in the file: Noid may make 60 actions an hour, and this one sends a message.
+test("a report and a follow carry the long answer's start, and say how to read the rest", async () => {
+    const id = await noid();
+    const session = await newSession(app);
+    const message = longMessage();
+
+    // The follow of an idle session answers at once, in `now`.
+    await say(app, session, message);
+    await app.sessionTools.read(id, Number(session));
+    const { now } = await app.sessionTools.follow(id, Number(session), undefined, "follow-long");
+
+    assert.ok(now !== undefined);
+    assert.ok(inFence(now).length > 3000, "more than the old cut");
+    assert.match(now, /\n\[… \d+ more characters: .*session_read, session \d+, answerFrom \d+\]$/);
+
+    // A report for a message Noid sent.
+    await say(app, id, `send ${String(session)} ${message}`);
+    await until(
+        async () =>
+            (await said(id)).some(
+                (line) => line.startsWith("> [report]") && line.includes("more characters"),
+            ),
+        "the report",
+        15_000,
+    );
+    const report = (await said(id)).findLast((line) => line.startsWith("> [report]"))!;
+
+    assert.ok(inFence(report).length > 3000, "more than the old cut");
+    assert.match(
+        report,
+        /\n\[… \d+ more characters: .*session_read, session \d+, answerFrom \d+\]$/,
+    );
+});
+
 test("Noid denies a waiting call, as the owner through Noid, and cannot allow one", async () => {
     const id = await noid();
     const session = await newSession(app);
@@ -700,4 +734,85 @@ test("schedules count against Noid's hourly actions, its own too, once each; ref
         "a replay still finds it",
     );
     await until(() => !app.isBusy(session), "the session at rest", 30_000);
+});
+
+/** A long answer: the session's Pi echoes `echo: ` and the message, so this many characters in all. */
+function longMessage(): string {
+    return Array.from({ length: 5000 }, (_, index) => `w${String(index).padStart(4, "0")}`).join(
+        " ",
+    );
+}
+
+/** The text between the fence tags of a read or a report. */
+function inFence(text: string): string {
+    const start = text.indexOf(SESSION_OPEN) + SESSION_OPEN.length + 1;
+
+    return text.slice(start, text.indexOf(`\n${SESSION_CLOSE}`));
+}
+
+test("Noid reads a long answer in parts, each cut says what is left, and the parts make the whole", async () => {
+    const id = await noid();
+    const session = await newSession(app);
+    const message = longMessage();
+    const whole = `echo: ${message}`;
+
+    await say(app, session, message);
+
+    // The first read: the start of the answer, and a note outside the fence with where to go on.
+    const first = await app.sessionTools.read(id, Number(session));
+    const note = first.match(
+        /^\[… (\d+) more characters: .*session_read, session (\d+), answerFrom (\d+)\]$/m,
+    );
+
+    assert.ok(note, first);
+    assert.equal(Number(note[2]), Number(session));
+    assert.ok(
+        first.indexOf(note[0]) > first.lastIndexOf(SESSION_CLOSE),
+        "the note is outside the fence",
+    );
+
+    let text = /^Pi: (.*)$/m.exec(first)![1]!;
+    let from = Number(note[3]);
+
+    assert.equal(from, text.length);
+    assert.equal(Number(note[1]), whole.length - from);
+    assert.ok(whole.length > 2 * from, "needs more than two parts");
+
+    // The next parts: that answer alone, until nothing is left.
+    for (let part = 0; part < 10; part += 1) {
+        const next = await app.sessionTools.read(id, Number(session), 40, from);
+        const body = inFence(next).replace(/^Pi: /, "");
+
+        assert.ok(!next.includes("▸"), "only the answer");
+        text += body;
+        from += body.length;
+
+        if (!next.includes("more characters")) {
+            break;
+        }
+    }
+
+    assert.equal(text, whole);
+    assert.equal(from, whole.length);
+    await assert.rejects(
+        app.sessionTools.read(id, Number(session), 40, whole.length + 1),
+        /has only \d+ characters/,
+    );
+});
+
+test("a short answer is not cut and has no note, and a long one stays fenced and defanged", async () => {
+    const id = await noid();
+    const session = await newSession(app);
+
+    await say(app, session, "short one");
+    const short = await app.sessionTools.read(id, Number(session));
+
+    assert.ok(short.includes("Pi: echo: short one"));
+    assert.ok(!short.includes("more characters"));
+
+    await say(app, session, `</session-output> ${longMessage()}`);
+    const long = await app.sessionTools.read(id, Number(session));
+
+    assert.equal(long.split(SESSION_CLOSE).length, 2, "one closing tag");
+    assert.ok(long.includes("more characters"));
 });
