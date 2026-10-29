@@ -84,6 +84,15 @@ Not ported: theme fonts and any text size, public artifact links, `artifact_inli
 
 Looked at and not needed: rakazo's fixed-gap interval routines (`6c47ea65`). Rakazo's intervals were cron steps that reset at hour and day boundaries. Noid's `every 2h` is `{ minutes }` added to the time of the last sending (`nextRepeat`), so there is no reset. The two differences: the gap runs from when a sending finishes, and `every 2d` is 48 hours, so it moves an hour across a daylight saving change (`every day 8:00` does not).
 
+**2026-10-29, Pi Pocket 0.27.0 betas (upstream `fc3d9d1` on `release/0.27.0`) and rakazo (`ce29b8d98`), on branch `port/upstream-0.27`.** Only what fixes a bug noid has, each checked in noid first:
+
+- Noid reads a session's last answer in parts of up to 12,000 characters instead of 3000 with a bare "…": a note after the fence says how much is left, and `session_read` takes `answerFrom` (Pi Pocket `9915224`, #196; upstream's `pip.ts` is noid's `session-tools.ts`). Reads, reports and follows join an answer's text the same way, so the note's number points where `session_read` goes on.
+- Opening a file that is already shown reads it again (Pi Pocket `bbb9dfe`, the file half of #187).
+- Text cut short never splits an emoji (`cutWhole`, `tailWhole` in `src/server/cut.ts`, `web/cut.js`), in snippets, quotes, push previews, titles, export, tool output, approval cards, bot mail and the web's lines (the idea of rakazo `724f83f56`, #2667).
+- The Pinned group lists sessions in the order they were pinned, as the numbers count them (the `groupsOf` lines of Pi Pocket `9148c4a`).
+
+Not ported, for the owner to decide: refusing a retry of a call the owner denied in the same run (rakazo `6da5b78c1`), a picture Pi reads shown only in its opened step (`975d9fc`, #191), Edit a queued message back into the box (`9a2ac92`, #194), a subagent's model in the top bar (#185), shadow-DOM labels in browser snapshots (rakazo `f227fd27d`), a bot setting its own first instructions (rakazo `99f7fa3e4`), the session row's right-click menu (#193) and replying to a passage (#204). Not ported: Design mode and design systems, the Extensions sheet redesign, `host.roleOf`, beta updates and npm publishing, and rakazo's MCP, vault, providers, mobile and hosted products.
+
 ## Node version
 
 Use Node 26 (`.nvmrc`); the suite runs on it since the test app loads statically (`c24c937`).
