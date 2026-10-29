@@ -334,7 +334,7 @@ function projectArgs(
                     ? Object.fromEntries(
                           Object.entries(item).map(([k, v]) => [
                               k,
-                              typeof v === "string" && v.length > 300 ? `${v.slice(0, 300)}…` : v,
+                              typeof v === "string" && v.length > 300 ? `${cutWhole(v, 300)}…` : v,
                           ]),
                       )
                     : item,
@@ -858,11 +858,16 @@ export function plainText(markdown: string): string {
         .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "");
 }
 
+/** The first `end` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */
+export function cutWhole(text: string, end: number): string {
+    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1)) ? text.slice(0, end - 1) : text.slice(0, end);
+}
+
 /** A short single-line snippet of a message. */
 export function snippet(text: string, max = 280): string {
     const flat = text.replace(/\s+/g, " ").trim();
 
-    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+    return flat.length > max ? `${cutWhole(flat, max - 1)}…` : flat;
 }
 
 /** The visible text of a projected entry, as plain text: what a person or Pi wrote. */

@@ -11,6 +11,7 @@ import { type ConversationId, ProviderDoc, UsageDoc } from "@earendil-works/pi-d
 import type { PocketApp } from "./app.ts";
 import { SessionsDoc } from "./docs.ts";
 import { describe } from "./errors.ts";
+import { cutWhole } from "./projection.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -62,7 +63,7 @@ export function cleanTitle(reply: string): string | undefined {
         return undefined;
     }
 
-    return line.length > MAX_TITLE ? `${line.slice(0, MAX_TITLE - 1).trimEnd()}…` : line;
+    return line.length > MAX_TITLE ? `${cutWhole(line, MAX_TITLE - 1).trimEnd()}…` : line;
 }
 
 /** Count one of the app's own model requests in a session's spend, as Pi Durable counts its own. */

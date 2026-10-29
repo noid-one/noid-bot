@@ -25,6 +25,11 @@ const TAB_KEY = "pocket.tab";
 const UNREAD_KEY = "pocket.unread";
 
 /** Sessions this browser has marked unread, like the pinned list beside it (`pocket.unread`). */
+/** The first `end` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */
+function headOf(text, end) {
+    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1)) ? text.slice(0, end - 1) : text.slice(0, end);
+}
+
 function unreadOf() {
     try {
         const ids = JSON.parse(localStorage.getItem(UNREAD_KEY) ?? "[]");
@@ -434,7 +439,7 @@ function applyChat(data) {
     const mentioned = message.mentions?.includes(state.me?.id);
 
     announce(
-        `${name}${mentioned ? " mentioned you" : ""}: ${text.length > 120 ? `${text.slice(0, 119)}…` : text}`,
+        `${name}${mentioned ? " mentioned you" : ""}: ${text.length > 120 ? `${headOf(text, 119)}…` : text}`,
     );
 }
 

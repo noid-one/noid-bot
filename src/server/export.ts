@@ -2,7 +2,7 @@
  * A session as one Markdown file: every message in order, who wrote it, and each tool call folded into a
  * `<details>` block, so it reads well on GitHub or in any Markdown viewer. Pi's thinking is left out.
  */
-import type { ClientBlock, ClientEntry } from "./projection.ts";
+import { type ClientBlock, type ClientEntry, cutWhole } from "./projection.ts";
 import { FROM_PREFIX, splitAttachments } from "./entry-format.ts";
 
 /** Tool output beyond this keeps its start and end. */
@@ -56,7 +56,7 @@ function summary(call: Extract<ClientBlock, { type: "toolCall" }>): string {
                   ? args.name
                   : "";
     const line = `${call.name}${subject === "" ? "" : `: ${subject.replace(/\s+/g, " ")}`}`;
-    const short = line.length > 120 ? `${line.slice(0, 119)}…` : line;
+    const short = line.length > 120 ? `${cutWhole(line, 119)}…` : line;
 
     return short.replace(/[&<>]/g, (char) => `&#${char.charCodeAt(0)};`);
 }

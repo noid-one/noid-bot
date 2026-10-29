@@ -15,6 +15,7 @@ import {
 } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { cutWhole } from "./projection.ts";
 
 export type PushKeys = { p256dh: string; auth: string };
 export type PushSubscriptionJson = { endpoint: string; keys: PushKeys };
@@ -197,7 +198,7 @@ function topicFor(tag: string): string {
 }
 
 function clip(text: string, max: number): string {
-    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+    return text.length > max ? `${cutWhole(text, max - 1)}…` : text;
 }
 
 /** POST an encrypted message to the push service. Resolves to the HTTP status. */

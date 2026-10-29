@@ -22,6 +22,7 @@ import { COMMAND_ENTRY, type CommandData } from "./entry-format.ts";
 import { describe, HttpError } from "./errors.ts";
 import { exposedError, type RegisteredCommand } from "./extension-web.ts";
 import type { CommandResult } from "./host.ts";
+import { cutWhole } from "./projection.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -64,7 +65,7 @@ export type CommandRequest = { commandId?: unknown; args?: unknown; requestId?: 
 export type CommandReceipt = CommandOutcome & { taskId: number };
 
 const cut = (text: string, max: number) =>
-    text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+    text.length <= max ? text : `${cutWhole(text, max - 1)}…`;
 
 /**
  * Only what a command may give back: a notice or a card, of a bounded size. An extension cannot add a model message

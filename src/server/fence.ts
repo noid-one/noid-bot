@@ -3,7 +3,7 @@
  * inside may end the fence early: every `<` with a `/` soon after it loses its `<` (whatever lies between: spaces,
  * invisible characters, JSON's `\n`), and attribute values lose what would end them.
  */
-import { snippet } from "./projection.ts";
+import { cutWhole, snippet } from "./projection.ts";
 
 /**
  * Characters that show as nothing (controls, format characters, lone surrogates, private and unassigned ones, variation
@@ -61,5 +61,5 @@ export function quoted(text: string, max = 120): string {
 export function clip(text: string, max: number): string {
     const trimmed = text.trim();
 
-    return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+    return trimmed.length > max ? `${cutWhole(trimmed, max - 1)}…` : trimmed;
 }
