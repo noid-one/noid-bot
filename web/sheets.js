@@ -291,7 +291,12 @@ export function sheetBody(sheet) {
             break;
         case "file":
             body = view.conversation
-                ? html`<${FileSheet} key=${sheet.id} path=${sheet.id} line=${sheet.line} />`
+                ? html`<${FileSheet}
+                      key=${sheet.id}
+                      path=${sheet.id}
+                      line=${sheet.line}
+                      refresh=${sheet.n}
+                  />`
                 : null;
             break;
         case "find":
