@@ -416,3 +416,25 @@ test(
         await until(async () => (await shown()).kids === 2, "unfolded");
     },
 );
+
+test("the Pinned group lists sessions in the order they were pinned", real, async () => {
+    const click = (selector: string) =>
+        page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+    const ids = () =>
+        inPage<string[]>(
+            `return JSON.stringify([...document.querySelectorAll(${JSON.stringify(`${list} .session-row`)})].map((each) => each.dataset.id))`,
+        );
+
+    await fresh();
+    const [upper, lower] = (await ids()).slice(0, 2) as [string, string];
+
+    assert.ok(lower !== undefined, "two sessions in the list");
+    // Pinned bottom first: the group keeps that order, not the list's.
+    await click(`${row(lower as unknown as ConversationId)} [aria-label="Pin"]`);
+    await click(`${row(upper as unknown as ConversationId)} [aria-label="Pin"]`);
+    await until(async () => (await ids()).slice(0, 2).join() === [lower, upper].join(), "pin order");
+
+    await click(`${row(lower as unknown as ConversationId)} [aria-label="Unpin"]`);
+    await click(`${row(upper as unknown as ConversationId)} [aria-label="Unpin"]`);
+    await until(async () => (await ids()).slice(0, 2).join() !== [lower, upper].join(), "unpinned");
+});

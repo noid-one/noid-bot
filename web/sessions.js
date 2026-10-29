@@ -584,7 +584,9 @@ function groupsOf(shown, { tab, needle, home, pinned }) {
     }
 
     const groups = [];
-    const pins = shown.filter((session) => pinned.includes(session.id));
+    const byId = new Map(shown.map((session) => [session.id, session]));
+    // In the order they were pinned, as the workspace order (`sessionOrder`) and the launcher count them.
+    const pins = pinned.map((id) => byId.get(id)).filter(Boolean);
 
     if (pins.length > 0) {
         groups.push({ key: "pinned", label: "Pinned", rows: pins });
