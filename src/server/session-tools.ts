@@ -153,11 +153,21 @@ function answerPart(
     };
 }
 
-function textOf(message: AssistantMessage | undefined): string {
-    return (message?.content ?? [])
-        .flatMap((part) => (part.type === "text" ? [part.text] : []))
-        .join("")
+/**
+ * An answer's text, from its text blocks: the one form a report, a follow and `session_read` all cut and count, so the
+ * `answerFrom` in a report's note points where `session_read` reads on.
+ */
+function answerText(texts: string[]): string {
+    return texts
+        .filter((text) => text.trim() !== "")
+        .join("\n")
         .trim();
+}
+
+function textOf(message: AssistantMessage | undefined): string {
+    return answerText(
+        (message?.content ?? []).flatMap((part) => (part.type === "text" ? [part.text] : [])),
+    );
 }
 
 /** A tool call in a few words: its name and its first short argument. */
@@ -823,12 +833,9 @@ export class SessionTools {
         const lastAnswer = last?.id;
         const answer =
             last?.kind === "assistant"
-                ? last.blocks
-                      .flatMap((block) =>
-                          block.type === "text" && block.text.trim() !== "" ? [block.text] : [],
-                      )
-                      .join("\n")
-                      .trim()
+                ? answerText(
+                      last.blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])),
+                  )
                 : "";
 
         if (answerFrom > answer.length) {
@@ -1539,11 +1546,10 @@ export class SessionTools {
             return `${name} stopped with an error: ${snippet(last.error, 300)}`;
         }
 
-        const text = last.blocks
-            .flatMap((block) => (block.type === "text" ? [block.text] : []))
-            .join("\n");
-
-        const part = answerPart(text.trim(), 0, id);
+        const text = answerText(
+            last.blocks.flatMap((block) => (block.type === "text" ? [block.text] : [])),
+        );
+        const part = answerPart(text, 0, id);
 
         return `${name} ${state}. Pi's last answer:\n${fenced(part.text)}${part.note === undefined ? "" : `\n${part.note}`}`;
     }
@@ -1661,7 +1667,7 @@ export class SessionTools {
             return undefined;
         }, context);
 
-        const part = answerPart(text.trim(), 0, input.sessionId);
+        const part = answerPart(text, 0, input.sessionId);
 
         return `${name} answered your message:\n${fenced(part.text || "(no text)")}${part.note === undefined ? "" : `\n${part.note}`}`;
     }

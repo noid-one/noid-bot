@@ -2,6 +2,7 @@
 import { onRoute, pushRoute } from "./back.js";
 import { sessionForest, unfolded } from "./session-tree.js";
 import { liveMessage } from "./live.js";
+import { cutWhole } from "./cut.js";
 
 /** A random id. crypto.randomUUID only exists on https and localhost pages; plain-http network addresses lack it. */
 export function uid() {
@@ -25,11 +26,6 @@ const TAB_KEY = "pocket.tab";
 const UNREAD_KEY = "pocket.unread";
 
 /** Sessions this browser has marked unread, like the pinned list beside it (`pocket.unread`). */
-/** The first `end` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */
-function headOf(text, end) {
-    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1)) ? text.slice(0, end - 1) : text.slice(0, end);
-}
-
 function unreadOf() {
     try {
         const ids = JSON.parse(localStorage.getItem(UNREAD_KEY) ?? "[]");
@@ -439,7 +435,7 @@ function applyChat(data) {
     const mentioned = message.mentions?.includes(state.me?.id);
 
     announce(
-        `${name}${mentioned ? " mentioned you" : ""}: ${text.length > 120 ? `${headOf(text, 119)}…` : text}`,
+        `${name}${mentioned ? " mentioned you" : ""}: ${text.length > 120 ? `${cutWhole(text, 119)}…` : text}`,
     );
 }
 

@@ -16,6 +16,7 @@ import {
     type ShellData,
     splitAttachments,
 } from "./entry-format.ts";
+import { cutWhole, tailWhole } from "./cut.ts";
 import type { StreamTiming } from "./timing.ts";
 
 /** Shortest first-to-last-token window, in ms, that reads as a genuine stream rather than one buffered flush. */
@@ -303,13 +304,13 @@ function clip(text: string, limit: number): { text: string; clipped?: number } {
     const half = Math.floor(limit / 2);
 
     return {
-        text: `${text.slice(0, half)}\n\n… ${text.length - limit} characters not shown …\n\n${text.slice(-half)}`,
+        text: `${cutWhole(text, half)}\n\n… ${text.length - limit} characters not shown …\n\n${tailWhole(text, half)}`,
         clipped: text.length,
     };
 }
 
 function tail(text: string, limit: number): string {
-    return text.length <= limit ? text : `…${text.slice(-limit)}`;
+    return text.length <= limit ? text : `…${tailWhole(text, limit)}`;
 }
 
 function projectArgs(
@@ -856,11 +857,6 @@ export function plainText(markdown: string): string {
         .replace(/(\*\*|__)(.+?)\1/g, "$2")
         .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,!?:;]|$)/gm, "$1$2")
         .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "");
-}
-
-/** The first `end` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */
-export function cutWhole(text: string, end: number): string {
-    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1)) ? text.slice(0, end - 1) : text.slice(0, end);
 }
 
 /** A short single-line snippet of a message. */

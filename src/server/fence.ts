@@ -3,7 +3,8 @@
  * inside may end the fence early: every `<` with a `/` soon after it loses its `<` (whatever lies between: spaces,
  * invisible characters, JSON's `\n`), and attribute values lose what would end them.
  */
-import { cutWhole, snippet } from "./projection.ts";
+import { snippet } from "./projection.ts";
+import { cutWhole } from "./cut.ts";
 
 /**
  * Characters that show as nothing (controls, format characters, lone surrogates, private and unassigned ones, variation

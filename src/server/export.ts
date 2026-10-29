@@ -2,7 +2,8 @@
  * A session as one Markdown file: every message in order, who wrote it, and each tool call folded into a
  * `<details>` block, so it reads well on GitHub or in any Markdown viewer. Pi's thinking is left out.
  */
-import { type ClientBlock, type ClientEntry, cutWhole } from "./projection.ts";
+import { type ClientBlock, type ClientEntry } from "./projection.ts";
+import { cutWhole, tailWhole } from "./cut.ts";
 import { FROM_PREFIX, splitAttachments } from "./entry-format.ts";
 
 /** Tool output beyond this keeps its start and end. */
@@ -39,7 +40,7 @@ function clipped(text: string): string {
 
     const half = MAX_OUTPUT / 2;
 
-    return `${text.slice(0, half)}\n… ${text.length - MAX_OUTPUT} characters left out …\n${text.slice(-half)}`;
+    return `${cutWhole(text, half)}\n… ${text.length - MAX_OUTPUT} characters left out …\n${tailWhole(text, half)}`;
 }
 
 /** One line naming a tool call, for its `<summary>`. HTML-escaped: summaries are HTML. */

@@ -54,6 +54,7 @@ import {
     useSide,
     useSlide,
 } from "./ui.js";
+import { cutWhole } from "./cut.js";
 
 /**
  * Back to the session list, where it is not beside the conversation: back past the sessions opened from it, as a
@@ -121,7 +122,7 @@ export async function setArchived(ids, archived, { undo = true } = {}) {
     const title = titles.get(done[0]) ?? "";
     const what =
         done.length === 1
-            ? `“${title.length > 48 ? `${title.slice(0, 47)}…` : title}”`
+            ? `“${title.length > 48 ? `${cutWhole(title, 47)}…` : title}”`
             : `${done.length} sessions`;
 
     notify(

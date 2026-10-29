@@ -23,6 +23,7 @@ import {
     writtenText,
 } from "../ui.js";
 import { memoryAvailable } from "./memory.js";
+import { cutWhole } from "../cut.js";
 
 /** The message to Pi a reply answers: the newest one before it. */
 function promptBefore(entryId) {
@@ -43,7 +44,7 @@ function promptBefore(entryId) {
 function lessonFrom(text) {
     const flat = text.replace(/\s+/g, " ").trim();
 
-    return flat.length > 300 ? `${flat.slice(0, 299)}…` : flat;
+    return flat.length > 300 ? `${cutWhole(flat, 299)}…` : flat;
 }
 
 /** A fork or a send again on its way: a second tap waits for it. */

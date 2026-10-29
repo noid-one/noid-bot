@@ -18,6 +18,7 @@ import {
     TYPING_STATE_SCRIPT,
 } from "./page-scripts.ts";
 import { clamp, presetOf, type Viewport, type ViewportPreset } from "./viewport.ts";
+import { cutWhole } from "../cut.ts";
 
 /** Where typing a code stands (`TYPING_STATE_SCRIPT`). */
 type TypingState = {
@@ -606,7 +607,7 @@ export class BrowserPage {
             seq: ++this.#logSeq,
             at: Date.now(),
             level,
-            text: text.length > 2000 ? `${text.slice(0, 1999)}…` : text,
+            text: text.length > 2000 ? `${cutWhole(text, 1999)}…` : text,
             ...(source === undefined || source === "" ? {} : { source }),
         };
 

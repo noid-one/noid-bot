@@ -22,6 +22,7 @@ import { submittedRequest } from "../commands.ts";
 import { describe } from "../errors.ts";
 import { attribute, defang } from "../fence.ts";
 import { projectEntry, snippet } from "../projection.ts";
+import { cutWhole } from "../cut.ts";
 import { describeRepeat } from "../when.ts";
 import type { BotProfile } from "./bots.ts";
 import { ownerOf } from "./owner.ts";
@@ -289,7 +290,7 @@ export class BotMail {
                 .trim();
 
             if (text !== "") {
-                return text.slice(0, 600);
+                return cutWhole(text, 600);
             }
         }
 

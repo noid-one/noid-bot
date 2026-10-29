@@ -37,6 +37,7 @@ import { ownerOf } from "./owner.ts";
 import { sitesInText, urlSite } from "./sites.ts";
 import { onlyReads } from "./read-only.ts";
 import type { BotProfile } from "./bots.ts";
+import { cutWhole, tailWhole } from "../cut.ts";
 
 /** The start of the id of every question noid asks, which only it may turn into an "always allow" rule. */
 export const NOID_APPROVAL = "noid:";
@@ -241,7 +242,7 @@ export const NOT_SHOWN = /(?:\n|\\n)… \d+ characters not shown …(?:\n|\\n)/;
 function clipMiddle(text: string, max: number): string {
     return text.length <= max
         ? text
-        : `${text.slice(0, max / 2)}\n… ${String(text.length - max)} characters not shown …\n${text.slice(-max / 2)}`;
+        : `${cutWhole(text, max / 2)}\n… ${String(text.length - max)} characters not shown …\n${tailWhole(text, max / 2)}`;
 }
 
 /** Arguments with each text cut on its own: a long one cannot push the next off the card. */

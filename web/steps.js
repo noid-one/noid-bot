@@ -2,6 +2,7 @@
 // acts on ("Read transcript.js", "Search “mainBot”", "Run npm test", "Message Researcher"), and calls of a kind one
 // after another as one line ("Read a.js, b.js", "Edit style.css +3"). A plain module, so its tests can load it.
 import { describeCall } from "./calls.js";
+import { cutWhole } from "./cut.js";
 
 /** A path's last part: what a line names a file by (its whole path is the line's title). */
 export const basename = (path) =>
@@ -15,7 +16,7 @@ const short = (text, max = 60) => {
         .replace(/\s+/g, " ")
         .trim();
 
-    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+    return flat.length > max ? `${cutWhole(flat, max - 1)}…` : flat;
 };
 
 const quoted = (text) => (text ? `“${short(text, 48)}”` : "");

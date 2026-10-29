@@ -22,7 +22,7 @@ import { COMMAND_ENTRY, type CommandData } from "./entry-format.ts";
 import { describe, HttpError } from "./errors.ts";
 import { exposedError, type RegisteredCommand } from "./extension-web.ts";
 import type { CommandResult } from "./host.ts";
-import { cutWhole } from "./projection.ts";
+import { cutWhole } from "./cut.ts";
 
 const context = BACKGROUND_CONTEXT;
 

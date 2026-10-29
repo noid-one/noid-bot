@@ -5,11 +5,12 @@
  */
 import { AgentDoc, defineExtension, hook, ToolTask } from "@earendil-works/pi-durable";
 import type { ApprovalAnswer, PocketHost } from "../host.ts";
+import { cutWhole } from "../cut.ts";
 
 function oneLine(text: string, max = 200): string {
     const flat = text.trim().replace(/[\r\n]+/g, " ");
 
-    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+    return flat.length > max ? `${cutWhole(flat, max - 1)}…` : flat;
 }
 
 export default function createGuard(host: PocketHost) {

@@ -19,6 +19,7 @@ import { leaveSafeMode, onSafeModeEnd, safeMode } from "./safe-mode.js";
 import { api, closeSheet, navigate, notify, onExtensionEvent, openSheet, store } from "./store.js";
 import { setCallSummary } from "./turns.js";
 import { html, Icon, iconPath, Loader, Markdown, railState, Sheet, Spinner, Switch } from "./ui.js";
+import { cutWhole } from "./cut.js";
 
 /**
  * The version of `pocket`. It goes up only when something extensions use changes in a way that breaks them; additions
@@ -1023,7 +1024,7 @@ function described(record, tool, field, run, args, max) {
 
     const line = value.replace(/\s+/g, " ").trim();
 
-    return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+    return line.length > max ? `${cutWhole(line, max - 1)}…` : line;
 }
 
 setCallDescriber((tool, args) => {

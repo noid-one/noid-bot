@@ -61,6 +61,7 @@ import {
     Thumb,
 } from "./ui.js";
 import { LessonCall, memoryAvailable } from "./sheets/memory.js";
+import { cutWhole } from "./cut.js";
 
 const REPORT = /^\[subagent (\S+) (answered|failed)([^\]]*)\]\s?([\s\S]*)$/;
 /** Where the next report starts, in a message of several that arrived together (`extensions/subagents.ts`). */
@@ -499,7 +500,7 @@ function Collapsible({ text, limit = 600 }) {
     }
 
     return html`<div class=${`collapsible ${open ? "open" : ""}`}>
-        <${Markdown} text=${open ? text : `${text.slice(0, limit)}…`} />
+        <${Markdown} text=${open ? text : `${cutWhole(text, limit)}…`} />
         <button class="link" onClick=${() => setOpen(!open)}>
             ${open ? "Show less" : "Show more"}
         </button>

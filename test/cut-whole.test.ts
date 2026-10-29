@@ -3,7 +3,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { clip, quoted } from "../src/server/fence.ts";
-import { cutWhole, snippet } from "../src/server/projection.ts";
+import { cutWhole, tailWhole } from "../src/server/cut.ts";
+import { snippet } from "../src/server/projection.ts";
+
+const { cutWhole: webCutWhole } = (await import(new URL("../web/cut.js", import.meta.url).href)) as {
+    cutWhole: (text: string, end: number) => string;
+};
 
 test("cutWhole keeps a surrogate pair whole, and cuts plain text where asked", () => {
     assert.equal(cutWhole("ab😀c", 3), "ab");
@@ -11,6 +16,15 @@ test("cutWhole keeps a surrogate pair whole, and cuts plain text where asked", (
     assert.equal(cutWhole("abcdef", 3), "abc");
     assert.equal(cutWhole("a𠀀", 2), "a");
     assert.equal(cutWhole("😀", 0), "");
+    assert.equal(webCutWhole("ab😀c", 3), "ab");
+    assert.equal(webCutWhole("ab😀c", 4), "ab😀");
+});
+
+test("tailWhole keeps a surrogate pair whole at the start of the tail", () => {
+    assert.equal(tailWhole("a😀bc", 3), "bc");
+    assert.equal(tailWhole("a😀bc", 4), "😀bc");
+    assert.equal(tailWhole("abc", 5), "abc");
+    assert.equal(tailWhole("abc", 0), "");
 });
 
 test("snippet, clip, and quoted never end in half an emoji", () => {

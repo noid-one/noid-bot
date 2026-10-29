@@ -1,13 +1,14 @@
 // How the transcript reads a conversation, without drawing it: Pi's answers split into runs of words and groups of
 // thinking and tool calls (`itemsOf`), what a group did in a line (`summarize`), and what a call came to, read from what
 // its tool printed. Pure functions with no imports, so `test/turns.test.ts` runs them in Node; transcript.js draws them.
+import { cutWhole } from "./cut.js";
 
 export const short = (text, max = 160) => {
     const flat = String(text ?? "")
         .replace(/\s+/g, " ")
         .trim();
 
-    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+    return flat.length > max ? `${cutWhole(flat, max - 1)}…` : flat;
 };
 
 /** How many lines a tool's text has, without a last empty one. */

@@ -25,6 +25,7 @@ import {
     loadAgentFiles,
     MAX_AGENT_NAME,
 } from "./agent-files.ts";
+import { cutWhole } from "../cut.ts";
 
 /** Faces: the skins, eyes, and shapes `web/faces/params.js` draws. */
 export const SKINS = ["jelly", "clay", "chrome", "holo", "pixel"] as const;
@@ -488,7 +489,7 @@ export class Bots {
             const name = file.name;
             const role =
                 file.description.length > MAX_ROLE
-                    ? `${file.description.slice(0, MAX_ROLE - 1).trimEnd()}…`
+                    ? `${cutWhole(file.description, MAX_ROLE - 1).trimEnd()}…`
                     : file.description;
 
             const refuse = (why: string) => {

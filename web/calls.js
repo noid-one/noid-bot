@@ -1,11 +1,12 @@
 // A tool call in one line, as transcripts and peek tiles show it.
+import { cutWhole } from "./cut.js";
 
 const short = (text, max = 90) => {
     const flat = String(text ?? "")
         .replace(/\s+/g, " ")
         .trim();
 
-    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+    return flat.length > max ? `${cutWhole(flat, max - 1)}…` : flat;
 };
 
 /**

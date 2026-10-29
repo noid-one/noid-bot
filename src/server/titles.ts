@@ -11,7 +11,7 @@ import { type ConversationId, ProviderDoc, UsageDoc } from "@earendil-works/pi-d
 import type { PocketApp } from "./app.ts";
 import { SessionsDoc } from "./docs.ts";
 import { describe } from "./errors.ts";
-import { cutWhole } from "./projection.ts";
+import { cutWhole } from "./cut.ts";
 
 const context = BACKGROUND_CONTEXT;
 

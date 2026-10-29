@@ -15,7 +15,7 @@ import {
 } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { cutWhole } from "./projection.ts";
+import { cutWhole } from "./cut.ts";
 
 export type PushKeys = { p256dh: string; auth: string };
 export type PushSubscriptionJson = { endpoint: string; keys: PushKeys };
