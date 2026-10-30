@@ -191,6 +191,8 @@ type SessionAsk = {
     at: number;
     /** How many calls wait in the session, its subagents' too. */
     count: number;
+    /** A question Pi asks (the ask tool): answered on its card only, never allowed from the row. */
+    form?: true;
 };
 
 /** A conversation's subagents document, as far as the app reads it. */
@@ -2134,6 +2136,7 @@ export class PocketApp {
                 ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
                 at: request.createdAt,
                 count: (kept?.count ?? 0) + 1,
+                ...(request.form === undefined ? {} : { form: true as const }),
             });
         }
 
