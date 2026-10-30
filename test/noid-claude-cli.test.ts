@@ -13,6 +13,7 @@ import {
     CLAUDE_CLI_PROVIDER,
     claudeBinary,
     claudeCliProvider,
+    directCalls,
     errorWords,
     render,
 } from "../src/server/noid/claude-cli.ts";
@@ -158,6 +159,59 @@ test("its answer becomes text and tool calls; bad arguments and errors are said 
     );
 });
 
+test("the harness's tools Claude calls as its own are taken, once Claude Code has refused them", () => {
+    const text = (id: string, said: string) => ({
+        type: "assistant",
+        message: { id, content: [{ type: "text", text: said }] },
+    });
+    const call = (id: string, name: string) => ({
+        type: "assistant",
+        message: {
+            id,
+            content: [{ type: "tool_use", id: `t-${name}`, name, input: { command: "ls" } }],
+        },
+    });
+    const refused = { type: "user", message: { content: [] } };
+    const tools = ["bash", "session_start"];
+
+    assert.deepEqual(
+        directCalls(
+            [
+                text("m0", "earlier"),
+                text("m1", "Starting."),
+                call("m1", "session_start"),
+                call("m1", "Bash"),
+                call("m1", "WebSearch"),
+                refused,
+            ],
+            tools,
+        ),
+        {
+            text: "Starting.",
+            tool_calls: [
+                { name: "session_start", arguments: { command: "ls" } },
+                { name: "bash", arguments: { command: "ls" } },
+            ],
+        },
+        "its last message's calls and text; Bash is bash; a tool the harness has not is not",
+    );
+    assert.equal(
+        directCalls([call("m1", "bash")], tools),
+        undefined,
+        "not before Claude Code answers",
+    );
+    assert.equal(
+        directCalls([call("m1", "StructuredOutput"), refused], tools),
+        undefined,
+        "its JSON answer is no call",
+    );
+    assert.equal(
+        directCalls([call("m1", "Bash"), refused], ["bash", "BASH"]),
+        undefined,
+        "no guess between two",
+    );
+});
+
 test("claude is found, or not", async () => {
     assert.equal(await claudeBinary({ NOID_CLAUDE_CLI: "off" }), undefined);
     assert.equal(await claudeBinary({ NOID_CLAUDE_CLI: fake }), fake);
@@ -238,6 +292,15 @@ test("a session on Claude Code calls its tools and answers with their results", 
         /ANTHROPIC_API_KEY/,
         "no key to bill",
     );
+});
+
+test("a tool Claude calls as its own runs as the harness's, without waiting for Claude to give up", async () => {
+    const id = await session();
+    const started = Date.now();
+
+    await say(app, id, "run it as your own");
+    assert.equal(textOf(await lastAssistant(id)), "bash said: from-bash");
+    assert.ok(Date.now() - started < 10_000, "well before the fake gives up at 30 s");
 });
 
 test("several sessions at once each get their answer", async () => {

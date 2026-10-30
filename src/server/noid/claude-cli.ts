@@ -5,7 +5,9 @@
  * command line), no session kept, in a folder of its own, and a JSON schema for its answer: text for the person, and
  * calls to noid's tools. Each request sends the conversation as one message of text and images, its turns marked with
  * a marker made for that request, so nothing inside a turn (a page a bot read) can pass for another turn. noid runs the
- * tools it asks for and sends the results next time, as with any model. Built on pi-ai's scripted provider, which
+ * tools it asks for and sends the results next time, as with any model. Claude often calls them as if they were its
+ * own, which Claude Code refuses ("No such tool available"): such calls are taken as the answer, as if Claude had given
+ * them in its JSON (`directCalls`). Built on pi-ai's scripted provider, which
  * streams a whole answer once it is there. Off when there is no `claude` on this machine (NOID_CLAUDE_CLI names
  * another, or "off").
  */
@@ -123,12 +125,12 @@ function blocksOf(content: Message["content"] | undefined): Block[] {
 /**
  * The system prompt and the conversation for `claude -p`. Sections are kept by name, as they stand at the end (a later
  * one replaces, `null` removes); the tools are those available at the end. Later system text is an instructions turn
- * where it came. `marker` begins each turn.
+ * where it came. `marker` begins each turn. `tools` names the tools.
  */
 export function render(
     context: TranscriptContext,
     marker = `⟦${randomBytes(6).toString("hex")}⟧`,
-): { system: string; blocks: Block[] } {
+): { system: string; blocks: Block[]; tools: string[] } {
     const tools = new Map<string, Tool>();
     const sections = new Map<string, string>();
     const base: string[] = [];
@@ -204,7 +206,76 @@ export function render(
             .filter((part) => part !== "")
             .join("\n\n"),
         blocks,
+        tools: [...tools.keys()],
     };
+}
+
+/** A line of Claude Code's stream-json output, as far as it is read here. */
+type StreamEvent = { type?: string; message?: { id?: unknown; content?: unknown } };
+
+/** The harness's tool `name` stands for: the same, or the only one that differs from it in case only (Bash, bash). */
+function harnessTool(name: string, tools: readonly string[]): string | undefined {
+    if (tools.includes(name)) {
+        return name;
+    }
+
+    const alike = tools.filter((tool) => tool.toLowerCase() === name.toLowerCase());
+
+    return alike.length === 1 ? alike[0] : undefined;
+}
+
+/**
+ * The harness's tools that Claude's last message called as if they were its own, once Claude Code has answered them
+ * (the last event is its tool results): it has none of them, so it refused them, and Claude may give up on hearing
+ * that. They are taken as the answer Claude meant, with that message's text. Undefined when there are none.
+ */
+export function directCalls(
+    events: readonly StreamEvent[],
+    tools: readonly string[],
+): { text: string; tool_calls: { name: string; arguments: unknown }[] } | undefined {
+    if (events.at(-1)?.type !== "user") {
+        return undefined;
+    }
+
+    const id = events.findLast((event) => event.type === "assistant")?.message?.id;
+
+    if (id === undefined) {
+        return undefined;
+    }
+
+    // Claude Code prints a message a block at a time, each line with the message's id.
+    const blocks = events
+        .filter((event) => event.type === "assistant" && event.message?.id === id)
+        .flatMap((event) =>
+            Array.isArray(event.message?.content)
+                ? (event.message.content as {
+                      type?: unknown;
+                      text?: unknown;
+                      name?: unknown;
+                      input?: unknown;
+                  }[])
+                : [],
+        );
+    const calls = blocks.flatMap((block) => {
+        const name =
+            block?.type === "tool_use" && typeof block.name === "string"
+                ? harnessTool(block.name, tools)
+                : undefined;
+
+        return name === undefined ? [] : [{ name, arguments: block.input }];
+    });
+
+    if (calls.length === 0) {
+        return undefined;
+    }
+
+    const text = blocks
+        .flatMap((block) =>
+            block?.type === "text" && typeof block.text === "string" ? [block.text] : [],
+        )
+        .join("\n");
+
+    return { text, tool_calls: calls };
 }
 
 /** An error from Claude Code in words that say what to do, without the status codes that would start retries. */
@@ -324,7 +395,7 @@ function cleanEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 function ask(
     binary: string,
     model: string,
-    rendered: { system: string; blocks: Block[] },
+    rendered: ReturnType<typeof render>,
     signal: AbortSignal | undefined,
 ): Promise<Parameters<typeof answerOf>[0] & { aborted?: true }> {
     if (signal?.aborted === true) {
@@ -370,6 +441,10 @@ function ask(
         let out = "";
         let err = "";
         let timedOut = false;
+        /** What it printed so far, a line each, and the harness's tools Claude called as its own, once seen. */
+        const events: StreamEvent[] = [];
+        let partial = "";
+        let direct: ReturnType<typeof directCalls>;
         let killer: NodeJS.Timeout | undefined;
 
         const stop = () => {
@@ -384,7 +459,34 @@ function ask(
 
         running.add(child);
         signal?.addEventListener("abort", stop);
-        child.stdout.setEncoding("utf8").on("data", (chunk: string) => (out += chunk));
+        child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+            out += chunk;
+
+            if (direct !== undefined) {
+                return;
+            }
+
+            const lines = (partial + chunk).split("\n");
+
+            partial = lines.pop() ?? "";
+
+            for (const line of lines) {
+                try {
+                    events.push(JSON.parse(line) as StreamEvent);
+                } catch {
+                    continue;
+                }
+
+                // Calls Claude Code refused are the answer: nothing it says after them is needed.
+                direct ??= directCalls(events, rendered.tools);
+
+                if (direct !== undefined) {
+                    stop();
+
+                    return;
+                }
+            }
+        });
         child.stderr
             .setEncoding("utf8")
             .on("data", (chunk: string) => (err = (err + chunk).slice(-2000)));
@@ -401,6 +503,12 @@ function ask(
 
             if (signal?.aborted === true) {
                 resolve({ aborted: true });
+
+                return;
+            }
+
+            if (direct !== undefined) {
+                resolve({ is_error: false, structured_output: direct });
 
                 return;
             }
