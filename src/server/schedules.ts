@@ -72,6 +72,9 @@ function remember(item: Schedule, run: ScheduleRun): void {
 }
 
 type ScheduleInput = { scheduleId: string };
+
+/** What a sending's run failed with (`Schedules.#runFailure`). */
+type RunFailure = { message: string; at: number; provider?: string };
 type ScheduleState = { phase: "wait" } | { phase: "send" };
 type Runtime = TaskRuntime<ScheduleInput, ScheduleState, null, object>;
 
@@ -106,6 +109,14 @@ export class Schedules {
     readonly #app: PocketApp;
     /** By conversation: the task of the schedule whose sending's run failed last, until the failure is pushed. */
     readonly #failedSendings = new Map<ConversationId, { task: string; error: string }>();
+    /**
+     * By schedule: what its last sending's run, once over, failed with (undefined: it did not). An ended run does not
+     * change, so a repeat held for hours reads it once.
+     */
+    readonly #lastFailure = new Map<
+        string,
+        { requestId: string; failure: RunFailure | undefined }
+    >();
     /** How long a schedule of Noid's waits before it looks again whether the session tools are back. */
     holdMs = 60_000;
     /** The durable task behind each schedule; the schedules extension installs it. */
@@ -242,6 +253,57 @@ export class Schedules {
         return provider === undefined ? {} : { provider };
     }
 
+    /**
+     * What a sending's run failed with: the provider's words, when they were written, and by which provider (a wait it
+     * names counts from then). Kept once the run is over.
+     */
+    async #runFailure(
+        conversationId: ConversationId,
+        scheduleId: string,
+        run: ScheduleRun,
+        context: Context,
+    ): Promise<RunFailure | undefined> {
+        const { over, failure } = await this.#app.harness.commit(async (tx) => {
+            const submission = await tx.submissionByRequest(conversationId, run.requestId);
+
+            // A run whose model failed ends unanswered, with the provider's words; or answered with them.
+            if (submission?.status === "unanswered") {
+                return {
+                    over: true,
+                    failure:
+                        FAILED_RUN.has(submission.reason) && typeof submission.detail === "string"
+                            ? { message: submission.detail, at: run.at }
+                            : undefined,
+                };
+            }
+
+            if (submission?.type !== "input" || submission.status !== "done") {
+                return { over: submission?.status === "done", failure: undefined };
+            }
+
+            const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
+                AssistantMessage | undefined;
+
+            return {
+                over: true,
+                failure:
+                    answer?.stopReason === "error" && answer.errorMessage !== undefined
+                        ? {
+                              message: answer.errorMessage,
+                              at: answer.timestamp ?? run.at,
+                              provider: answer.provider,
+                          }
+                        : undefined,
+            };
+        }, context);
+
+        if (over) {
+            this.#lastFailure.set(scheduleId, { requestId: run.requestId, failure });
+        }
+
+        return failure;
+    }
+
     /** When the quota the schedule's last run failed on resets, while that is still to come. */
     async #quotaHeld(
         runtime: Runtime,
@@ -254,32 +316,11 @@ export class Schedules {
             return undefined;
         }
 
-        // The provider's words, when they were written, and by which provider: a wait it names counts from then.
-        const failure = await this.#app.harness.commit(async (tx) => {
-            const submission = await tx.submissionByRequest(runtime.conversationId, last.requestId);
-
-            // A run whose model failed ends unanswered, with the provider's words; or answered with them.
-            if (submission?.status === "unanswered") {
-                return FAILED_RUN.has(submission.reason) && typeof submission.detail === "string"
-                    ? { message: submission.detail, at: last.at }
-                    : undefined;
-            }
-
-            if (submission?.type !== "input" || submission.status !== "done") {
-                return undefined;
-            }
-
-            const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
-                AssistantMessage | undefined;
-
-            return answer?.stopReason === "error" && answer.errorMessage !== undefined
-                ? {
-                      message: answer.errorMessage,
-                      at: answer.timestamp ?? last.at,
-                      provider: answer.provider,
-                  }
-                : undefined;
-        }, context);
+        const known = this.#lastFailure.get(schedule.id);
+        const failure =
+            known?.requestId === last.requestId
+                ? known.failure
+                : await this.#runFailure(runtime.conversationId, schedule.id, last, context);
 
         if (failure === undefined) {
             return undefined;
@@ -471,6 +512,7 @@ export class Schedules {
             return undefined;
         }
 
+        this.#lastFailure.delete(scheduleId);
         // The task's abort removes the schedule; one already gone (or never run) is removed here.
         await this.#app.harness.abortTask(schedule.taskId, context).catch(() => undefined);
         await this.#app.harness.commit(async (tx) => {
