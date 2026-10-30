@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import type { TranscriptContext } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type TranscriptContext } from "@earendil-works/pi-ai";
 import {
     answerOf,
     CLAUDE_CLI_PROVIDER,
@@ -243,12 +243,12 @@ after(async () => {
     cleanUp();
 });
 
-async function session() {
+async function session(thinkingLevel: "off" | "high" = "off") {
     const { id } = await app.commands.createSession(owner(app), { cwd: work });
 
     await app.commands.configure(id, owner(app), {
         model: { provider: CLAUDE_CLI_PROVIDER, modelId: "sonnet" },
-        thinkingLevel: "off",
+        thinkingLevel,
     });
 
     return id;
@@ -278,6 +278,7 @@ test("a session on Claude Code calls its tools and answers with their results", 
         "the prompt in a file, not on the command line",
     );
     assert.ok(!args.includes("--system-prompt"));
+    assert.ok(!args.includes("--effort"), "off leaves Claude Code's own default");
     assert.match(
         readFileSync(join(records, "system.txt"), "utf8"),
         /^You are the model behind an agent harness/,
@@ -291,6 +292,21 @@ test("a session on Claude Code calls its tools and answers with their results", 
         readFileSync(join(records, "env.txt"), "utf8"),
         /ANTHROPIC_API_KEY/,
         "no key to bill",
+    );
+});
+
+test("a session's thinking level is Claude Code's effort", async () => {
+    const id = await session("high");
+
+    await say(app, id, "run something");
+
+    const args = readFileSync(join(records, "args.txt"), "utf8").split("\n");
+
+    assert.equal(args[args.indexOf("--effort") + 1], "high");
+    assert.deepEqual(
+        getSupportedThinkingLevels(claudeCliProvider(fake).models[0]),
+        ["off", "low", "medium", "high", "xhigh", "max"],
+        "the levels it takes, and no minimal",
     );
 });
 

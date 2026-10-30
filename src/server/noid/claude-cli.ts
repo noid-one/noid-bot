@@ -41,6 +41,19 @@ const MODELS = [
     { id: "haiku", name: "Claude Haiku (Claude Code)" },
 ];
 
+/**
+ * The thinking levels `claude --effort` takes, by the same names. Off leaves the flag out, so Claude Code uses its own
+ * default; it has no minimal, so pickers do not offer it.
+ */
+const EFFORTS = {
+    minimal: null,
+    low: "low",
+    medium: "medium",
+    high: "high",
+    xhigh: "xhigh",
+    max: "max",
+};
+
 /** How long one answer may take, and how long `claude` has to stop before it is killed. */
 const TIMEOUT_MS = 10 * 60_000;
 const KILL_AFTER_MS = 5000;
@@ -395,6 +408,7 @@ function cleanEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 function ask(
     binary: string,
     model: string,
+    effort: string | undefined,
     rendered: ReturnType<typeof render>,
     signal: AbortSignal | undefined,
 ): Promise<Parameters<typeof answerOf>[0] & { aborted?: true }> {
@@ -420,6 +434,7 @@ function ask(
                 "--verbose",
                 "--model",
                 model,
+                ...(effort === undefined ? [] : ["--effort", effort]),
                 "--tools",
                 "",
                 "--system-prompt-file",
@@ -577,12 +592,17 @@ export function claudeCliProvider(binary: string) {
         tokensPerSecond: 100_000,
         models: MODELS.map((model) => ({
             ...model,
+            reasoning: true,
             input: ["text", "image"] as ("text" | "image")[],
             contextWindow: 200_000,
             maxTokens: 32_000,
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         })),
     });
+
+    for (const model of provider.models) {
+        model.thinkingLevelMap = EFFORTS;
+    }
 
     const respond = async (
         context: TranscriptContext,
@@ -593,7 +613,9 @@ export function claudeCliProvider(binary: string) {
         // Each answer used puts another in line: the queue never runs dry, however many start at once.
         provider.appendResponses([respond]);
 
-        const result = await ask(binary, model.id, render(context), options?.signal);
+        const level = options?.reasoning;
+        const effort = level === undefined ? undefined : (EFFORTS[level] ?? undefined);
+        const result = await ask(binary, model.id, effort, render(context), options?.signal);
 
         if ("aborted" in result && result.aborted === true) {
             return fauxAssistantMessage([], { stopReason: "aborted" });
