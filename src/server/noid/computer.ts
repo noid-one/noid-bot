@@ -2,7 +2,8 @@
  * noid's shared computer: one Docker container that every computer bot works in, each in its own folder under
  * `bots/`, sharing `shared/`, its installed tools, and one browser. Pi's tools reach it through pi-env's daemon inside
  * the container, over `docker exec -i` (spikes/RESULTS.md): the container is started when a tool first needs it and
- * stopped after a while with nothing to do. Its home is a named volume, so files and logins outlive the container.
+ * stopped after a while with nothing to do. Its home is a named volume, so files and logins outlive the container, and
+ * so is Homebrew's prefix (/home/linuxbrew, the only one its bottles install into), so formulae outlive it too.
  */
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -23,6 +24,9 @@ import { APP_ROOT } from "../config.ts";
 
 /** The computer's home inside the container. A session works on the computer when its folder is under it. */
 export const COMPUTER_HOME = "/home/noid";
+
+/** Homebrew's prefix on Linux, outside the home: a volume of its own. */
+const BREW_HOME = "/home/linuxbrew";
 
 export type ComputerOptions = {
     /** The docker command, for example Docker Desktop's `docker.exe` from WSL (`NOID_DOCKER`). */
@@ -146,6 +150,8 @@ export function onComputer(cwd: string): boolean {
 export class Computer {
     readonly container: string;
     readonly volume: string;
+    /** The volume Homebrew installs into. */
+    readonly brewVolume: string;
     readonly image: string;
     readonly #docker: Docker;
     readonly #binary: string;
@@ -185,6 +191,7 @@ export class Computer {
 
         this.container = options.container ?? named;
         this.volume = options.volume ?? `${named}-home`;
+        this.brewVolume = `${named}-linuxbrew`;
         this.#buildContext = options.buildContext ?? join(APP_ROOT, "computer");
         // Tagged by what it is built from: a change to computer/ (or to pi-env's daemon) is a new image, and a container
         // made from an older one is made again at its next start.
@@ -376,6 +383,8 @@ export class Computer {
                 `TZ=${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
                 "--volume",
                 `${this.volume}:${COMPUTER_HOME}`,
+                "--volume",
+                `${this.brewVolume}:${BREW_HOME}`,
                 this.image,
             ]);
 

@@ -10,6 +10,9 @@
 # computer keeps the owner's time zone (TZ, set when the container is made), its clock and its browser's both.
 # Changed for noid: no VNC/noVNC stack (the owner sees the desktop through xdotool and scrot); tini as PID 1 so finished
 # processes are reaped; pi-env's daemon (put beside this file by the build) at /opt/pi-env/pi-env.
+# Homebrew: its prefix (/home/linuxbrew, a volume of its own) belongs to noid, so brew installs without sudo, and
+# build-essential and file are what it needs on Linux; its bin/ is on PATH after the system's, so it adds tools
+# without shadowing Debian's. ffmpeg from Debian, for audio and video work.
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
@@ -28,6 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
     ca-certificates \
     procps \
+    libatomic1 \
     bash \
     curl \
     git \
@@ -39,9 +43,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-openpyxl \
     poppler-utils \
     pandoc \
+    ffmpeg \
+    build-essential \
+    file \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid 1000 noid \
-  && useradd --uid 1000 --gid noid --create-home --shell /bin/bash noid
+  && useradd --uid 1000 --gid noid --create-home --shell /bin/bash noid \
+  && install -d -o noid -g noid /home/linuxbrew
 ARG TARGETARCH
 ARG UV_VERSION=0.12.19
 RUN set -eux; \
@@ -72,7 +80,7 @@ RUN set -eux; \
 ENV LANG=C.UTF-8 \
     DISPLAY=:100 \
     HOME=/home/noid \
-    PATH=/home/noid/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    PATH=/home/noid/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin \
     UV_TOOL_DIR=/home/noid/.local/share/uv/tools \
     UV_TOOL_BIN_DIR=/home/noid/.local/bin \
     UV_PYTHON_INSTALL_DIR=/home/noid/.local/share/uv/python \
