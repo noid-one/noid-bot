@@ -47,7 +47,7 @@ import { Browsers } from "./browser.ts";
 import type { BrowserState } from "./browser/page.ts";
 import { Collab, REACTIONS } from "./collab.ts";
 import { Commands } from "./commands.ts";
-import { LinkedSessions } from "./linked-sessions.ts";
+import { BOT_ONLY, LinkedSessions } from "./linked-sessions.ts";
 import { APP_ROOT, ConfigStore, type User } from "./config.ts";
 import {
     ArtifactBodyDoc,
@@ -74,7 +74,13 @@ import { defang, quoted } from "./fence.ts";
 import { FolderFavorites } from "./folder-favorites.ts";
 import { Gallery } from "./gallery.ts";
 import { Goals } from "./goals.ts";
-import { type ApprovalRequest, Approvals, type PocketHost, type WebAccess } from "./host.ts";
+import {
+    type ApprovalRequest,
+    Approvals,
+    approvalView,
+    type PocketHost,
+    type WebAccess,
+} from "./host.ts";
 import { type GuardStatus, LancetGuard } from "./lancet.ts";
 import { takeLock } from "./lock.ts";
 import { Memory } from "./memory.ts";
@@ -88,9 +94,9 @@ import {
     NOID_APPROVAL,
     NOT_SHOWN,
 } from "./noid/approvals.ts";
-import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
-import { BOT_SETTINGS_EXTENSION, BotSettings } from "./noid/bot-settings.ts";
-import { CHAT_SEARCH_EXTENSION, ChatSearch } from "./noid/chat-search.ts";
+import { BotMail } from "./noid/botmail.ts";
+import { BotSettings } from "./noid/bot-settings.ts";
+import { ChatSearch } from "./noid/chat-search.ts";
 import { Bots, type PersonFace } from "./noid/bots.ts";
 import { ownerOf } from "./noid/owner.ts";
 import { checkValues } from "./asks.ts";
@@ -98,7 +104,7 @@ import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
 import { connectHostChrome, windowsPowerShell } from "./noid/host-chrome.ts";
 import { claudeBinary, claudeCliProvider, stopClaudeCli } from "./noid/claude-cli.ts";
-import { Desktop, DESKTOP_EXTENSION } from "./noid/desktop.ts";
+import { Desktop } from "./noid/desktop.ts";
 import { Groups } from "./noid/groups.ts";
 import { Terminals } from "./noid/terminal.ts";
 import { isThinkingLevel, modelInfo, modelList, resolveModel, THINKING_LEVELS } from "./models.ts";
@@ -107,7 +113,7 @@ import { configureHttp } from "./net.ts";
 import { createPublicFetch } from "./public-fetch.ts";
 import { PiSessions } from "./pi-sessions.ts";
 import { Hooks } from "./hooks.ts";
-import { SessionTools, SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
+import { SessionTools } from "./session-tools.ts";
 import { NOID_COMPACT_CHOICES, NoidCompaction } from "./noid-compact.ts";
 import { RepoWatches } from "./repo-watches.ts";
 import { snippet } from "./projection.ts";
@@ -212,6 +218,9 @@ export type SubagentEntry = ReturnType<typeof subagentView> & {
     waiting?: true;
     approval?: { tool: string; subject: string };
 };
+
+/** What every session list is built from alike (`PocketApp.sessions`). */
+type SessionsShared = { subagents: Map<string, SubagentEntry[]>; asks: Map<string, SessionAsk> };
 
 /** Where a subagent is. Waiting for an approval comes before working: it is working, held up. */
 export type SubagentState = "waiting" | "working" | "failed" | "stopped" | "done";
@@ -474,6 +483,8 @@ export class PocketApp {
     readonly #parents = new Map<ConversationId, ConversationId>();
     /** Each conversation's subagents, and those with a report on its way to it: for the board and the session list. */
     readonly #subagents = new Map<ConversationId, SubagentsOf>();
+    /** noid's own bot tools that their definitions mark read-only (`readOnlyTools`). */
+    readonly #ownReadOnly = new Set<string>();
     #sessions: Record<string, SessionMeta> = {};
     #sessionsTimer: NodeJS.Timeout | undefined;
     /** noid: how often agent files are looked at again, for the bots made from them. */
@@ -717,12 +728,27 @@ export class PocketApp {
         // noid: approvals are a guard, so they are part of the app, not a module someone can turn off.
         registry.install(createApprovals(this));
         // noid: bots' own tools, which bots select (`Bots.create`) and other conversations do not.
-        registry.install(this.botMail.extension);
-        registry.install(this.botMail.overseer);
-        registry.install(this.botSettings.extension);
-        registry.install(this.chatSearch.extension);
-        registry.install(this.desktop.extension);
-        registry.install(this.groups.extension);
+        const own = [
+            this.botMail.extension,
+            this.botMail.overseer,
+            this.botSettings.extension,
+            this.chatSearch.extension,
+            this.desktop.extension,
+            this.groups.extension,
+        ];
+
+        for (const extension of own) {
+            registry.install(extension);
+
+            for (const tool of extension.tools ?? []) {
+                if (
+                    (tool as { annotations?: { readOnlyHint?: boolean } }).annotations?.readOnlyHint
+                ) {
+                    this.#ownReadOnly.add(tool.name);
+                }
+            }
+        }
+
         // Durable work of the app itself, whatever extension modules are on.
         registry.install(
             defineExtension({
@@ -764,6 +790,7 @@ export class PocketApp {
             onLimitsChanged: (listener) => this.spend.onLimitsChanged(listener),
             onHost: (conversationId) => this.onHost(conversationId),
             botOf: (conversationId) => this.bots.of(conversationId),
+            isSubagent: (conversationId) => this.parentOf(conversationId) !== undefined,
             linkedSessions: this.linkedSessions,
             schedules: this.schedules,
             goals: this.goals,
@@ -1226,21 +1253,13 @@ export class PocketApp {
         return {
             // A phase can wait for hours without changing state; repeated process kills must not park it.
             restartLimit: Infinity,
-            // Every installed extension, in install order, but the session tools: their tools and prompt are for bots'
-            // conversations only, which select them by name (`session-tools.ts`).
+            // Every installed extension, in install order, but bots' own (the session tools, bot mail, their settings):
+            // those are for bots' conversations only, which select them by name (`Bots.#toolsOf`).
             get extensions() {
                 return registry()
                     ?.snapshot()
                     .installed()
-                    .filter(
-                        (extension) =>
-                            extension.name !== SESSION_TOOLS_EXTENSION &&
-                            extension.name !== BOT_MAIL_EXTENSION &&
-                            extension.name !== OVERSEER_EXTENSION &&
-                            extension.name !== BOT_SETTINGS_EXTENSION &&
-                            extension.name !== CHAT_SEARCH_EXTENSION &&
-                            extension.name !== DESKTOP_EXTENSION,
-                    );
+                    .filter((extension) => !BOT_ONLY.has(extension.name));
             },
             get stream() {
                 return stream();
@@ -1852,6 +1871,14 @@ export class PocketApp {
         return sessions;
     }
 
+    /**
+     * The built-in tools that only read, as their own definitions mark them (`readOnlyHint`): the modules' and noid's
+     * own. A built-in's mark on the agent's tool list may come from a drop-in's wrap, so approvals trust this instead.
+     */
+    readOnlyTools(): Set<string> {
+        return new Set([...this.loader.readOnlyBuiltIns(), ...this.#ownReadOnly]);
+    }
+
     /** A session's failed subagents that nobody dealt with, every one, newest first: for Dismiss on its row. */
     failedSubagentsOf(session: ConversationId): { conversationId: number; at: number }[] {
         return failedSubagents(this.#subagentsBySession().get(String(session)) ?? [], Infinity);
@@ -2063,6 +2090,7 @@ export class PocketApp {
             this.#sessionsTimer = undefined;
             let all: ReturnType<PocketApp["sessions"]> | undefined;
             let board: SubagentEntry[] | undefined;
+            let shared: SessionsShared | undefined;
             // Everyone but the owner gets a list of their own: bots are the owner's alone, and scoped people see theirs.
             const lists = new Map<string, ReturnType<PocketApp["sessions"]>>();
             // Each list's JSON, worked out once however many tabs get it.
@@ -2071,10 +2099,12 @@ export class PocketApp {
             for (const client of this.#clients) {
                 const user = client.user;
                 const whole = user.role === "owner" && user.sessions === undefined;
-                let list = whole ? (all ??= this.sessions()) : lists.get(user.id);
+
+                shared ??= this.#sessionsShared();
+                let list = whole ? (all ??= this.sessions(undefined, shared)) : lists.get(user.id);
 
                 if (list === undefined) {
-                    list = this.sessions(user);
+                    list = this.sessions(user, shared);
                     lists.set(user.id, list);
                 }
 
@@ -2143,27 +2173,26 @@ export class PocketApp {
             }
 
             asks.set(session, {
-                id: request.id,
+                ...approvalView(request, ASK_SUBJECT, ASK_REASON),
                 conversationId: Number(request.conversationId),
-                tool: request.tool,
-                subject: cutWhole(request.subject, ASK_SUBJECT),
-                reason: cutWhole(request.reason, ASK_REASON),
-                ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
                 at: request.createdAt,
                 count: (kept?.count ?? 0) + 1,
-                ...(request.form === undefined ? {} : { form: true as const }),
             });
         }
 
         return asks;
     }
 
+    /** What every person's session list is built from alike: worked out once for all the lists of one broadcast. */
+    #sessionsShared(): SessionsShared {
+        return { subagents: this.#subagentsBySession(), asks: this.#oldestAsks() };
+    }
+
     /** The session list, with who is in each session and its newest chat message. Each person sees what they may open. */
-    sessions(user?: User) {
+    sessions(user?: User, shared = this.#sessionsShared()) {
         const people = new Map<string, Map<string, string>>();
-        const subagents = this.#subagentsBySession();
         // A session waits when any call in it does: its oldest is the one the list names.
-        const asks = this.#oldestAsks();
+        const { subagents, asks } = shared;
 
         for (const client of this.#clients) {
             if (client.conversationId === undefined) {

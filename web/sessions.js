@@ -385,7 +385,11 @@ function priorityGroups(shown, ctx, held) {
         slots[slot].push(session);
     }
 
-    const rank = (session) => NEED_RANK[needOf(session, ctx.state)] ?? 3;
+    // Each session's kind of need once, not on every comparison.
+    const ranks = new Map(
+        slots.needs.map((session) => [session, NEED_RANK[needOf(session, ctx.state)] ?? 3]),
+    );
+    const rank = (session) => ranks.get(session);
 
     slots.needs.sort((a, b) => {
         const kinds = rank(a) - rank(b);

@@ -38,6 +38,7 @@ import { type PendingReport, REPORT_PREFIX, SubagentsDoc } from "../docs.ts";
 import { describe } from "../errors.ts";
 import type { PocketHost } from "../host.ts";
 import { levelFor, sameModel, THINKING_LEVELS } from "../models.ts";
+import { modelFailure } from "../provider-errors.ts";
 import { requestFor } from "../requests.ts";
 import { whyUnanswered } from "../subagent-runs.ts";
 
@@ -255,22 +256,6 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
 
 /** Tasks of a conversation that run beside its work: its Esc and idle waits do not reach them. */
 const BACKGROUND = { ownership: { kind: "conversation" }, background: true } as const;
-
-/**
- * What a provider says when the model or its account is the problem (a sign-in, a model that is gone or refused, a
- * quota or rate limit, an overload, a model that cannot call tools), not the request: a context that will not fit, say,
- * is Pi's to work around. Credential words on either side (rakazo 4185ee85d, 417cf2ecb).
- */
-const PROVIDER_TROUBLE =
-    /oauth|sign.?in|auth|api.?key|unauthori[sz]ed|forbidden|permission|\b(401|402|403|404|429|503|529)\b|not found|does not exist|no such model|not available|not configured|unsupported model|quota|rate.?limit|insufficient|billing|credit|usage limit|overloaded|(?:expired|revoked) (?:api )?(?:key|credential|token)|(?:key|credential|token) (?:is |has been |was )?(?:expired|revoked)|tool calls'? (?:is |are )?not (?:currently )?supported/i;
-
-/** Whether a run ended unanswered because of its model or provider: no model to use, or the provider's trouble. */
-export function modelFailure(reason: string, detail: unknown): boolean {
-    return (
-        reason === "no_model" ||
-        (reason === "model_error" && typeof detail === "string" && PROVIDER_TROUBLE.test(detail))
-    );
-}
 
 /** What a report of a subagent its model failed tells Pi, after why. */
 export const MODEL_FAILED =

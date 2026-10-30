@@ -446,15 +446,15 @@ export function createApprovals(app: PocketApp) {
                         return undefined;
                     }
 
-                    // A tool's own read-only mark counts; a built-in's can only come from a wrap.
+                    // A tool's own read-only mark counts; a built-in's as its definition has it, not as a wrap made it.
                     const runtime = api as typeof api & Partial<Pick<ToolExecutionApi, "agent">>;
                     const declared = (await runtime.agent?.(context))?.tools.find(
                         (tool) => tool.name === call.name,
                     ) as { annotations?: ToolAnnotations } | undefined;
                     const args = call.arguments as Record<string, unknown>;
-                    const readOnly =
-                        !BUILT_IN_TOOLS.has(call.name) &&
-                        declared?.annotations?.readOnlyHint === true;
+                    const readOnly = BUILT_IN_TOOLS.has(call.name)
+                        ? app.readOnlyTools().has(call.name)
+                        : declared?.annotations?.readOnlyHint === true;
                     const place = app.onHost(api.conversationId) ? "host" : "computer";
                     const reviewOn = (await api.snapshot(AutoReviewDoc, context))?.on === true;
                     // A site matters on this machine, or wherever auto review is on to judge it.

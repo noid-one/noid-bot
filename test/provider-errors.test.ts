@@ -1,7 +1,7 @@
 // A quota's reset, read from a provider's error: hours away is a quota to wait out; seconds away is Pi's to retry.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { quotaReset } from "../src/server/quota.ts";
+import { quotaReset } from "../src/server/provider-errors.ts";
 
 const at = Date.UTC(2026, 9, 30, 12);
 const HOUR = 60 * 60_000;

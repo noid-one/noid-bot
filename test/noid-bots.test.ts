@@ -329,9 +329,15 @@ test("the rules: where a bot runs decides; on this machine, anything that is not
         "its own state",
     );
     assert.equal(classify(computer, "host", "bot_message", { to: "x", message: "y" }).ask, false);
-    // Loading a waiting tool and searching its own chats only read.
-    assert.equal(classify(computer, "host", "tool_search", { names: ["browser"] }).ask, false);
-    assert.equal(classify(computer, "host", "chat_search", { query: "x" }).ask, false);
+    // Built-in tools that only read say so in their own definitions, which approvals trust: a wrap cannot add it.
+    const trusted = app.readOnlyTools();
+
+    for (const tool of ["ask", "tool_search", "chat_search"]) {
+        assert.ok(trusted.has(tool), tool);
+        assert.equal(classify(computer, "host", tool, {}, trusted.has(tool)).ask, false, tool);
+    }
+
+    assert.ok(!trusted.has("bash") && !trusted.has("bot_settings"));
     assert.equal(
         classify(computer, "computer", "bot_update", { name: "x", instructions: "y" }).ask,
         true,

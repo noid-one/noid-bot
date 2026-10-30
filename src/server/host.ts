@@ -15,6 +15,7 @@ import type { BotProfile } from "./noid/bots.ts";
 import type { Gallery } from "./gallery.ts";
 import type { Role, User } from "./config.ts";
 import type { Goals } from "./goals.ts";
+import { cutWhole } from "./cut.ts";
 import { visible } from "./fence.ts";
 import type { LancetGuard } from "./lancet.ts";
 import type { Memory } from "./memory.ts";
@@ -87,6 +88,22 @@ export interface ApprovalRequest {
     requestedBy?: string;
     /** A question for the person Pi works for (Pi's `ask` tool): the card shows its fields, not Allow and Deny. */
     form?: AskForm;
+}
+
+/**
+ * A waiting request as the session list and peek tiles carry it: what they show and act on, its texts cut to `subject`
+ * and `reason` characters, and whether it is a question (`form`), which they open rather than allow.
+ */
+export function approvalView(request: ApprovalRequest, subject: number, reason: number) {
+    return {
+        id: request.id,
+        conversationId: request.conversationId,
+        tool: request.tool,
+        subject: cutWhole(request.subject, subject),
+        reason: cutWhole(request.reason, reason),
+        ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
+        ...(request.form === undefined ? {} : { form: true as const }),
+    };
 }
 
 /** An answer to pick on an ask's card (`AskField.choices`): a button with its label, and a line under it. */
@@ -299,6 +316,8 @@ export interface PocketHost {
     onHost(conversationId: ConversationId): boolean;
     /** noid: the bot a conversation works for (a subagent's is its session's), if it is one. */
     botOf(conversationId: ConversationId): BotProfile | undefined;
+    /** Whether a conversation is a subagent's: it works for another agent, and nobody reads its chat. */
+    isSubagent(conversationId: ConversationId): boolean;
     /**
      * Sessions that a session starts and messages (`linked-sessions.ts`): each one is an ordinary session, linked to the
      * one that started it. The checks of the person Pi works for apply, and a call repeated with its key acts once.

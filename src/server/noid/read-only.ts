@@ -6,17 +6,10 @@
  */
 
 /**
- * Tools that change nothing, or whose own calls are checked one by one (codemode); `ask` waits for the owner,
- * `tool_search` loads a tool's schema, and `chat_search` reads the bot's own chats.
+ * Tools that change nothing, or whose own calls are checked one by one (codemode). Others say so themselves
+ * (`readOnlyHint`, as `ask`, `tool_search`, and `chat_search` do).
  */
-const ALWAYS_ALLOWED = new Set([
-    "read",
-    "artifact",
-    "codemode",
-    "ask",
-    "tool_search",
-    "chat_search",
-]);
+const ALWAYS_ALLOWED = new Set(["read", "artifact", "codemode"]);
 /** What the browser does when it only looks at pages, without acting on them. */
 const BROWSER_LOOKS = new Set([
     "navigate",

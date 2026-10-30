@@ -55,7 +55,8 @@ export class ChatSearch {
         this.#app = app;
         this.extension = defineExtension({
             name: CHAT_SEARCH_EXTENSION,
-            tools: [this.#tool()],
+            // Only reads: approvals and auto review let it be (`readOnlyTools`).
+            tools: [Object.assign(this.#tool(), { annotations: { readOnlyHint: true } })],
         });
     }
 
@@ -83,9 +84,15 @@ export class ChatSearch {
             app.transcripts.allEntries(conversationId, false),
             app.harness.snapshot(GroupsDoc, context),
         ]);
+        const most = Math.max(1, Math.min(MOST, Math.floor(limit)));
         const found: ChatMatch[] = [];
 
-        for (const entry of entries) {
+        // Newest first: older matches in the chat cannot make the cut once `most` are in.
+        for (const entry of entries.toReversed()) {
+            if (found.length === most) {
+                break;
+            }
+
             if (entry.kind !== "user" && entry.kind !== "assistant") {
                 continue;
             }
@@ -121,9 +128,7 @@ export class ChatSearch {
             }
         }
 
-        return found
-            .sort((a, b) => (b.at ?? 0) - (a.at ?? 0))
-            .slice(0, Math.max(1, Math.min(MOST, Math.floor(limit))));
+        return found.sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, most);
     }
 
     #tool() {

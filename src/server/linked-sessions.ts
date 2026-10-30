@@ -32,10 +32,11 @@ import { BOT_SETTINGS_EXTENSION } from "./noid/bot-settings.ts";
 import { CHAT_SEARCH_EXTENSION } from "./noid/chat-search.ts";
 
 /**
- * A bot's own extensions (`Bots.#toolsOf`): the session tools and bot mail act as the owner, its settings are its own, and the desktop is held
+ * A bot's own extensions (`Bots.#toolsOf`), which other conversations never get (`PocketApp`'s harness settings), nor
+ * the sessions a bot starts: the session tools and bot mail act as the owner, its settings are its own, and the desktop is held
  * by the bot's own conversation, for the bot's own conversation only.
  */
-const BOT_ONLY = new Set([
+export const BOT_ONLY: ReadonlySet<string> = new Set([
     SESSION_TOOLS_EXTENSION,
     BOT_MAIL_EXTENSION,
     OVERSEER_EXTENSION,

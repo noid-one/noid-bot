@@ -55,9 +55,7 @@ export default function createAsk(host: PocketHost) {
         execute: async (args, api, context) => {
             // A subagent works for another agent: nobody reads its chat. Its session has no `ask` (`subagents.ts`), but
             // one started before that has.
-            const agent = await api.agent(context);
-
-            if (agent.instructions?.startsWith('You are the subagent "')) {
+            if (host.isSubagent(api.conversationId)) {
                 throw new Error(
                     "A subagent cannot ask the person: put the question in your report.",
                 );

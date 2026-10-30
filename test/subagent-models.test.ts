@@ -14,7 +14,8 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { SubagentsDoc } from "../src/server/docs.ts";
-import { MODEL_FAILED, modelFailure } from "../src/server/extensions/subagents.ts";
+import { MODEL_FAILED } from "../src/server/extensions/subagents.ts";
+import { modelFailure } from "../src/server/provider-errors.ts";
 
 /** The subagent tool's parameters as the parent's last request offered them. */
 let offered: Record<string, unknown> | undefined;

@@ -45,6 +45,7 @@ type Internal =
     | "memory"
     | "onHost"
     | "botOf"
+    | "isSubagent"
     | "agentFiles";
 
 type PublicHost = Pick<PocketHost, keyof Host>;

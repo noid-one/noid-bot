@@ -15,11 +15,9 @@ import {
 import {
     type ConversationId,
     defineExtension,
-    type PromptSection,
     type ToolExecutionApi,
     type ToolRegistration,
     section,
-    wrapSection,
     wrapTool,
 } from "@earendil-works/pi-durable";
 import type { PocketHost } from "../host.ts";
@@ -32,30 +30,18 @@ type Agent = Awaited<ReturnType<ToolExecutionApi<never>["agent"]>>;
 const SEARCH_LIMIT = 2;
 
 /**
- * Tools that wait to be searched for: what each is for, the key of the prompt section shown once it is loaded, and
- * what that section would say, for the codemode route, where the section never shows.
+ * Tools that wait to be searched for: what each is for, and what its prompt section would say, for the codemode route,
+ * where the section never shows. A section shows only while its tool is offered (`browser.ts` checks), so a waiting
+ * tool's text waits with it.
  */
 const DEFERRED: Record<
     string,
-    { use: string; section?: string; note?: (host: PocketHost, id: ConversationId) => string }
+    { use: string; note?: (host: PocketHost, id: ConversationId) => string }
 > = {
-    browser: {
-        use: "open and test web pages in a real browser",
-        section: "browser",
-        note: browserGuide,
-    },
+    browser: { use: "open and test web pages in a real browser", note: browserGuide },
     schedule: { use: "send yourself a message later" },
     watch_pr: { use: "watch a pull request's checks" },
 };
-
-/** Each prompt section that waits, and the tools that show it once any of them is loaded. */
-const sections = new Map<string, string[]>();
-
-for (const [name, { section: key }] of Object.entries(DEFERRED)) {
-    if (key !== undefined) {
-        sections.set(key, [...(sections.get(key) ?? []), name]);
-    }
-}
 
 export default function createToolSearch(host: PocketHost) {
     const base = createToolSearchExtension();
@@ -100,6 +86,8 @@ export default function createToolSearch(host: PocketHost) {
     // tool whose text mentions one, and each load is kept for the branch.
     const exact: ToolRegistration = {
         ...search,
+        // Loading a tool's schema changes nothing a person needs to allow.
+        annotations: { readOnlyHint: true },
         description:
             "Load tools that wait (deferred_tools lists them) before you use them. The query is their names (`browser`, or `browser, schedule`) or words to search for.",
         parameters: Type.Object({
@@ -166,20 +154,8 @@ export default function createToolSearch(host: PocketHost) {
                           .join("\n")}`,
             ),
         ],
-        wraps: [
-            ...Object.keys(DEFERRED).map((name) =>
-                wrapTool({ name } as ToolRegistration, (tool) => ({ ...tool, deferred: true })),
-            ),
-            // A section waits with its tools: its text is of no use while none of them is offered.
-            ...[...sections].map(([key, names]) =>
-                wrapSection(key, (inner: PromptSection) => ({
-                    ...inner,
-                    render: (input, context) =>
-                        input.agent.tools.some((tool) => names.includes(tool.name))
-                            ? inner.render(input, context)
-                            : undefined,
-                })),
-            ),
-        ],
+        wraps: Object.keys(DEFERRED).map((name) =>
+            wrapTool({ name } as ToolRegistration, (tool) => ({ ...tool, deferred: true })),
+        ),
     });
 }

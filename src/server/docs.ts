@@ -386,8 +386,11 @@ export type Schedule = {
     history?: ScheduleRun[];
 };
 
-/** One sending of a schedule: at its time, or when someone ran it now. */
-export type ScheduleRun = { at: number; requestId: string; now?: true };
+/**
+ * One sending of a schedule: at its time, or when someone ran it now. `provider`: the session's model's then, which a
+ * quota it ran into belongs to.
+ */
+export type ScheduleRun = { at: number; requestId: string; now?: true; provider?: string };
 
 /** Messages that go to Pi later, or on repeat. A fork starts without them: they belong to who set them up. */
 export const ScheduleDoc = defineDoc<{ items: Record<string, Schedule> }>({

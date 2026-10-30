@@ -295,6 +295,29 @@ test("a repeat whose run hit a quota that resets hours away waits it out (rakazo
     await app.commands.cancelSchedule(id, owner(app), repeat.id);
 });
 
+test("a quota hold is its provider's: a session moved to another provider runs", async () => {
+    const id = await newSession(app);
+    const repeat = await app.commands.schedule(id, owner(app), {
+        when: "every 20m quota ping",
+        zone: "UTC",
+    });
+    const sent = async () =>
+        (await userTexts(id)).filter((text) => text.includes("[scheduled] quota ping")).length;
+
+    await restartLater(21);
+    await until(async () => (await sent()) === 1 && !app.isBusy(id), "the first run");
+    await until(async () => (await items(id))[0]?.runs === 1, "the repeat to sleep");
+    // Another provider's quota is not out: the next tick sends, an hour and more before faux's reset.
+    await (
+        await app.conversation(id)
+    ).configure({ model: { provider: "elsewhere", modelId: "other-1" } }, context);
+    await restartLater(21);
+    // Sent, not held: a held tick keeps no sending.
+    await until(async () => (await items(id))[0]?.runs === 2, "the next tick");
+    assert.equal((await items(id))[0]?.history?.length, 2);
+    await app.commands.cancelSchedule(id, owner(app), repeat.id);
+});
+
 test("Pi schedules, lists, and cancels its own messages with its tool", async () => {
     const id = await newSession(app);
 

@@ -209,20 +209,28 @@ function peopleFor(id) {
         presence: [],
         notes: null,
         chatQuote: null,
-        chatRead: id === null ? 0 : chatReadOf(id),
+        chatRead: id === null ? 0 : chatReadStored(id),
     };
 }
 
-/** How far this browser has read a conversation's chat: the time of the newest message seen. */
-function chatReadOf(id) {
+/**
+ * How far this browser has read a conversation's chat: the time of the newest message seen, as storage has it (another
+ * tab's read counts before its event arrives).
+ */
+export function chatReadStored(id) {
     return Number(localStorage.getItem(readKey(id)) ?? 0);
 }
 
 /** Someone else chatted in a session after this browser last read its chat. */
 export function sessionUnread(session, state = store.state) {
-    const read = session.id === state.conversationId ? state.chatRead : chatReadOf(session.id);
+    // Storage only for a session someone else chatted in.
+    if (session.chatAt === undefined || session.chatBy === state.me?.id) {
+        return false;
+    }
 
-    return session.chatAt !== undefined && session.chatBy !== state.me?.id && session.chatAt > read;
+    const read = session.id === state.conversationId ? state.chatRead : chatReadStored(session.id);
+
+    return session.chatAt > read;
 }
 
 /** noid: the bot whose session `id` is, if it is a bot's. */
@@ -415,11 +423,6 @@ export function markChatRead() {
     }
 
     setChatReadAt(conversationId, last);
-}
-
-/** How far this browser read a session's chat, as storage has it: another tab's read counts before its event arrives. */
-export function chatReadStored(id) {
-    return chatReadOf(id);
 }
 
 /**

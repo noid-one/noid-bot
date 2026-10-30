@@ -554,6 +554,28 @@ export class ExtensionLoader {
         });
     }
 
+    /**
+     * The tools the built-in modules mark read-only (`readOnlyHint`), as their own definitions say: a drop-in's wrap can
+     * change what a tool looks like to the agent, not these.
+     */
+    readOnlyBuiltIns(): Set<string> {
+        const names = new Set<string>();
+
+        for (const module of this.#modules()) {
+            if (module.source !== "built-in") {
+                continue;
+            }
+
+            for (const extension of this.#installed.get(module.file) ?? []) {
+                for (const tool of declared(extension).readOnlyTools) {
+                    names.add(tool);
+                }
+            }
+        }
+
+        return names;
+    }
+
     extensionNames(): string[] {
         return [...this.#installed.values()].flat().map((extension) => extension.name);
     }

@@ -27,7 +27,7 @@ import { describe, HttpError } from "./errors.ts";
 import { FROM_PREFIX } from "./entry-format.ts";
 import { snippet } from "./projection.ts";
 import { FAILED_RUN, whyUnanswered } from "./subagent-runs.ts";
-import { quotaReset } from "./quota.ts";
+import { quotaReset } from "./provider-errors.ts";
 import { ownRequest, requestFor } from "./requests.ts";
 import { nextRepeat, parseWhen } from "./when.ts";
 
@@ -184,6 +184,7 @@ export class Schedules {
         }
 
         const sends = stopped === undefined && held === undefined;
+        const provider = sends ? await this.#providerOf(conversationId) : undefined;
 
         if (sends) {
             await conversation.submit(
@@ -218,7 +219,7 @@ export class Schedules {
             }
 
             if (sends) {
-                remember(item, { at: runtime.now(), requestId });
+                remember(item, { at: runtime.now(), requestId, ...provider });
             }
 
             if (item.every === undefined) {
@@ -232,6 +233,13 @@ export class Schedules {
 
             return { status: "running", checkpoint: { phase: "wait" } };
         }, context);
+    }
+
+    /** The provider of a session's model now, as a sending keeps it (`ScheduleRun.provider`). */
+    async #providerOf(conversationId: ConversationId): Promise<{ provider?: string }> {
+        const provider = (await this.#app.agentState(conversationId))?.model?.provider;
+
+        return provider === undefined ? {} : { provider };
     }
 
     /** When the quota the schedule's last run failed on resets, while that is still to come. */
@@ -277,11 +285,14 @@ export class Schedules {
             return undefined;
         }
 
-        // A quota is its provider's: a session moved to another since runs.
-        if (failure.provider !== undefined) {
+        // A quota is its provider's: a session moved to another since runs. A failure that left no answer names none,
+        // so the provider the session had when it was sent.
+        const provider = failure.provider ?? last.provider;
+
+        if (provider !== undefined) {
             const now = (await this.#app.agentState(runtime.conversationId))?.model?.provider;
 
-            if (now !== undefined && now !== failure.provider) {
+            if (now !== undefined && now !== provider) {
                 return undefined;
             }
         }
@@ -504,6 +515,7 @@ export class Schedules {
         }
 
         const requestId = sendingRequest(schedule, `now-${randomUUID()}`);
+        const provider = await this.#providerOf(conversationId);
 
         await conversation.submit(
             { type: "input", content: schedule.content, whenBusy: "followUp", requestId },
@@ -513,7 +525,7 @@ export class Schedules {
             const item = (await tx.doc(ScheduleDoc, conversationId)).items[scheduleId];
 
             if (item !== undefined) {
-                remember(item, { at: app.now(), requestId, now: true });
+                remember(item, { at: app.now(), requestId, now: true, ...provider });
             }
         }, context);
 

@@ -16,6 +16,7 @@ import type {
     UsageState,
 } from "@earendil-works/pi-durable";
 import type { PocketApp } from "./app.ts";
+import { approvalView } from "./host.ts";
 import type { Head } from "./branches.ts";
 import type { User } from "./config.ts";
 import {
@@ -918,17 +919,7 @@ export class Room {
                         request.conversationId === this.id ||
                         this.#app.rootOf(request.conversationId) === this.id,
                 )
-                .map((request) => ({
-                    id: request.id,
-                    conversationId: request.conversationId,
-                    tool: request.tool,
-                    subject: request.subject.slice(0, PEEK_SUBJECT),
-                    reason: request.reason.slice(0, PEEK_REASON),
-                    ...(request.requestedBy === undefined
-                        ? {}
-                        : { requestedBy: request.requestedBy }),
-                    ...(request.form === undefined ? {} : { form: true as const }),
-                })),
+                .map((request) => approvalView(request, PEEK_SUBJECT, PEEK_REASON)),
         };
     }
 
