@@ -166,3 +166,36 @@ test(
         await page.press("Escape");
     },
 );
+
+test("words typed while a message sends stay in the box (rakazo 11aaeeb52)", real, async () => {
+    await home(VIEWPORTS.desktop);
+    await page.navigate(`${base}/s/${Number(two)}`);
+    await opened(two);
+    // A slow send: the person types on before it ends.
+    await page.evaluate(`
+        const { actions } = await import("/store.js");
+        const submit = actions.submit;
+
+        window.__released = false;
+        actions.submit = async (...args) => {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            actions.submit = submit;
+            window.__released = true;
+
+            return submit(...args);
+        };
+    `);
+    await page.type({ selector: BOX }, "slow send marker");
+    await page.press("Enter");
+    await page.type({ selector: BOX }, " and more", { append: true });
+    await until(() => inPage<boolean>(`return JSON.stringify(window.__released)`), "send ended");
+    await page.evaluate(`
+        for (let frame = 0; frame < 30; frame++) {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+    `);
+    assert.equal(
+        await inPage<string>(`return JSON.stringify(document.querySelector('${BOX}').value)`),
+        "and more",
+    );
+});

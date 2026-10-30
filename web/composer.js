@@ -322,6 +322,10 @@ export function Composer() {
     const historyScope = { person: store.state.me?.id, conversation: conversationId };
     const [text, setText] = useState(() => drafts.get(conversationId));
     const [files, setFiles] = useState([]);
+    // The box as it is now, for a send that ends after the person typed on (rakazo 11aaeeb52).
+    const boxNow = useRef(text);
+
+    boxNow.current = text;
     const [steer, setSteer] = useState(true);
     // The queued message tapped open, wrapped: one line each until then. The queue holds only a message's start.
     const [reading, setReading] = useState(null);
@@ -624,10 +628,21 @@ export function Composer() {
         !uploading &&
         (text.trim() !== "" || files.some((file) => file.state === "done"));
 
-    /** What went out stays for ↑; its pastes are done with. */
-    const sent = (full) => {
+    /**
+     * What went out stays for ↑; its pastes are done with. Given the box as it was sent, words the person typed
+     * on since stay in the box, without the ones that went.
+     */
+    const sent = (full, was) => {
         if (full.length <= REMEMBER_CHARS) {
             remember(full, historyScope);
+        }
+
+        if (was !== undefined && boxNow.current !== was) {
+            if (boxNow.current.startsWith(was)) {
+                update(boxNow.current.slice(was.length).trimStart());
+            }
+
+            return;
         }
 
         setPastes({});
@@ -700,6 +715,7 @@ export function Composer() {
 
         setBlind(null);
         setSending(true);
+        const going = files.filter((file) => file.state === "done");
         const ok = await attempt(() =>
             actions.submit(
                 full,
@@ -712,9 +728,10 @@ export function Composer() {
         setSending(false);
 
         if (ok) {
-            sent(full);
-            forget(files);
-            setFiles([]);
+            sent(full, text);
+            // Only what went: a file added while it sent stays for the next message.
+            forget(going);
+            setFiles((current) => current.filter((file) => !going.includes(file)));
 
             if (!coarse) {
                 box.current?.focus();
