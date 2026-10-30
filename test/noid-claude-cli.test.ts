@@ -21,6 +21,30 @@ import {
 const fake = join(import.meta.dirname, "fixtures", "fake-claude.sh");
 const records = join(root, "fake-claude");
 
+test("a tool whose definition changed, removed and added in one message, stays (Pi's order)", () => {
+    const bash = (description: string) => ({
+        name: "bash",
+        description,
+        parameters: { type: "object" },
+    });
+    const rendered = render({
+        messages: [
+            { role: "system", content: "You are Pi.", toolsAdded: [bash("Run")], timestamp: 0 },
+            { role: "user", content: "hi", timestamp: 1 },
+            {
+                role: "system",
+                content: "",
+                toolsRemoved: [{ name: "bash" }],
+                toolsAdded: [bash("Run a command")],
+                timestamp: 2,
+            },
+        ],
+    } as never);
+
+    assert.deepEqual(rendered.tools, ["bash"]);
+    assert.match(rendered.system, /- bash: Run a command/);
+});
+
 test("the conversation goes to claude -p marked by turn, with its sections and tools as they stand", () => {
     const rendered = render(
         {

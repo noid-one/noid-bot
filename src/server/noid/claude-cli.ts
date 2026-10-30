@@ -156,12 +156,14 @@ export function render(
 
     for (const message of context.messages) {
         if (message.role === "system") {
-            for (const tool of message.toolsAdded ?? []) {
-                tools.set(tool.name, tool);
-            }
-
+            // Removed first, as Pi replays them: a tool whose definition changed is removed and added in one message,
+            // and the other way round would leave it out (bots on Claude Code lost every tool after a reload).
             for (const tool of message.toolsRemoved ?? []) {
                 tools.delete(tool.name);
+            }
+
+            for (const tool of message.toolsAdded ?? []) {
+                tools.set(tool.name, tool);
             }
 
             for (const [name, section] of Object.entries(message.sections ?? {})) {
