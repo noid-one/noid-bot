@@ -121,8 +121,19 @@ const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"'`]+/gi;
 // An email address, its name part quoted or not (rakazo 6457c7fe7): neither part of it names a site.
 const EMAIL_IN_TEXT =
     /(?:"(?:[^"\\\r\n]|\\.)*"|(?<![^\s<>()[\]\\,;:"@，；、！？])[^\s<>()[\]\\,;:"@，；、！？]+)@(?:\[[^\]\r\n]+\]|[^\s<>()[\]\\,;:"@，；、！？]+)/g;
+// Letters of any script (rakazo 54c46b74c): an ASCII-only pattern starts a match mid-word, so `bücher.com` named
+// `cher.com`.
 const DOMAIN_IN_TEXT =
-    /(?<![\w@.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}[a-z0-9](?![\w-])/gi;
+    /(?<![\p{L}\p{N}\p{M}_@.-])(?:[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}-]{0,61}[\p{L}\p{N}\p{M}])?\.)+[\p{L}][\p{L}\p{N}\p{M}-]{0,62}[\p{L}\p{N}\p{M}](?![\p{L}\p{N}\p{M}_-])/giu;
+
+// A bare name read as the browser reads its host: lower case, and a name in another script as its `xn--` form.
+function nameHost(name: string): string | undefined {
+    try {
+        return new URL(`http://${name}`).hostname;
+    } catch {
+        return undefined;
+    }
+}
 
 /**
  * The sites a person named in their own words: links, and bare names such as `news.ycombinator.com`. A link grants
@@ -143,7 +154,8 @@ export function sitesInText(text: string): Set<string> {
         .replace(URL_IN_TEXT, " ")
         .replace(EMAIL_IN_TEXT, " ")
         .matchAll(DOMAIN_IN_TEXT)) {
-        const site = hostSite(match);
+        const host = nameHost(match);
+        const site = host === undefined ? undefined : hostSite(host);
 
         if (site !== undefined) {
             sites.add(site);

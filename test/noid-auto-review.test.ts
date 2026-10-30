@@ -415,6 +415,11 @@ test("sites: a subdomain is its site, a shared host's tenant its own, and a pers
         ["example.org", "ycombinator.com"],
         "a link grants its own host only; an email is not a site",
     );
+    // A name in another script is its own site, not the ASCII tail of it (rakazo 54c46b74c).
+    assert.deepEqual(
+        [...sitesInText("look at bücher.com and münchen.de")],
+        ["xn--bcher-kva.com", "xn--mnchen-3ya.de"],
+    );
 });
 
 test("Noid puts work in a session unasked, but asks every time once its run took in what someone else wrote", () => {
