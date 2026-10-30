@@ -60,7 +60,7 @@ const DEFAULTS = {
     sidebar: "open",
     /** The open sidebar's width, its borders, the rail, and the list's: a 254px list. */
     sidebarWidth: SIDEBAR_WIDTH,
-    /** How the session list groups: "recent" (by day) or "folder". */
+    /** How the session list groups: "priority" (by what needs you), "recent" (by day), or "folder". */
     group: "recent",
     /** Other sessions' live work as peek tiles beside the session (a strip on narrow screens). Off until turned on. */
     peeks: false,
