@@ -6,7 +6,9 @@ import { clip, quoted } from "../src/server/fence.ts";
 import { cutWhole, tailWhole } from "../src/server/cut.ts";
 import { snippet } from "../src/server/projection.ts";
 
-const { cutWhole: webCutWhole } = (await import(new URL("../web/cut.js", import.meta.url).href)) as {
+const { cutWhole: webCutWhole } = (await import(
+    new URL("../web/cut.js", import.meta.url).href
+)) as {
     cutWhole: (text: string, end: number) => string;
 };
 

@@ -432,7 +432,10 @@ test("the Pinned group lists sessions in the order they were pinned", real, asyn
     // Pinned bottom first: the group keeps that order, not the list's.
     await click(`${row(lower as unknown as ConversationId)} [aria-label="Pin"]`);
     await click(`${row(upper as unknown as ConversationId)} [aria-label="Pin"]`);
-    await until(async () => (await ids()).slice(0, 2).join() === [lower, upper].join(), "pin order");
+    await until(
+        async () => (await ids()).slice(0, 2).join() === [lower, upper].join(),
+        "pin order",
+    );
 
     await click(`${row(lower as unknown as ConversationId)} [aria-label="Unpin"]`);
     await click(`${row(upper as unknown as ConversationId)} [aria-label="Unpin"]`);

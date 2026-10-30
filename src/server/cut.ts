@@ -3,7 +3,9 @@
 
 /** The first `end` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */
 export function cutWhole(text: string, end: number): string {
-    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1)) ? text.slice(0, end - 1) : text.slice(0, end);
+    return /[\uD800-\uDBFF]/.test(text.charAt(end - 1))
+        ? text.slice(0, end - 1)
+        : text.slice(0, end);
 }
 
 /** The last `count` UTF-16 units of `text`, one fewer when the cut would split a surrogate pair (an emoji). */

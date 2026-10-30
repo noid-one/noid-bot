@@ -467,6 +467,7 @@ test(
     { skip },
     async () => {
         const pid = async (name: string) => (await onComputer(`pgrep -x ${name} || true`)).trim();
+
         // Seen once (the owner's view starts the computer if a test before stopped it): what runs now.
         await app!.desktop.view(owner(app!));
         const display = await pid("Xvfb");
