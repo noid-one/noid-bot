@@ -90,12 +90,13 @@ COPY --chmod=755 start.sh /opt/noid/start.sh
 COPY --chmod=755 cdp-bridge.py /opt/noid/cdp-bridge.py
 COPY --chmod=755 noid-browser /usr/local/bin/noid-browser
 COPY fluxbox/ /etc/noid/fluxbox/
+COPY --chmod=644 profile.d/homebrew.sh /etc/profile.d/homebrew.sh
 # No save-password, address, or card prompts over the page: bots sign in with cookies brought from the owner's own
 # browser, and the bubbles only covered what they look at (rakazo 9da068ea7). The folder first, so it stays traversable.
 RUN mkdir -p /etc/chromium/policies/managed
 COPY --chmod=644 browser-policy.json /etc/chromium/policies/managed/noid-browser.json
 # Strip CR so the shebang works even from a CRLF checkout (rakazo does the same).
-RUN sed -i 's/\r$//' /opt/noid/start.sh /opt/noid/cdp-bridge.py /usr/local/bin/noid-browser
+RUN sed -i 's/\r$//' /opt/noid/start.sh /opt/noid/cdp-bridge.py /usr/local/bin/noid-browser /etc/profile.d/homebrew.sh
 USER 1000:1000
 WORKDIR /home/noid
 ENTRYPOINT ["/usr/bin/tini", "--"]
