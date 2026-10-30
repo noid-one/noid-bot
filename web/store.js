@@ -389,8 +389,27 @@ export function markChatRead() {
         return;
     }
 
-    localStorage.setItem(readKey(conversationId), String(last));
-    store.set({ chatRead: last });
+    setChatReadAt(conversationId, last);
+}
+
+/** How far this browser read a session's chat, as storage has it: another tab's read counts before its event arrives. */
+export function chatReadStored(id) {
+    return chatReadOf(id);
+}
+
+/**
+ * Set how far this browser read a session's chat, from the session list: `at` is the time of the newest message read, or
+ * 0 for none (the way back from an undo). The open session's own mark follows when it is the one.
+ */
+export function setChatReadAt(id, at) {
+    if (at > 0) {
+        localStorage.setItem(readKey(id), String(at));
+    } else {
+        localStorage.removeItem(readKey(id));
+    }
+
+    // Other sessions' reads are in storage alone (`sessionUnread`): the list draws again all the same.
+    store.set((state) => (id === state.conversationId ? { chatRead: at } : {}));
 }
 
 function applyChat(data) {

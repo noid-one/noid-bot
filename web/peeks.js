@@ -458,7 +458,7 @@ function PeekLine({ line }) {
  * Whether a call's command is short enough to show whole on its tile: only then may it be allowed from there. Shown
  * whole, it is never clamped; the tile also measures that it fits (`PeekTile`), as wide characters take more room.
  */
-const wholeOnTile = (approval) =>
+export const wholeOnTile = (approval) =>
     approval.subject.length <= ALLOW_LENGTH &&
     !/[\r\n]/.test(approval.subject) &&
     // A character the server wrote out (`fence.ts` visible): one that hid, or redrew the line. Its card says so.

@@ -120,7 +120,8 @@ import { type ExtensionInfo, ExtensionLoader, linkTypes, prepareDropInFolder } f
 import { ResendTask } from "./resend.ts";
 import { type Client, reportingOf, Room, ROOM_DOCS, subagentView } from "./room.ts";
 import { Schedules } from "./schedules.ts";
-import { FAILED_RUN } from "./subagent-runs.ts";
+import { FAILED_RUN, whyUnanswered } from "./subagent-runs.ts";
+import { cutWhole } from "./cut.ts";
 import { Shell } from "./shell.ts";
 import {
     loadSessionSkills,
@@ -165,6 +166,32 @@ const MAX_SUBAGENT_MODELS = 50;
  * there, each row asking for its own as the tiles do.
  */
 export const MAX_PEEKS = 20;
+
+/** How much of a failed run's reason the session list carries: it goes to every tab on each change. */
+const FAILURE_TEXT = 120;
+/** How much of a waiting call the session list carries (a tile's peek has more): enough to tell calls apart. */
+const ASK_SUBJECT = 200;
+const ASK_REASON = 200;
+/** The most failed subagents a session's row names: the list goes to every tab. */
+const FAILED_AGENTS = 5;
+
+/**
+ * The call a session waits on, as its row in the session list carries it (Priority's Needs you). noid: a bot's call
+ * (an id starting `noid:`) asks as the bot the session is or works for; the row names it from the list's `bot` and
+ * `worksFor`.
+ */
+type SessionAsk = {
+    id: string;
+    conversationId: number;
+    tool: string;
+    subject: string;
+    reason: string;
+    requestedBy?: string;
+    /** When it asked (the server's clock). */
+    at: number;
+    /** How many calls wait in the session, its subagents' too. */
+    count: number;
+};
 
 /** A conversation's subagents document, as far as the app reads it. */
 type SubagentsValue = {
@@ -252,6 +279,24 @@ function countSubagents(
     }
 
     return counts;
+}
+
+/**
+ * A session's failed subagents that nobody dealt with, newest first: what the list's Dismiss needs (the failure is
+ * named by when it failed, as `dismissSubagent` takes it). Stopped ones did not fail, and the rest are dealt with.
+ */
+function failedSubagents(
+    entries: readonly SubagentEntry[],
+): { name: string; conversationId: number; at: number }[] {
+    return entries
+        .filter((entry) => subagentState(entry) === "failed" && entry.dealt !== true)
+        .sort((a, b) => (b.answeredAt ?? 0) - (a.answeredAt ?? 0))
+        .slice(0, FAILED_AGENTS)
+        .map((entry) => ({
+            name: entry.name,
+            conversationId: Number(entry.conversationId),
+            at: entry.answeredAt ?? 0,
+        }));
 }
 
 export interface OpenOptions {
@@ -412,7 +457,7 @@ export class PocketApp {
      * Conversations whose last run ended because the model or provider failed (not stopped by someone), since this
      * server started: the session list marks them until their next run starts.
      */
-    readonly #failed = new Set<ConversationId>();
+    readonly #failed = new Map<ConversationId, string>();
     readonly #agents = new Map<ConversationId, AgentState>();
 
     /** The newest chat message (not activity) of each conversation, for unread dots in the session list. */
@@ -971,7 +1016,13 @@ export class PocketApp {
                     this.#sessions[String(change.value.conversationId)] !== undefined &&
                     !this.#failed.has(change.value.conversationId)
                 ) {
-                    this.#failed.add(change.value.conversationId);
+                    this.#failed.set(
+                        change.value.conversationId,
+                        cutWhole(
+                            whyUnanswered(change.value.reason, change.value.detail),
+                            FAILURE_TEXT,
+                        ),
+                    );
                     sessionsChanged = true;
                 }
             }
@@ -2057,6 +2108,38 @@ export class PocketApp {
         }
     }
 
+    /**
+     * The call each session waits on, by session: the oldest one waiting there or in a subagent of it, as a tile's peek
+     * shows its calls, cut short (the list goes to every tab), and how many wait.
+     */
+    #oldestAsks(): Map<string, SessionAsk> {
+        const asks = new Map<string, SessionAsk>();
+
+        for (const request of this.approvals.all()) {
+            const session = String(this.rootOf(request.conversationId));
+            const kept = asks.get(session);
+
+            if (kept !== undefined && kept.at <= request.createdAt) {
+                kept.count++;
+
+                continue;
+            }
+
+            asks.set(session, {
+                id: request.id,
+                conversationId: Number(request.conversationId),
+                tool: request.tool,
+                subject: cutWhole(request.subject, ASK_SUBJECT),
+                reason: cutWhole(request.reason, ASK_REASON),
+                ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
+                at: request.createdAt,
+                count: (kept?.count ?? 0) + 1,
+            });
+        }
+
+        return asks;
+    }
+
     /** The session list, with who is in each session and its newest chat message. Each person sees what they may open. */
     sessions(user?: User) {
         const waiting = new Set(
@@ -2064,6 +2147,7 @@ export class PocketApp {
         );
         const people = new Map<string, Map<string, string>>();
         const subagents = this.#subagentsBySession();
+        const asks = this.#oldestAsks();
 
         for (const client of this.#clients) {
             if (client.conversationId === undefined) {
@@ -2098,6 +2182,9 @@ export class PocketApp {
                 const said = this.#lastSaid.get(id);
                 const endedAt = this.#endedAt.get(Number(id) as unknown as ConversationId);
                 const counts = countSubagents(subagents.get(id) ?? []);
+                const failure = this.#failed.get(Number(id) as unknown as ConversationId);
+                const failedAgents = failedSubagents(subagents.get(id) ?? []);
+                const ask = asks.get(id);
                 // Which of Pi's sessions it continues is the owner's to know (the Pi sessions sheet), not the list's.
                 const { fromPi: _fromPi, linkedFrom, ...shown } = meta;
                 // Linking does not share the origin: do not leak its id to someone who only sees the new chat.
@@ -2128,9 +2215,9 @@ export class PocketApp {
                     busy,
                     waiting: waiting.has(id),
                     ...(endedAt === undefined ? {} : { endedAt }),
-                    ...(this.#failed.has(Number(id) as unknown as ConversationId)
-                        ? { failed: true }
-                        : {}),
+                    ...(failure === undefined ? {} : { failed: true, failure }),
+                    ...(failedAgents.length === 0 ? {} : { failedAgents }),
+                    ...(ask === undefined ? {} : { approval: ask }),
                     ...(model === undefined ? {} : { model: model.modelId }),
                     ...(here.length === 0 ? {} : { people: here }),
                     ...(chat === undefined ? {} : { chatAt: chat.at, chatBy: chat.userId }),
