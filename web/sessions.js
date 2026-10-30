@@ -12,6 +12,7 @@ import { foldedUnder, sessionForest, unfolded } from "./session-tree.js";
 import { Splitter } from "./splitter.js";
 import {
     actions,
+    api,
     attempt,
     canSteer,
     chatReadStored,
@@ -19,6 +20,7 @@ import {
     navigate,
     notify,
     isUnread,
+    mayAllow,
     openSheet,
     openTool,
     closeTool,
@@ -34,7 +36,6 @@ import {
     workspaceOrder,
 } from "./store.js";
 import { finishedUnseen, fromServer, markSeen, restoreSeen, seenSnapshot } from "./seen.js";
-import { dismiss as dismissSubagent } from "./subagents.js";
 import {
     isPinned,
     prefs,
@@ -450,13 +451,13 @@ const dismissable = (session, need = needOf(session)) =>
     need === "failed" ||
     (need === "agents" && canSteer() && (session.failedAgents ?? []).length > 0);
 
-/** A failed run seen, and its failed subagents dealt with: what leaves Needs you. Undone only for the run. */
-async function dismissFailures(list) {
-    const runs = list.filter((session) => failedRun(session));
-    const ids = runs.map((session) => session.id);
+/**
+ * Sessions seen, and their marks cleared. Gives back what undoes it: it puts back only what is still as this made it,
+ * so a session read since, here or in another tab, stays read.
+ */
+function seeAll(ids) {
     const seen = seenSnapshot(ids);
     const marked = ids.filter((id) => isUnread(id));
-    const agents = canSteer() ? list.flatMap((session) => session.failedAgents ?? []) : [];
 
     for (const id of ids) {
         markSeen(id);
@@ -468,9 +469,26 @@ async function dismissFailures(list) {
         setUnread(id, false);
     }
 
+    return () => {
+        const back = restoreSeen(seen, set);
+
+        for (const id of marked.filter((each) => back.has(each) && !isUnread(each))) {
+            setUnread(id, true);
+        }
+    };
+}
+
+/** A failed run seen, and its failed subagents dealt with: what leaves Needs you. Undone only for the run. */
+async function dismissFailures(list) {
+    const ids = list.filter((session) => failedRun(session)).map((session) => session.id);
+    const undo = seeAll(ids);
+    // Each session's failed subagents at once, up to the newest failure its row showed.
+    const agents = canSteer()
+        ? list.filter((session) => (session.failedAgents ?? []).length > 0)
+        : [];
     const results = await Promise.allSettled(
-        agents.map((agent) =>
-            dismissSubagent({ conversationId: agent.conversationId, answeredAt: agent.at }),
+        agents.map((session) =>
+            api(`c/${session.id}/dismiss-failed`, { before: session.failedAgents[0].at }),
         ),
     );
     const refused = results.find((result) => result.status === "rejected");
@@ -491,33 +509,15 @@ async function dismissFailures(list) {
         return;
     }
 
-    notify("info", `Dismissed ${what}. ${undoWord()} to undo.`, () => {
-        const back = restoreSeen(seen, set);
-
-        for (const id of marked.filter((each) => back.has(each))) {
-            setUnread(id, true);
-        }
-    });
+    notify("info", `Dismissed ${what}. ${undoWord()} to undo.`, undo);
 }
 
 /** Mark sessions read: a finished run seen, a mark cleared, new chat read. Says so in a notice that undoes it. */
 function markRead(list, { say = true } = {}) {
-    const ids = list.map((session) => session.id);
-    const seen = seenSnapshot(ids);
-    const marked = ids.filter((id) => isUnread(id));
     const chats = list
         .filter((session) => session.chatAt !== undefined && sessionUnread(session))
         .map((session) => [session.id, chatReadStored(session.id), session.chatAt]);
-
-    for (const id of ids) {
-        markSeen(id);
-    }
-
-    const set = seenSnapshot(ids);
-
-    for (const id of marked) {
-        setUnread(id, false);
-    }
+    const undo = seeAll(list.map((session) => session.id));
 
     for (const [id, , read] of chats) {
         setChatReadAt(id, read);
@@ -527,13 +527,9 @@ function markRead(list, { say = true } = {}) {
         return;
     }
 
-    // Undo puts back only what is still as this made it: a session read since, here or in another tab, stays read.
+    // Undo puts back only what is still as this made it: a chat read since stays read too.
     notify("info", `Marked ${list.length} read. ${undoWord()} to undo.`, () => {
-        const back = restoreSeen(seen, set);
-
-        for (const id of marked.filter((each) => back.has(each) && !isUnread(each))) {
-            setUnread(id, true);
-        }
+        undo();
 
         for (const [id, before, read] of chats) {
             if (chatReadStored(id) === read) {
@@ -1951,14 +1947,8 @@ function AllSessions({ compact = false }) {
         }
     };
 
-    // Under the "others" rule, a call this person's own message led to is someone else's to allow; one nobody is known
-    // to have asked for is the owner's (`cannotAllow` on the server).
-    const ownCall = (session) =>
-        session.approval !== undefined &&
-        server?.approvalRule === "others" &&
-        store.state.me?.role !== "owner" &&
-        (session.approval.requestedBy === undefined ||
-            session.approval.requestedBy === store.state.me?.id);
+    // A call this person may not allow shows no Allow (`mayAllow`, as the server's `cannotAllow`).
+    const ownCall = (session) => session.approval !== undefined && !mayAllow(session.approval);
 
     // How many sessions need you: Priority's tab says. The tab's width changes with that count, and the marker under
     // the chosen tab is measured again as each draw lays it out.

@@ -7,7 +7,6 @@
  * Edit `DEFERRED` to choose which tools wait: what each is for, and the prompt section that goes with it, if one does.
  * From pi-pocket 0.27 (PR #224, #225).
  */
-import type { Context } from "@earendil-works/chord/context";
 import { Type } from "@earendil-works/pi-ai";
 import {
     createToolSearchExtension,
@@ -25,6 +24,9 @@ import {
 } from "@earendil-works/pi-durable";
 import type { PocketHost } from "../host.ts";
 import { browserGuide } from "./browser.ts";
+
+/** A conversation's agent, as a tool call sees it. */
+type Agent = Awaited<ReturnType<ToolExecutionApi<never>["agent"]>>;
 
 /** What loading a search matches at most, when the query is not the names of tools. */
 const SEARCH_LIMIT = 2;
@@ -65,13 +67,12 @@ export default function createToolSearch(host: PocketHost) {
      * the tool is not loaded: Pi gets its description and parameters in the result, and calls it from a codemode script,
      * which can call a tool that is not offered. The conversation's tool list never changes.
      */
-    const throughCodemode = async (api: ToolExecutionApi<never>, context: Context) => {
-        const agent = await api.agent(context);
+    const throughCodemode = (agent: Agent, models: ToolExecutionApi<never>["models"]) => {
         const ref = agent.model;
         const compat =
             ref === undefined
                 ? undefined
-                : (api.models.getModel(ref.provider, ref.modelId)?.compat as
+                : (models.getModel(ref.provider, ref.modelId)?.compat as
                       | {
                             supportsMidConvoSystemMessages?: boolean;
                             supportsMidConvoToolChanges?: boolean;
@@ -85,18 +86,15 @@ export default function createToolSearch(host: PocketHost) {
         );
     };
 
-    const explain = async (names: string[], api: ToolExecutionApi<never>, context: Context) => {
-        const waiting = (await api.agent(context)).deferred;
-
-        return names
+    const explain = (names: string[], agent: Agent, conversationId: ConversationId) =>
+        names
             .map((name) => {
-                const tool = waiting.find((each) => each.name === name)!;
-                const note = DEFERRED[name]?.note?.(host, api.conversationId) ?? "";
+                const tool = agent.deferred.find((each) => each.name === name)!;
+                const note = DEFERRED[name]?.note?.(host, conversationId) ?? "";
 
                 return `## ${name}\nCall it from a codemode script: await tools.${name}({ ...args })\n${tool.description}\n${note}\nParameters (JSON Schema): ${JSON.stringify(tool.parameters)}`;
             })
             .join("\n\n");
-    };
 
     // A query that is only names of waiting tools loads exactly those: a BM25 search for "browser" also matches every
     // tool whose text mentions one, and each load is kept for the branch.
@@ -116,7 +114,8 @@ export default function createToolSearch(host: PocketHost) {
             const names = String(args.query)
                 .split(/[\s,]+/)
                 .filter(Boolean);
-            const waiting = (await api.agent(context)).deferred.map((tool) => tool.name);
+            const agent = await api.agent(context);
+            const waiting = agent.deferred.map((tool) => tool.name);
             const result =
                 names.length > 0 && names.every((name) => waiting.includes(name))
                     ? ({
@@ -136,7 +135,7 @@ export default function createToolSearch(host: PocketHost) {
                       );
             const loaded = (result.details as { loaded?: string[] } | undefined)?.loaded ?? [];
 
-            if (loaded.length === 0 || !(await throughCodemode(api as never, context))) {
+            if (loaded.length === 0 || !throughCodemode(agent, api.models)) {
                 return result;
             }
 
@@ -144,7 +143,7 @@ export default function createToolSearch(host: PocketHost) {
                 output: [
                     {
                         type: "text",
-                        text: `Use these through codemode:\n\n${await explain(loaded, api as never, context)}`,
+                        text: `Use these through codemode:\n\n${explain(loaded, agent, api.conversationId)}`,
                     },
                 ],
                 details: { loaded: [] },

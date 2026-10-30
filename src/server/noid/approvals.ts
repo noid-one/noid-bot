@@ -64,6 +64,10 @@ export type Verdict =
     /** `always`: asked every time, as `alwaysAsks`; "Always allow" never answers it for good. */
     | { ask: true; reason: string; subject: string; always?: true };
 
+/** A bot changing its own instructions (`bot_settings`): asked about in a run the owner did not start alone. */
+const changesOwnInstructions = (tool: string, args: Record<string, unknown>) =>
+    tool === "bot_settings" && args.instructions !== undefined;
+
 /**
  * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot, making a bot on this
  * machine. "Always allow" never answers them for good (rakazo asks for these whatever the rules say).
@@ -72,7 +76,7 @@ export function alwaysAsks(tool: string, args: Record<string, unknown> = {}): bo
     return (
         tool === "bot_archive" ||
         tool === "bot_update" ||
-        (tool === "bot_settings" && args.instructions !== undefined) ||
+        changesOwnInstructions(tool, args) ||
         (tool === "bot_create" && args.kind === "host") ||
         (tool === "memory" && args.action === "remove")
     );
@@ -173,7 +177,7 @@ export function classify(
 
     // A bot's own instructions, in a run the owner did not start or that took in what someone else wrote: a routine,
     // another bot's mail, or a page could be asking for them (rakazo #2865). Every time: a rule cannot vouch for those.
-    if (tool === "bot_settings" && args.instructions !== undefined && tainted) {
+    if (changesOwnInstructions(tool, args) && tainted) {
         return {
             ask: true,
             always: true,
@@ -403,6 +407,24 @@ export function waitMs(): number {
     return (minutes > 0 ? minutes : 60) * 60_000;
 }
 
+/** Who answered a bot's call that nobody answered in `waitMs`: no. */
+export const NOBODY_IN_TIME = "nobody, in time";
+
+/** Answer a bot's waiting call `id` no once `waitMs` is over: a timer to clear once it is answered. */
+export function denyInTime(
+    approvals: { answer(id: string, answer: ApprovalAnswer): unknown },
+    id: string,
+): NodeJS.Timeout {
+    const timer = setTimeout(
+        () => approvals.answer(id, { allow: false, by: NOBODY_IN_TIME }),
+        waitMs(),
+    );
+
+    timer.unref();
+
+    return timer;
+}
+
 /**
  * The hooks: always on, as approvals are a guard, not an option (pi-pocket's core-or-extension rule C1). A bot's
  * summaries are guarded here too, whether its session tools are on or off: written with what came from outside left
@@ -442,7 +464,7 @@ export function createApprovals(app: PocketApp) {
                     // instructions, and a site.
                     const run =
                         (bot.main === true && startsWork(call.name, args)) ||
-                        (call.name === "bot_settings" && args.instructions !== undefined) ||
+                        changesOwnInstructions(call.name, args) ||
                         site !== undefined
                             ? await runSoFar(app, api.conversationId, call.id)
                             : undefined;
@@ -549,12 +571,7 @@ export function createApprovals(app: PocketApp) {
                         // Its own id (Lancet Guard's is the bare call): "always allow" only answers noid's own questions,
                         // and never one auto review raised (that would turn auto review off for the tool for good).
                         const id = `${reviewed?.ask === true ? AUTO_REVIEW_APPROVAL : verdict.always === true ? EVERY_TIME_APPROVAL : NOID_APPROVAL}${api.taskId}:${call.id}`;
-                        const timer = setTimeout(
-                            () => app.approvals.answer(id, { allow: false, by: "nobody, in time" }),
-                            waitMs(),
-                        );
-
-                        timer.unref();
+                        const timer = denyInTime(app.approvals, id);
 
                         try {
                             const asked = await app.approvals.request(

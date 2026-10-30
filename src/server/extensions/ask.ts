@@ -6,7 +6,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
 import { pickedLabels } from "../asks.ts";
 import type { AskField, PocketHost } from "../host.ts";
-import { waitMs } from "../noid/approvals.ts";
+import { denyInTime, NOBODY_IN_TIME } from "../noid/approvals.ts";
 
 const DESCRIPTION =
     "Ask the person 1 to 4 questions on a card, each with 2 to 4 answers to tap (or their own). " +
@@ -18,9 +18,6 @@ const DECLINED =
     "The person declined to answer. Do not ask again at once; go on with your best judgment, or ask in plain text.";
 const UNANSWERED =
     "Nobody answered in time. Go on with your best judgment, and say in your reply what you chose and why.";
-
-/** Who settles a bot's question nobody answered (`noid/approvals.ts` times its own out the same way). */
-const NOBODY = "nobody, in time";
 
 /** What the call gives back, kept in its memo: a restart after the answer does not ask again. */
 type Reply = { text: string; answers?: { header: string; question: string; answer: string }[] };
@@ -93,15 +90,7 @@ export default function createAsk(host: PocketHost) {
                 // A bot often runs with nobody watching (mail, a schedule, a group round): its question waits as long
                 // as its approvals do, then the bot goes on without the answer. Pi's own sessions wait for the person.
                 const bot = host.botOf(api.conversationId);
-                const timer =
-                    bot === undefined
-                        ? undefined
-                        : setTimeout(
-                              () => host.approvals.answer(id, { allow: false, by: NOBODY }),
-                              waitMs(),
-                          );
-
-                timer?.unref();
+                const timer = bot === undefined ? undefined : denyInTime(host.approvals, id);
 
                 let answer;
 
@@ -150,7 +139,7 @@ export default function createAsk(host: PocketHost) {
                 reply = await api.memo<Reply>(
                     "pocket.ask",
                     answers === undefined
-                        ? { text: answer.by === NOBODY ? UNANSWERED : DECLINED }
+                        ? { text: answer.by === NOBODY_IN_TIME ? UNANSWERED : DECLINED }
                         : {
                               text: answers
                                   .map((each) => `${each.header}: ${each.answer}`)

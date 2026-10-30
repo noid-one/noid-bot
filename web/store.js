@@ -349,6 +349,31 @@ export const collab = () => (store.state.server?.collab ?? 0) >= 2;
 export const canSteer = () => store.state.me?.role !== "viewer";
 
 /**
+ * Whether this person may allow a waiting call, or answer a question, as the server's `cannotAllow` decides: a question
+ * is for the person Pi works for (the owner when nobody is known); under the "others" rule, a call is someone else's to
+ * allow when this person's own message led to it, and the owner's when nobody is known to have asked.
+ */
+export function mayAllow(approval) {
+    const { me, server, users } = store.state;
+
+    if (!canSteer()) {
+        return false;
+    }
+
+    if (approval.form) {
+        const owner = users?.find?.((each) => each.role === "owner")?.id;
+
+        return (approval.requestedBy ?? owner) === me?.id;
+    }
+
+    return (
+        server?.approvalRule !== "others" ||
+        me?.role === "owner" ||
+        (approval.requestedBy !== undefined && approval.requestedBy !== me?.id)
+    );
+}
+
+/**
  * Whether this person may turn take turns on or off here, as the server decides: anyone who steers while it is off; the
  * driver, the owner, or anyone when nobody drives or the driver has left, while it is on.
  */

@@ -174,11 +174,8 @@ const FAILURE_TEXT = 120;
 /** How much of a waiting call the session list carries (a tile's peek has more): enough to tell calls apart. */
 const ASK_SUBJECT = 200;
 const ASK_REASON = 200;
-/**
- * The most failed subagents a session's row carries for Dismiss: the list goes to every tab, but one Dismiss should deal
- * with a whole fan-out that failed together (a provider down fails them all).
- */
-const FAILED_AGENTS = 30;
+/** The most failed subagents a session's row names: the list goes to every tab. Dismiss deals with all of them. */
+const FAILED_AGENTS = 5;
 
 /**
  * The call a session waits on, as its row in the session list carries it (Priority's Needs you). noid: a bot's call
@@ -294,11 +291,12 @@ function countSubagents(
  */
 function failedSubagents(
     entries: readonly SubagentEntry[],
+    most = FAILED_AGENTS,
 ): { name: string; conversationId: number; at: number }[] {
     return entries
         .filter((entry) => subagentState(entry) === "failed" && entry.dealt !== true)
         .sort((a, b) => (b.answeredAt ?? 0) - (a.answeredAt ?? 0))
-        .slice(0, FAILED_AGENTS)
+        .slice(0, most)
         .map((entry) => ({
             name: entry.name,
             conversationId: Number(entry.conversationId),
@@ -1854,6 +1852,11 @@ export class PocketApp {
         return sessions;
     }
 
+    /** A session's failed subagents that nobody dealt with, every one, newest first: for Dismiss on its row. */
+    failedSubagentsOf(session: ConversationId): { conversationId: number; at: number }[] {
+        return failedSubagents(this.#subagentsBySession().get(String(session)) ?? [], Infinity);
+    }
+
     /**
      * Every subagent in the sessions this person can see, for the subagents board, but a session's oldest finished ones
      * past `BOARD_FINISHED`. Archived sessions are left out, unless one of their subagents works or waits there.
@@ -2157,11 +2160,9 @@ export class PocketApp {
 
     /** The session list, with who is in each session and its newest chat message. Each person sees what they may open. */
     sessions(user?: User) {
-        const waiting = new Set(
-            this.approvals.all().map((approval) => String(this.rootOf(approval.conversationId))),
-        );
         const people = new Map<string, Map<string, string>>();
         const subagents = this.#subagentsBySession();
+        // A session waits when any call in it does: its oldest is the one the list names.
         const asks = this.#oldestAsks();
 
         for (const client of this.#clients) {
@@ -2228,7 +2229,7 @@ export class PocketApp {
                     ...linkage,
                     ...(worksFor === undefined ? {} : { worksFor }),
                     busy,
-                    waiting: waiting.has(id),
+                    waiting: asks.has(id),
                     ...(endedAt === undefined ? {} : { endedAt }),
                     ...(failure === undefined ? {} : { failed: true, failure }),
                     ...(failedAgents.length === 0 ? {} : { failedAgents }),

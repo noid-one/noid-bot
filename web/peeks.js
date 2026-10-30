@@ -17,6 +17,7 @@ import {
     api,
     attempt,
     canSteer,
+    mayAllow,
     navigate,
     notify,
     store,
@@ -487,7 +488,7 @@ function PeekAsk({ approval, compact, who }) {
  * Allow or deny a call from its tile, as from its card: the same rules, the same request. A command that does not show
  * whole is not allowed from here: Open shows it on its card, in the conversation that asks (a subagent's, maybe).
  */
-function PeekApproval({ approval, me, rule, whole }) {
+function PeekApproval({ approval, whole }) {
     const [busy, setBusy] = useState(false);
 
     const answer = (allow) => {
@@ -495,7 +496,7 @@ function PeekApproval({ approval, me, rule, whole }) {
         attempt(() => actions.approve(approval.id, allow)).finally(() => setBusy(false));
     };
 
-    const ownCall = rule === "others" && me?.role !== "owner" && approval.requestedBy === me?.id;
+    const ownCall = !mayAllow(approval);
 
     // A question (Pi's `ask`) is answered on its card, where its answers are: from here, open it or decline.
     if (approval.form) {
@@ -675,7 +676,7 @@ class PeekTile extends Component {
         }
     }
 
-    render({ session, peek, agents, status, label, number, compact, steer, home, me, rule }) {
+    render({ session, peek, agents, status, label, number, compact, steer, home }) {
         const title = session.title ?? "New session";
         const open = () => navigate(session.id);
         // A call answered elsewhere can stay on a tile scrolled away: the session list says whether one still waits.
@@ -734,8 +735,6 @@ class PeekTile extends Component {
                     html`<${PeekApproval}
                         key=${approval.id}
                         approval=${approval}
-                        me=${me}
-                        rule=${rule}
                         whole=${wholeOnTile(approval) && !this.state.clipped}
                     />`
                 }
@@ -814,6 +813,7 @@ function tileProps(tiles, compact) {
             compact,
             steer,
             home: state.server?.home,
+            // Who may allow a call (`mayAllow`) depends on these: a change draws the tile again.
             me: state.me,
             rule: state.server?.approvalRule,
         };

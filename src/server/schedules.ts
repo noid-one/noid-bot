@@ -183,7 +183,9 @@ export class Schedules {
             );
         }
 
-        if (stopped === undefined && held === undefined) {
+        const sends = stopped === undefined && held === undefined;
+
+        if (sends) {
             await conversation.submit(
                 { type: "input", content: schedule.content, whenBusy: "followUp", requestId },
                 context,
@@ -215,7 +217,7 @@ export class Schedules {
                 return finished;
             }
 
-            if (stopped === undefined && held === undefined) {
+            if (sends) {
                 remember(item, { at: runtime.now(), requestId });
             }
 
@@ -250,7 +252,7 @@ export class Schedules {
 
             // A run whose model failed ends unanswered, with the provider's words; or answered with them.
             if (submission?.status === "unanswered") {
-                return typeof submission.detail === "string"
+                return FAILED_RUN.has(submission.reason) && typeof submission.detail === "string"
                     ? { message: submission.detail, at: last.at }
                     : undefined;
             }

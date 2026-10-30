@@ -152,6 +152,17 @@ export async function conversationRoutes(
         return json(response, 200, await app.commands.dismissSubagent(id, user, body.at));
     }
 
+    // A session's failed subagents dealt with at once: `before` is the newest failure the person saw.
+    if (third === "dismiss-failed" && method === "POST") {
+        const body = await readJson<{ before?: unknown }>(request);
+
+        return json(
+            response,
+            200,
+            await app.commands.dismissFailedSubagents(id, user, body.before),
+        );
+    }
+
     if (third === "withdraw" && method === "POST") {
         const body = await readJson<{ submissionId?: number }>(request);
 

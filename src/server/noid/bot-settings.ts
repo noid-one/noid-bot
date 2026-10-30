@@ -94,7 +94,7 @@ export function changeSummary(after: BotSettingsValues): string {
  * The signed-in model `spec` names: `provider/id`, an id, or a name ("Claude Sonnet"). A name that fits several asks
  * which: the bot never picks one for its person.
  */
-export function modelFor(app: PocketApp, spec: string): Model<Api> {
+function modelFor(app: PocketApp, spec: string): Model<Api> {
     const exact = findModel(app.models, spec);
 
     if (exact !== undefined) {
@@ -145,11 +145,7 @@ export class BotSettings {
      * settings still hold what the change made them: a later change is not silently thrown away.
      */
     async undo(user: User, id: ConversationId, changeId: string): Promise<BotChange> {
-        const app = this.#app;
-
-        requireOwner(user, "Only the owner undoes a bot's changes.");
-        app.requireSee(user, id);
-
+        // The owner's alone, as their list is.
         const change = (await this.changes(user, id)).find((each) => each.id === changeId);
 
         if (change === undefined) {
@@ -183,23 +179,7 @@ export class BotSettings {
         }
 
         try {
-            if (before.name !== undefined || before.instructions !== undefined) {
-                await app.bots.update(user, id, {
-                    ...(before.name === undefined ? {} : { name: before.name }),
-                    ...(before.instructions === undefined
-                        ? {}
-                        : { instructions: before.instructions }),
-                });
-            }
-
-            if (before.model !== undefined || before.thinkingLevel !== undefined) {
-                await app.commands.configure(id, user, {
-                    ...(before.model === undefined ? {} : { model: before.model }),
-                    ...(before.thinkingLevel === undefined
-                        ? {}
-                        : { thinkingLevel: before.thinkingLevel }),
-                });
-            }
+            await this.#apply(id, before, user);
         } catch (error) {
             await this.#mark(id, changeId, undefined);
 
@@ -491,28 +471,28 @@ export class BotSettings {
     }
 
     /**
-     * Give the bot `after`'s settings: name and instructions through the bot's own edit, which checks them (a file's bot,
-     * a name taken); then the model, which nothing there can refuse. The same again changes nothing.
+     * Give the bot `values`, as `user` (the owner, for the bot's own call): name and instructions through the bot's own
+     * edit, which checks them (a file's bot, a name taken); then the model, which nothing there can refuse. The same
+     * again changes nothing.
      */
-    async #apply(id: ConversationId, after: BotSettingsValues): Promise<void> {
+    async #apply(id: ConversationId, values: BotSettingsValues, user = ownerOf(this.#app)!) {
         const app = this.#app;
+        const { name, instructions, model, thinkingLevel } = values;
 
-        if (after.name !== undefined || after.instructions !== undefined) {
-            await app.bots.update(ownerOf(app)!, id, {
-                ...(after.name === undefined ? {} : { name: after.name }),
-                ...(after.instructions === undefined ? {} : { instructions: after.instructions }),
+        if (name !== undefined || instructions !== undefined) {
+            await app.bots.update(user, id, {
+                ...(name === undefined ? {} : { name }),
+                ...(instructions === undefined ? {} : { instructions }),
             });
         }
 
-        if (after.model !== undefined || after.thinkingLevel !== undefined) {
+        if (model !== undefined || thinkingLevel !== undefined) {
             await (
                 await app.conversation(id)
             ).configure(
                 {
-                    ...(after.model === undefined ? {} : { model: after.model }),
-                    ...(after.thinkingLevel === undefined
-                        ? {}
-                        : { thinkingLevel: after.thinkingLevel }),
+                    ...(model === undefined ? {} : { model }),
+                    ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
                 },
                 context,
             );

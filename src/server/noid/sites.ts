@@ -126,15 +126,6 @@ const EMAIL_IN_TEXT =
 const DOMAIN_IN_TEXT =
     /(?<![\p{L}\p{N}\p{M}_@.-])(?:[\p{L}\p{N}](?:[\p{L}\p{N}\p{M}-]{0,61}[\p{L}\p{N}\p{M}])?\.)+[\p{L}][\p{L}\p{N}\p{M}-]{0,62}[\p{L}\p{N}\p{M}](?![\p{L}\p{N}\p{M}_-])/giu;
 
-// A bare name read as the browser reads its host: lower case, and a name in another script as its `xn--` form.
-function nameHost(name: string): string | undefined {
-    try {
-        return new URL(`http://${name}`).hostname;
-    } catch {
-        return undefined;
-    }
-}
-
 /**
  * The sites a person named in their own words: links, and bare names such as `news.ycombinator.com`. A link grants
  * only its own host, not a name in its path or query; an address after `@` is an email, not a site.
@@ -154,8 +145,8 @@ export function sitesInText(text: string): Set<string> {
         .replace(URL_IN_TEXT, " ")
         .replace(EMAIL_IN_TEXT, " ")
         .matchAll(DOMAIN_IN_TEXT)) {
-        const host = nameHost(match);
-        const site = host === undefined ? undefined : hostSite(host);
+        // Read as the browser reads it: lower case, and a name in another script as its `xn--` form.
+        const site = urlSite(match);
 
         if (site !== undefined) {
             sites.add(site);

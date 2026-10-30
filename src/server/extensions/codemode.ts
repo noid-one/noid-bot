@@ -455,18 +455,15 @@ export default function createCodemode(_host: PocketHost) {
         tools: [codemode],
         sections: [
             section("codemode", ({ agent }) => {
-                const names = agent.tools
-                    .map((tool) => tool.name)
-                    .filter((name) => name !== CODEMODE_TOOL);
-
+                // Only with codemode and something for it to call.
                 if (
                     !agent.tools.some((tool) => tool.name === CODEMODE_TOOL) ||
-                    names.length === 0
+                    agent.tools.every((tool) => tool.name === CODEMODE_TOOL)
                 ) {
                     return undefined;
                 }
 
-                return `Use codemode to batch independent tool calls (Promise.allSettled), chain them, or filter large output, instead of making many separate calls.`;
+                return "Use codemode to batch independent tool calls (Promise.allSettled), chain them, or filter large output, instead of making many separate calls.";
             }),
         ],
     });

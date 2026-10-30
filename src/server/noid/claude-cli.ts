@@ -21,7 +21,6 @@ import type {
     Message,
     Model,
     SimpleStreamOptions,
-    Tool,
     TranscriptContext,
 } from "@earendil-works/pi-ai";
 import {
@@ -31,6 +30,7 @@ import {
     fauxText,
     fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { getCurrentTools } from "@earendil-works/pi-ai/utils/transcript";
 
 export const CLAUDE_CLI_PROVIDER = "claude-code";
 
@@ -144,7 +144,9 @@ export function render(
     context: TranscriptContext,
     marker = `⟦${randomBytes(6).toString("hex")}⟧`,
 ): { system: string; blocks: Block[]; tools: string[] } {
-    const tools = new Map<string, Tool>();
+    // As Pi replays them: a tool whose definition changed is removed and added in one message (a copy of this that
+    // added first left it out, and bots on Claude Code lost every tool after a reload).
+    const tools = new Map(getCurrentTools(context.messages).map((tool) => [tool.name, tool]));
     const sections = new Map<string, string>();
     const base: string[] = [];
     const blocks: Block[] = [];
@@ -156,16 +158,6 @@ export function render(
 
     for (const message of context.messages) {
         if (message.role === "system") {
-            // Removed first, as Pi replays them: a tool whose definition changed is removed and added in one message,
-            // and the other way round would leave it out (bots on Claude Code lost every tool after a reload).
-            for (const tool of message.toolsRemoved ?? []) {
-                tools.delete(tool.name);
-            }
-
-            for (const tool of message.toolsAdded ?? []) {
-                tools.set(tool.name, tool);
-            }
-
             for (const [name, section] of Object.entries(message.sections ?? {})) {
                 if (section === null) {
                     sections.delete(name);

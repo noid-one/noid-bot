@@ -56,7 +56,6 @@ export type ComputerOptions = {
 
 export type ComputerState = "missing" | "stopped" | "running";
 
-/** Runs a docker command, resolving with its output; a failure rejects with what docker said. */
 /**
  * The CPU time, in clock ticks, of each process on the computer that is not the computer's own (its init, start.sh,
  * display, desktop, session bus, browser, and the bridges noid runs there): one `pid ticks` line each.
@@ -81,6 +80,7 @@ for pid in os.listdir("/proc"):
 /** CPU time between two looks that says the background works: a second, at Linux's 100 ticks a second. */
 const WORKING_TICKS = 100;
 
+/** Runs a docker command, resolving with its output; a failure rejects with what docker said. */
 export type Docker = (args: readonly string[], input?: NodeJS.ReadableStream) => Promise<string>;
 
 export function dockerCommand(binary: string): Docker {

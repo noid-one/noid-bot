@@ -40,7 +40,10 @@ const CHANGES_KEPT_MS = 30_000;
 
 function botChanges(id) {
     if (!changesOf.has(id)) {
-        changesOf.set(id, api(`bots/${id}/changes`).then(({ changes }) => changes));
+        changesOf.set(
+            id,
+            api(`bots/${id}/changes`).then(({ changes }) => changes),
+        );
         setTimeout(() => changesOf.delete(id), CHANGES_KEPT_MS);
     }
 

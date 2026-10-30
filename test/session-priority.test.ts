@@ -149,10 +149,13 @@ test("failed subagents nobody dealt with are named, and leave when dealt with", 
     assert.equal(row(id).approval?.conversationId, Number(child.conversationId));
     app.approvals.answer(key, { allow: false, by: "test" });
 
-    // Dealing with it takes the failure off the row, by the time it failed.
-    const answer = await app.commands.dismissSubagent(child.conversationId, owner(app), named!.at);
-
-    assert.equal(answer.dismissed, true);
+    // The row's Dismiss deals with every failure up to the newest it showed: one newer stays.
+    assert.deepEqual(await app.commands.dismissFailedSubagents(id, owner(app), named!.at - 1), {
+        dismissed: 0,
+    });
+    assert.deepEqual(await app.commands.dismissFailedSubagents(id, owner(app), named!.at), {
+        dismissed: 1,
+    });
     await until(() => row(id).failedAgents === undefined, "the failure dealt with");
     assert.equal(row(id).subagents?.dealt, 1);
 });

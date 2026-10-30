@@ -956,6 +956,39 @@ export class Commands {
     }
 
     /**
+     * Every failed subagent of a session (`id`) that nobody dealt with, as one Dismiss on its row: those that failed by
+     * `before`, the newest failure the person saw. One that failed since still needs them.
+     */
+    async dismissFailedSubagents(
+        id: ConversationId,
+        user: User,
+        before: unknown,
+    ): Promise<{ dismissed: number }> {
+        const app = this.#app;
+
+        app.requireSee(user, id);
+        app.requireSteer(user);
+
+        if (typeof before !== "number" || !Number.isFinite(before)) {
+            throw new HttpError(400, "before must be the time of the newest failure seen");
+        }
+
+        let dismissed = 0;
+
+        for (const agent of app.failedSubagentsOf(id).filter((each) => each.at <= before)) {
+            const answer = await this.#dismissFailure(
+                agent.conversationId as unknown as ConversationId,
+                user,
+                agent.at,
+            );
+
+            dismissed += answer.dismissed ? 1 : 0;
+        }
+
+        return { dismissed };
+    }
+
+    /**
      * Mark a subagent's failure, the one at `at`, dealt with by `user`, as the parent's activity says: as
      * `dismissSubagent` answers.
      */

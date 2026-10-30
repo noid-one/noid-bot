@@ -10,6 +10,7 @@ import { type ConversationId, defineExtension, defineTool } from "@earendil-work
 import type { PocketApp } from "../app.ts";
 import { cutWhole } from "../cut.ts";
 import { defang } from "../fence.ts";
+import { entryText } from "../projection.ts";
 import { GroupsDoc } from "./groups.ts";
 
 export const CHAT_SEARCH_EXTENSION = "noid-chat-search";
@@ -65,9 +66,7 @@ export class ChatSearch {
         limit = LIMIT,
     ): Promise<ChatMatch[]> {
         const app = this.#app;
-        const bot = app.bots
-            .list({ archived: true })
-            .find((each) => each.conversationId === conversationId);
+        const bot = app.sessionMeta(conversationId)?.bot;
 
         if (bot === undefined) {
             throw new Error("chat_search works only in a bot's own conversation.");
@@ -79,19 +78,19 @@ export class ChatSearch {
             throw new Error("Say what to search for.");
         }
 
+        // Clipped tool output is fine: only what people and the bot wrote is searched.
+        const [entries, groupsDoc] = await Promise.all([
+            app.transcripts.allEntries(conversationId, false),
+            app.harness.snapshot(GroupsDoc, context),
+        ]);
         const found: ChatMatch[] = [];
 
-        for (const entry of await app.transcripts.allEntries(conversationId, true)) {
+        for (const entry of entries) {
             if (entry.kind !== "user" && entry.kind !== "assistant") {
                 continue;
             }
 
-            const text =
-                entry.kind === "user"
-                    ? entry.text
-                    : entry.blocks
-                          .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                          .join("\n");
+            const text = entryText(entry);
 
             if (text !== "" && matches(text, words)) {
                 found.push({
@@ -103,10 +102,10 @@ export class ChatSearch {
             }
         }
 
-        const groups = (await app.harness.snapshot(GroupsDoc, context))?.groups ?? {};
+        const groups = groupsDoc?.groups ?? {};
 
         for (const group of Object.values(groups)) {
-            if (!group.members.includes(bot.bot.id)) {
+            if (!group.members.includes(bot.id)) {
                 continue;
             }
 
@@ -114,7 +113,7 @@ export class ChatSearch {
                 if (matches(message.text, words)) {
                     found.push({
                         where: `group ${group.name}`,
-                        who: message.from === bot.bot.id ? "you" : message.name,
+                        who: message.from === bot.id ? "you" : message.name,
                         at: message.at,
                         text: around(message.text, words),
                     });

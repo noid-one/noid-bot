@@ -19,6 +19,7 @@ import {
     isRow,
     loadEarlier,
     loadedFrom,
+    mayAllow,
     navigate,
     notify,
     openSheet,
@@ -1604,14 +1605,13 @@ function choiceValue(field, { picked, other }) {
  * declined by anyone who can steer.
  */
 function AskCard({ approval }) {
-    const { me, users } = store.state;
+    const { users } = store.state;
     const form = approval.form;
     const [values, setValues] = useState(() =>
         Object.fromEntries(form.fields.map((field) => [field.name, { picked: [], other: "" }])),
     );
     const [busy, setBusy] = useState(false);
-    const owner = users?.find?.((each) => each.role === "owner")?.id;
-    const mine = (approval.requestedBy ?? owner) === me?.id;
+    const mine = mayAllow(approval);
     const who =
         users?.find?.((each) => each.id === approval.requestedBy)?.name ??
         "the person Pi works for";
@@ -1704,7 +1704,7 @@ function ApprovalCard({ approval }) {
         return html`<${AskCard} approval=${approval} />`;
     }
 
-    const { me, server, sessions, conversationId } = store.state;
+    const { me, sessions, conversationId } = store.state;
     const [busy, setBusy] = useState(false);
     // noid: a bot's question can be answered for good (its rule), by the owner.
     // Only noid's own questions are the bot's (Lancet Guard asks with ids of its own).
@@ -1734,10 +1734,7 @@ function ApprovalCard({ approval }) {
     };
 
     // With approvals that need someone else, a guest cannot allow a call their own message led to (the server checks too).
-    const ownCall =
-        server?.approvalRule === "others" &&
-        me?.role !== "owner" &&
-        approval.requestedBy === me?.id;
+    const ownCall = !mayAllow(approval);
 
     return html`<div class="approval" data-part="approval">
         <div class="approval-head">
@@ -2482,22 +2479,7 @@ function runStart(conversationId, entries, busy) {
 
 /** Whether this person can answer one of the approvals waiting: one who can steer, and for a call not of their own asking where that needs someone else. */
 function canAnswer(approvals) {
-    const { me, server, users } = store.state;
-    const owner = users?.find?.((each) => each.role === "owner")?.id;
-
-    return (
-        canSteer() &&
-        approvals.some((approval) =>
-            // A question (`ask`) is for the person Pi works for, or the owner when nobody is known.
-            approval.form
-                ? (approval.requestedBy ?? owner) === me?.id
-                : !(
-                      server?.approvalRule === "others" &&
-                      me?.role !== "owner" &&
-                      approval.requestedBy === me?.id
-                  ),
-        )
-    );
+    return approvals.some(mayAllow);
 }
 
 /**

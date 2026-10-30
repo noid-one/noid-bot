@@ -82,10 +82,10 @@ export function formatSkills(skills: readonly Skill[]): string {
             basename(dirname(skill.filePath)) === skill.name;
 
         if (usual) {
-            groups.set(folder, [
-                ...(groups.get(folder) ?? []),
-                `- ${skill.name}: ${oneLine(skill.description)}`,
-            ]);
+            const lines = groups.get(folder) ?? [];
+
+            lines.push(`- ${skill.name}: ${oneLine(skill.description)}`);
+            groups.set(folder, lines);
         } else {
             others.push(`- ${skill.name} (${skill.filePath}): ${oneLine(skill.description)}`);
         }
