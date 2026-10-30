@@ -62,6 +62,7 @@ import {
 } from "./ui.js";
 import { LessonCall, memoryAvailable } from "./sheets/memory.js";
 import { cutWhole } from "./cut.js";
+import { BotChangeCall } from "./noid.js";
 
 const REPORT = /^\[subagent (\S+) (answered|failed)([^\]]*)\]\s?([\s\S]*)$/;
 /** Where the next report starts, in a message of several that arrived together (`extensions/subagents.ts`). */
@@ -1027,7 +1028,10 @@ function ToolStep({
         call.name === "ask" && !result?.isError && Array.isArray(details?.answers)
             ? details.answers
             : null;
-    const extras = result?.images > 0 || artifact || watch || lesson || answers;
+    // A bot's change to its own settings: what changed, and the owner's Undo.
+    const botChange =
+        call.name === "bot_settings" && typeof details?.change === "string" ? details : null;
+    const extras = result?.images > 0 || artifact || watch || lesson || answers || botChange;
 
     return html`<div
         class=${`step ${open ? "open" : ""} ${settled ? "settled" : ""}`}
@@ -1090,6 +1094,14 @@ function ToolStep({
                 ${
                     lesson &&
                     html`<${LessonCall} lessonId=${lesson} conversationId=${conversationId} />`
+                }
+                ${
+                    botChange &&
+                    html`<${BotChangeCall}
+                        change=${botChange.change}
+                        summary=${botChange.summary}
+                        conversationId=${conversationId}
+                    />`
                 }
                 ${
                     result?.images > 0 &&

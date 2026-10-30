@@ -121,13 +121,14 @@ export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     "repo_watch",
     "session_watch_pr",
     "ask",
-    // noid's bot mail, overseer, and desktop.
+    // noid's bot mail, overseer, own settings, and desktop.
     "bots",
     "bot_message",
     "bot_brief",
     "bot_create",
     "bot_update",
     "bot_archive",
+    "bot_settings",
     "desktop",
 ]);
 

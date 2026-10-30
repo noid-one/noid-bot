@@ -647,6 +647,31 @@ export function createApi(options: HttpOptions, auth: Auth) {
             return json(response, 200, await app.bots.suggestName(user, conversationId(second)));
         }
 
+        // noid: the changes a bot made to its own settings, and the owner's Undo of one.
+        if (first === "bots" && second !== undefined && third === "changes") {
+            if (method === "GET" && fourth === undefined) {
+                return json(response, 200, {
+                    changes: await app.botSettings.changes(user, conversationId(second)),
+                });
+            }
+
+            // A change's id may hold a slash, which the path decoded into a part of its own: a codemode script's calls
+            // are named `<call>/<n>`.
+            if (method === "POST" && parts.length > 4 && parts.at(-1) === "undo") {
+                return json(
+                    response,
+                    200,
+                    await app.botSettings.undo(
+                        user,
+                        conversationId(second),
+                        parts.slice(3, -1).join("/"),
+                    ),
+                );
+            }
+
+            throw new HttpError(404, "Unknown API route");
+        }
+
         if (first === "bots" && second !== undefined && method === "POST") {
             return json(
                 response,
