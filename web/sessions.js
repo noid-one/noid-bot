@@ -705,15 +705,54 @@ function SessionRow({
     const tip = [title, ...(why ? [why] : []), ...(folders ? where.reverse() : where)].join(" · ");
     // Archive, pin, and mark-unread show on hover; an archived session only comes back, and only for people who steer.
     // In Priority a row that needs you has its button instead, and one to read marks itself read in pin's place.
+    // The row's room for them (`no-acts` … `three-acts`) is their count.
     const acts =
         slot === "needs"
-            ? 0
-            : slot === "ready"
-              ? (steers ? 1 : 0) + 1
-              : (steers ? 1 : 0) + (session.archived ? 0 : 2);
+            ? []
+            : [
+                  steers &&
+                      html`<button
+                          class="session-act"
+                          title=${session.archived ? "Unarchive" : "Archive"}
+                          aria-label=${session.archived ? "Unarchive" : "Archive"}
+                          onClick=${() => setArchived([session.id], !session.archived)}
+                      >
+                          <${Icon} name=${session.archived ? "unarchive" : "archive"} size=${14} />
+                      </button>`,
+                  slot === "ready" &&
+                      html`<button
+                          class="session-act"
+                          data-part="session-read"
+                          title="Mark read"
+                          aria-label="Mark read"
+                          onClick=${() => onRead(session.id)}
+                      >
+                          <${Icon} name="check" size=${14} />
+                      </button>`,
+                  slot !== "ready" &&
+                      !session.archived &&
+                      html`<button
+                          class=${`session-act session-pin ${pinned ? "on" : ""}`}
+                          title=${pinned ? "Unpin" : "Pin to the top"}
+                          aria-label=${pinned ? "Unpin" : "Pin"}
+                          onClick=${() => togglePin(session.id)}
+                      >
+                          <${Icon} name="pin" size=${14} />
+                      </button>`,
+                  slot !== "ready" &&
+                      !session.archived &&
+                      html`<button
+                          class=${`session-act session-unread ${marked ? "on" : ""}`}
+                          title=${marked ? "Mark read" : "Mark unread"}
+                          aria-label=${marked ? "Mark read" : "Mark unread"}
+                          onClick=${() => setUnread(session.id, !marked)}
+                      >
+                          <${Icon} name=${marked ? "check" : "unread"} size=${14} />
+                      </button>`,
+              ].filter(Boolean);
 
     return html`<div
-        class=${`session-row ${kids > 0 ? "with-fold" : ""} ${slot === "needs" ? "needs-you" : ""} ${expanded ? "asking" : ""} ${glow ? "glow" : ""} ${open ? "active" : ""} ${selected ? "selected" : ""} ${pressing ? "pressing" : ""} ${moving ? "moving" : ""} ${marked ? "marked-unread" : ""} ${unseen ? "unseen" : ""} ${["no-acts", "one-act", "", "three-acts"][acts]}`}
+        class=${`session-row ${kids > 0 ? "with-fold" : ""} ${slot === "needs" ? "needs-you" : ""} ${expanded ? "asking" : ""} ${glow ? "glow" : ""} ${open ? "active" : ""} ${selected ? "selected" : ""} ${pressing ? "pressing" : ""} ${moving ? "moving" : ""} ${marked ? "marked-unread" : ""} ${unseen ? "unseen" : ""} ${["no-acts", "one-act", "", "three-acts"][acts.length]}`}
         data-part="session-row"
         data-state=${ROW_STATES[mark.shape.split(" ")[0]]}
         data-id=${session.id}
@@ -867,58 +906,7 @@ function SessionRow({
                 </button>
             </span>`
         }
-        ${
-            slot !== "needs" &&
-            html`<span class="session-actions">
-            ${
-                steers &&
-                html`<button
-                    class="session-act"
-                    title=${session.archived ? "Unarchive" : "Archive"}
-                    aria-label=${session.archived ? "Unarchive" : "Archive"}
-                    onClick=${() => setArchived([session.id], !session.archived)}
-                >
-                    <${Icon} name=${session.archived ? "unarchive" : "archive"} size=${14} />
-                </button>`
-            }
-            ${
-                slot === "ready" &&
-                html`<button
-                    class="session-act"
-                    data-part="session-read"
-                    title="Mark read"
-                    aria-label="Mark read"
-                    onClick=${() => onRead(session.id)}
-                >
-                    <${Icon} name="check" size=${14} />
-                </button>`
-            }
-            ${
-                slot !== "ready" &&
-                !session.archived &&
-                html`<button
-                    class=${`session-act session-pin ${pinned ? "on" : ""}`}
-                    title=${pinned ? "Unpin" : "Pin to the top"}
-                    aria-label=${pinned ? "Unpin" : "Pin"}
-                    onClick=${() => togglePin(session.id)}
-                >
-                    <${Icon} name="pin" size=${14} />
-                </button>`
-            }
-            ${
-                slot !== "ready" &&
-                !session.archived &&
-                html`<button
-                    class=${`session-act session-unread ${marked ? "on" : ""}`}
-                    title=${marked ? "Mark read" : "Mark unread"}
-                    aria-label=${marked ? "Mark read" : "Mark unread"}
-                    onClick=${() => setUnread(session.id, !marked)}
-                >
-                    <${Icon} name=${marked ? "check" : "unread"} size=${14} />
-                </button>`
-            }
-        </span>`
-        }
+        ${slot !== "needs" && html`<span class="session-actions">${acts}</span>`}
         ${
             expanded &&
             ask &&
@@ -1048,8 +1036,11 @@ const TABS = [
 ];
 
 /** The tab a browser starts on, from the choice it kept (`prefs().group`): Recent when it kept none. */
-const tabOf = (group) =>
-    group === "folder" ? "folders" : group === "priority" ? "priority" : "recent";
+const TAB_OF_GROUP = { folder: "folders", priority: "priority" };
+const tabOf = (group) => TAB_OF_GROUP[group] ?? "recent";
+/** The choice a tab keeps (`prefs().group`): the other way round. */
+const groupOf = (tab) =>
+    Object.keys(TAB_OF_GROUP).find((group) => TAB_OF_GROUP[group] === tab) ?? "recent";
 
 /**
  * What the full list searched for and how far it was scrolled, kept while the tab lives: on a phone the list goes when a
@@ -1393,7 +1384,7 @@ function AllSessions({ compact = false }) {
 
         if (next !== "archived") {
             setPrefs({
-                group: next === "folders" ? "folder" : next === "priority" ? "priority" : "recent",
+                group: groupOf(next),
             });
         }
     };
