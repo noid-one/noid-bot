@@ -42,6 +42,11 @@ export type ComputerOptions = {
     image?: string;
     /** Stop the container after this long with no tool running and nothing asked of it. */
     idleMs?: number;
+    /**
+     * How long work left running in the background (a build, a coding agent CLI under nohup) keeps the computer up
+     * after the last tool call: 4 hours unless given.
+     */
+    backgroundMs?: number;
     /** The clock and timers, for tests. */
     now?: () => number;
     /** Where the image is built from: the `computer/` folder. */
@@ -52,6 +57,30 @@ export type ComputerOptions = {
 export type ComputerState = "missing" | "stopped" | "running";
 
 /** Runs a docker command, resolving with its output; a failure rejects with what docker said. */
+/**
+ * The CPU time, in clock ticks, of each process on the computer that is not the computer's own (its init, start.sh,
+ * display, desktop, session bus, browser, and the bridges noid runs there): one `pid ticks` line each.
+ */
+const WORK_SCRIPT = `
+import os
+own = {"tini", "Xvfb", "fluxbox", "dbus-daemon", "dbus-launch", "sleep", "pi-env", "chrome_crashpad"}
+for pid in os.listdir("/proc"):
+    if not pid.isdigit() or pid == str(os.getpid()):
+        continue
+    try:
+        stat = open("/proc/" + pid + "/stat").read()
+        command = open("/proc/" + pid + "/cmdline", "rb").read().decode(errors="replace")
+    except OSError:
+        continue
+    name = stat[stat.index("(") + 1 : stat.rindex(")")]
+    fields = stat[stat.rindex(")") + 2 :].split()
+    if name in own or name.startswith("chrom") or "cdp-bridge.py" in command or "/opt/noid/" in command:
+        continue
+    print(pid, int(fields[11]) + int(fields[12]))
+`;
+/** CPU time between two looks that says the background works: a second, at Linux's 100 ticks a second. */
+const WORKING_TICKS = 100;
+
 export type Docker = (args: readonly string[], input?: NodeJS.ReadableStream) => Promise<string>;
 
 export function dockerCommand(binary: string): Docker {
@@ -174,6 +203,11 @@ export class Computer {
     /** When the last request to the daemon ended; never, since this server started, at 0. */
     #lastRequest = 0;
     #idleTimer: NodeJS.Timeout | undefined;
+    readonly #backgroundMs: number;
+    /** When this server started: work in the background counts from here when no request ran since. */
+    readonly #since: number;
+    /** The CPU time of the computer's work processes at the last look before an idle stop, and when that was. */
+    #lastLook: { at: number; ticks: Map<string, number> } | undefined;
     /** False once a stop (or a look) found it not running, until something asks for it again: no idle polling meanwhile. */
     #mayBeRunning = true;
 
@@ -200,6 +234,8 @@ export class Computer {
         this.#now = options.now ?? Date.now;
         this.#log = options.log ?? (() => {});
         this.#lastActive = this.#now();
+        this.#backgroundMs = options.backgroundMs ?? 4 * 60 * 60_000;
+        this.#since = this.#now();
         this.connection = new Connection({
             command: async () => {
                 await this.start();
@@ -410,15 +446,18 @@ export class Computer {
             await this.#starting?.catch(() => {});
 
             const running = (await this.state()) === "running";
+            // Work left running in the background (a build, a coding agent CLI) is activity too (rakazo 8d90ea634).
+            const working =
+                running && ifIdle && this.idle() && (await this.#background()) !== "idle";
 
             // An idle stop checks again last thing: a request may have begun while docker answered.
-            if (running && (!ifIdle || this.idle())) {
+            if (running && !working && (!ifIdle || this.idle())) {
                 this.#log(`stopping ${this.container}`);
                 await this.#docker(["stop", "--time", "10", this.container]);
                 this.#stopped();
             }
 
-            this.#mayBeRunning = !running ? false : ifIdle && !this.idle();
+            this.#mayBeRunning = !running ? false : working || (ifIdle && !this.idle());
         })().finally(() => {
             this.#stopping = undefined;
         });
@@ -541,6 +580,61 @@ export class Computer {
                 this.#touch();
             }
         };
+    }
+
+    /**
+     * Whether processes outside any tool call still work: "working" when their CPU time grew by a second since the
+     * last look (which counts as activity), "unsure" at a first look (look again at the next check), "idle" when none
+     * runs, none works, or the computer cannot be asked. Never past `backgroundMs` after the last tool call.
+     */
+    async #background(): Promise<"idle" | "working" | "unsure"> {
+        if (this.#now() - Math.max(this.#lastRequest, this.#since) >= this.#backgroundMs) {
+            return "idle";
+        }
+
+        let ticks: Map<string, number>;
+
+        try {
+            const out = await this.#docker(["exec", this.container, "python3", "-c", WORK_SCRIPT]);
+
+            ticks = new Map(
+                out
+                    .split("\n")
+                    .map((line) => line.trim().split(/\s+/))
+                    .filter(([pid, used]) => /^\d+$/.test(pid ?? "") && /^\d+$/.test(used ?? ""))
+                    .map(([pid, used]) => [pid!, Number(used)]),
+            );
+        } catch {
+            return "idle";
+        }
+
+        const last = this.#lastLook;
+
+        this.#lastLook = { at: this.#now(), ticks };
+
+        if (ticks.size === 0) {
+            return "idle";
+        }
+
+        // A look long ago says nothing of the last minute: look again.
+        if (last === undefined || this.#now() - last.at > 5 * 60_000) {
+            return "unsure";
+        }
+
+        let used = 0;
+
+        for (const [pid, now] of ticks) {
+            used += now - (last.ticks.get(pid) ?? 0);
+        }
+
+        if (used < WORKING_TICKS) {
+            return "idle";
+        }
+
+        this.#log(`kept running: work in the background used ${String(used / 100)} s of CPU`);
+        this.#touch();
+
+        return "working";
     }
 
     /** Whether the computer has had nothing to do for its idle time. */

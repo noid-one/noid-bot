@@ -627,6 +627,47 @@ test("the computer stops only after its idle time, never while held", async () =
     await computer.close(context);
 });
 
+test("work left running in the background keeps the computer up while it uses CPU, for a time (rakazo 8d90ea634)", async () => {
+    let now = 0;
+    let ticks = 500;
+    const { docker: inner, calls } = fakeDocker({ state: "running", image: true });
+    // A build under nohup: process 42, with the CPU time it has used so far.
+    const docker: Docker = async (args) =>
+        args[0] === "exec" ? (calls.push("exec"), `42 ${String(ticks)}\n`) : inner(args);
+    const computer = new Computer({ idleMs: 1000, backgroundMs: 100_000, now: () => now }, docker);
+    const stopped = () => calls.includes("stop --time");
+
+    now = 1000;
+    await computer.stop({ ifIdle: true });
+    assert.ok(!stopped(), "a first look only notes the CPU time");
+    now = 1060;
+    ticks += 300;
+    await computer.stop({ ifIdle: true });
+    assert.ok(!stopped(), "3 s of CPU in a minute: it works");
+    assert.equal(computer.idle(), false, "which counts as activity");
+    now = 2060;
+    ticks += 2;
+    await computer.stop({ ifIdle: true });
+    assert.ok(stopped(), "a process that waits does not keep the computer up");
+
+    // Past backgroundMs after the last tool call, the background no longer counts.
+    const again = fakeDocker({ state: "running", image: true });
+    const busy: Docker = async (args) =>
+        args[0] === "exec" ? `42 ${String((ticks += 1000))}\n` : again.docker(args);
+    const capped = new Computer({ idleMs: 1000, backgroundMs: 5000, now: () => now }, busy);
+
+    now += 1000;
+    await capped.stop({ ifIdle: true });
+    now += 60;
+    await capped.stop({ ifIdle: true });
+    assert.ok(!again.calls.includes("stop --time"));
+    now += 10_000;
+    await capped.stop({ ifIdle: true });
+    assert.ok(again.calls.includes("stop --time"), "not past its time");
+    await computer.close(context);
+    await capped.close(context);
+});
+
 test("closing the computer cleans up its environments (they are proxies over pi-env's)", async () => {
     const { docker } = fakeDocker({ state: "running", image: true });
     const computer = new Computer({}, docker);
