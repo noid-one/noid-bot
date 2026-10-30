@@ -9,6 +9,8 @@
  *   write, and edit.
  * - A bot puts work in a session (start, send, schedule, watch) only once the owner says so; Noid without asking, unless
  *   its run took in what someone else wrote (`runSoFar`): then every time.
+ * - A bot changes its own instructions (`bot_settings`) without asking in a run the owner started that took in nothing
+ *   someone else wrote; in any other run it asks, every time (rakazo's `update_bot`).
  * - Opening a site the run was not given (not in the owner's words, not opened before in the run): a host bot asks
  *   when auto review is off; when it is on, the check sees only the address and the owner's words.
  * - Sessions that are not bots are Pi's own: they never ask (Pi's way).
@@ -70,6 +72,7 @@ export function alwaysAsks(tool: string, args: Record<string, unknown> = {}): bo
     return (
         tool === "bot_archive" ||
         tool === "bot_update" ||
+        (tool === "bot_settings" && args.instructions !== undefined) ||
         (tool === "bot_create" && args.kind === "host") ||
         (tool === "memory" && args.action === "remove")
     );
@@ -92,6 +95,8 @@ const BOT_STATE_TOOLS = new Set([
     "bot_message",
     "bot_brief",
     "bot_create",
+    // Its own settings: what may change, and when instructions ask, is the rule above `classify`'s place check.
+    "bot_settings",
 ]);
 
 /**
@@ -163,6 +168,17 @@ export function classify(
                 role: args.role,
                 instructions: args.instructions,
             }),
+        };
+    }
+
+    // A bot's own instructions, in a run the owner did not start or that took in what someone else wrote: a routine,
+    // another bot's mail, or a page could be asking for them (rakazo #2865). Every time: a rule cannot vouch for those.
+    if (tool === "bot_settings" && args.instructions !== undefined && tainted) {
+        return {
+            ask: true,
+            always: true,
+            reason: "changes its own instructions in a run you did not ask for, or after reading what someone else wrote",
+            subject: subjectOf("bot_settings", { instructions: args.instructions }),
         };
     }
 
@@ -282,6 +298,7 @@ export function subjectOf(tool: string, args: Record<string, unknown>): string {
  */
 const CLEAN_RESULTS = new Set([
     "memory",
+    "bot_settings",
     "schedule",
     "goal",
     "sessions",
@@ -417,9 +434,12 @@ export function createApprovals(app: PocketApp) {
                     // A site matters on this machine, or wherever auto review is on to judge it.
                     const site =
                         place === "host" || reviewOn ? siteOpened(call.name, args) : undefined;
-                    // The run so far, read only for the calls it decides: Noid putting work in a session, and a site.
+                    // The run so far, read only for the calls it decides: Noid putting work in a session, a bot's own
+                    // instructions, and a site.
                     const run =
-                        (bot.main === true && startsWork(call.name, args)) || site !== undefined
+                        (bot.main === true && startsWork(call.name, args)) ||
+                        (call.name === "bot_settings" && args.instructions !== undefined) ||
+                        site !== undefined
                             ? await runSoFar(app, api.conversationId, call.id)
                             : undefined;
                     let verdict = classify(

@@ -28,15 +28,17 @@ import { requestFor } from "./requests.ts";
 import { SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
 import { BOT_MAIL_EXTENSION, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { DESKTOP_EXTENSION } from "./noid/desktop.ts";
+import { BOT_SETTINGS_EXTENSION } from "./noid/bot-settings.ts";
 
 /**
- * A bot's own extensions (`Bots.#toolsOf`): the session tools and bot mail act as the owner, and the desktop is held
+ * A bot's own extensions (`Bots.#toolsOf`): the session tools and bot mail act as the owner, its settings are its own, and the desktop is held
  * by the bot's own conversation, for the bot's own conversation only.
  */
 const BOT_ONLY = new Set([
     SESSION_TOOLS_EXTENSION,
     BOT_MAIL_EXTENSION,
     OVERSEER_EXTENSION,
+    BOT_SETTINGS_EXTENSION,
     DESKTOP_EXTENSION,
 ]);
 
