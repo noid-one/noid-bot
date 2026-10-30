@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { SubagentsDoc } from "../src/server/docs.ts";
-import { MODEL_FAILED } from "../src/server/extensions/subagents.ts";
+import { MODEL_FAILED, modelFailure } from "../src/server/extensions/subagents.ts";
 
 /** The subagent tool's parameters as the parent's last request offered them. */
 let offered: Record<string, unknown> | undefined;
@@ -245,4 +245,18 @@ test("models allowed together, as from two tabs, all count, and only the owner m
         server.close();
         await app.setSubagentModels(owner(app), []);
     }
+});
+
+test("a model's trouble is read in its words, credential failures written either way round too (rakazo 4185ee85d)", () => {
+    for (const detail of [
+        "token expired; request timeout",
+        "credential revoked",
+        "Provided authentication token is expired.",
+        'API error (403): {"error":"You have run out of credits"}',
+        `400: {"message":"feature 'tool calls' is not currently supported"}`,
+    ]) {
+        assert.ok(modelFailure("model_error", detail), detail);
+    }
+
+    assert.ok(!modelFailure("model_error", "prompt is too long: 210000 tokens > 200000 maximum"));
 });

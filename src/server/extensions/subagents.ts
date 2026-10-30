@@ -258,13 +258,14 @@ const BACKGROUND = { ownership: { kind: "conversation" }, background: true } as 
 
 /**
  * What a provider says when the model or its account is the problem (a sign-in, a model that is gone or refused, a
- * quota or rate limit, an overload), not the request: a context that will not fit, say, is Pi's to work around.
+ * quota or rate limit, an overload, a model that cannot call tools), not the request: a context that will not fit, say,
+ * is Pi's to work around. Credential words on either side (rakazo 4185ee85d, 417cf2ecb).
  */
 const PROVIDER_TROUBLE =
-    /oauth|sign.?in|auth|api.?key|unauthori[sz]ed|forbidden|permission|\b(401|402|403|404|429|503|529)\b|not found|does not exist|no such model|not available|not configured|unsupported model|quota|rate.?limit|insufficient|billing|credit|usage limit|overloaded/i;
+    /oauth|sign.?in|auth|api.?key|unauthori[sz]ed|forbidden|permission|\b(401|402|403|404|429|503|529)\b|not found|does not exist|no such model|not available|not configured|unsupported model|quota|rate.?limit|insufficient|billing|credit|usage limit|overloaded|(?:expired|revoked) (?:api )?(?:key|credential|token)|(?:key|credential|token) (?:is |has been |was )?(?:expired|revoked)|tool calls'? (?:is |are )?not (?:currently )?supported/i;
 
 /** Whether a run ended unanswered because of its model or provider: no model to use, or the provider's trouble. */
-function modelFailure(reason: string, detail: unknown): boolean {
+export function modelFailure(reason: string, detail: unknown): boolean {
     return (
         reason === "no_model" ||
         (reason === "model_error" && typeof detail === "string" && PROVIDER_TROUBLE.test(detail))
