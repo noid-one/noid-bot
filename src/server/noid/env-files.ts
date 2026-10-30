@@ -124,6 +124,54 @@ export async function imageIn(
     };
 }
 
+/** How much of a file a download reads from an environment at a time. */
+const DOWNLOAD_CHUNK = 1024 * 1024;
+
+/**
+ * A file in an environment to download: its size and its bytes in parts, read as they are sent. Undefined when it is not
+ * a regular file (a folder, say). Throws a FileError (`not_found`) when it is not there.
+ */
+export async function downloadIn(
+    env: ExecutionEnv,
+    file: string,
+    context: Context,
+): Promise<{ size: number; chunks: AsyncIterable<Uint8Array> } | undefined> {
+    const real = unwrap(await env.canonicalPath(file, context));
+    const info = unwrap(await env.fileInfo(real, context));
+
+    if (info.kind !== "file") {
+        return undefined;
+    }
+
+    // As much as there was when it was asked for: a file that grows meanwhile still ends where its length said.
+    async function* chunks(): AsyncIterable<Uint8Array> {
+        const reader = unwrap(await env.openBinaryReader(real, {}, context));
+
+        try {
+            for (let offset = 0; offset < info.size;) {
+                const bytes = unwrap(
+                    await reader.read(
+                        offset,
+                        Math.min(DOWNLOAD_CHUNK, info.size - offset),
+                        context,
+                    ),
+                );
+
+                if (bytes.length === 0) {
+                    throw new Error(`${file} got shorter while it was read`);
+                }
+
+                offset += bytes.length;
+                yield bytes;
+            }
+        } finally {
+            await reader.close(context);
+        }
+    }
+
+    return { size: info.size, chunks: chunks() };
+}
+
 /** The files under a folder in an environment, for `@` mentions: what git does not ignore, without dependency folders. */
 export async function listFilesIn(
     env: ExecutionEnv,

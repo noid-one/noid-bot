@@ -9,6 +9,7 @@ import { RunFrame } from "../run-frame.js";
 import { actions, canSteer, closeSheet, insertIntoComposer, notify, store } from "../store.js";
 import {
     copyText,
+    downloadUrl,
     fileUrl,
     formatBytes,
     html,
@@ -238,7 +239,7 @@ function FileLines({ lines, colored, all, line }) {
 
 /**
  * The viewer's buttons: Preview or Source for Markdown and pages, Run for a previewed page (`running` is null where it
- * does not apply), Copy, and @ Mention.
+ * does not apply), Copy, Download (any file, to the person's own machine), and @ Mention.
  */
 function FileActions({ file, shown, previewable, preview, onPreview, running, onRun }) {
     return html`${
@@ -269,6 +270,20 @@ function FileActions({ file, shown, previewable, preview, onPreview, running, on
         >
             <${Icon} name="copy" size=${16} />
         </button>`
+    }
+    ${
+        file &&
+        file.kind !== "folder" &&
+        file.kind !== "other" &&
+        html`<a
+            class="icon-button"
+            href=${downloadUrl(file.path)}
+            download=${shown.split("/").pop()}
+            title="Download"
+            aria-label="Download"
+        >
+            <${Icon} name="download" size=${16} />
+        </a>`
     }
     ${
         file &&

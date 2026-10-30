@@ -19,6 +19,10 @@ const currentConversation = () => store.state.view.conversation?.id;
 export const fileUrl = (path, conversationId = currentConversation()) =>
     `/api/c/${conversationId}/file?path=${encodeURIComponent(path)}`;
 
+/** Where the browser saves a file of the session from, to the person's own machine. */
+export const downloadUrl = (path, conversationId = currentConversation()) =>
+    `/api/c/${conversationId}/download?path=${encodeURIComponent(path)}`;
+
 /** The `index`th image stored in a message: a pasted image or one a tool returned. */
 export const entryImageUrl = (entryId, index, conversationId = currentConversation()) =>
     `/api/c/${conversationId}/image/${entryId}/${index}`;

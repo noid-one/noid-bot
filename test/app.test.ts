@@ -1335,6 +1335,7 @@ test("invites carry a role and a session over HTTP, and viewers get 403 on steer
         );
         assert.equal((await call(token, `c/${id}/files`)).status, 403);
         assert.equal((await call(token, `c/${id}/view?path=README.md`)).status, 403);
+        assert.equal((await call(token, `c/${id}/download?path=README.md`)).status, 403);
         assert.equal((await call(token, `c/${id}/shell`, { command: "echo hi" })).status, 403);
         assert.equal((await call(token, `c/${id}/changes/revert`, { path: "a.txt" })).status, 403);
         assert.equal(
@@ -1357,6 +1358,43 @@ test("invites carry a role and a session over HTTP, and viewers get 403 on steer
             app.config.removeUser(userId);
         }
 
+        server.closeAllConnections();
+        server.close();
+    }
+});
+
+test("a session's file downloads as bytes to save, under its own name; a folder does not", async () => {
+    const { createServer } = await import("node:http");
+    const { createHandler } = await import("../src/server/http.ts");
+    const server = createServer(
+        createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
+    );
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+    const download = (path: string) =>
+        fetch(`${base}/api/c/${id}/download?path=${encodeURIComponent(path)}`, {
+            headers: { authorization: `Bearer ${app.config.ownerToken}` },
+        });
+    const id = await newSession();
+    const bytes = Buffer.from([0, 1, 2, 255, 10, 60, 104, 49, 62]);
+
+    mkdirSync(join(app.cwdOf(id), "out"), { recursive: true });
+    writeFileSync(join(app.cwdOf(id), "out", "página (1).html"), bytes);
+
+    try {
+        const saved = await download("out/página (1).html");
+
+        assert.equal(saved.status, 200);
+        assert.equal(saved.headers.get("content-type"), "application/octet-stream");
+        assert.equal(
+            saved.headers.get("content-disposition"),
+            `attachment; filename="p_gina (1).html"; filename*=UTF-8''p%C3%A1gina%20%281%29.html`,
+        );
+        assert.deepEqual(Buffer.from(await saved.arrayBuffer()), bytes);
+        assert.equal((await download("out")).status, 409);
+        assert.equal((await download("out/missing.txt")).status, 404);
+    } finally {
         server.closeAllConnections();
         server.close();
     }

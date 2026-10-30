@@ -4,8 +4,8 @@
  * operations people call directly check who may do them; the path helpers (`conversationPath`, `conversationFile`,
  * `readableFile`, `uploadDirectory`) leave seeing the conversation to their callers.
  */
-import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { createReadStream, lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { basename, isAbsolute, join, posix, resolve, sep } from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ConversationId } from "@earendil-works/pi-durable";
@@ -27,6 +27,7 @@ import { describe, HttpError } from "./errors.ts";
 import { gitIn, type GitPlace, HOST_GIT } from "./git.ts";
 import { FileLists, type FileListing, type FileView, viewFile } from "./files.ts";
 import {
+    downloadIn,
     fileListing,
     imageIn,
     listFilesIn,
@@ -37,6 +38,13 @@ import {
 import { normalFolder } from "./noid/computer.ts";
 import { displayPath, expandHome } from "./paths.ts";
 import type { ClientEntry } from "./projection.ts";
+
+/** A file to download: its name, its size, and its bytes, in parts read as they are sent. */
+export type Download = {
+    name: string;
+    size: number;
+    chunks: Iterable<Uint8Array> | AsyncIterable<Uint8Array>;
+};
 
 /** How many sessions' Pi edits are kept between looks at Changes (`#edits`). */
 const EDITS_KEPT = 64;
@@ -531,6 +539,55 @@ export class Workspace {
 
             throw new HttpError(409, describe(error));
         }
+    }
+
+    /**
+     * A file of the session to save on the person's own machine, as they may view it (`viewFile`): its name, its size,
+     * and its bytes, read as they are sent. A folder cannot be downloaded.
+     */
+    async downloadFile(id: ConversationId, user: User, path: string): Promise<Download> {
+        this.#app.requireSee(user, id);
+        this.#app.requireSteer(user);
+        await this.#app.conversation(id);
+
+        let found: Download | undefined;
+
+        try {
+            if (!this.#app.onHost(id)) {
+                const file = await this.remotePath(id, user, path);
+                const download = await downloadIn(this.#app.envFor(id), file, context);
+
+                found = download && { name: posix.basename(file), ...download };
+            } else {
+                const file = this.readableFile(user, id, path);
+                const stats = statSync(file);
+
+                found = stats.isFile()
+                    ? {
+                          name: basename(file),
+                          size: stats.size,
+                          chunks:
+                              stats.size === 0
+                                  ? []
+                                  : createReadStream(file, { start: 0, end: stats.size - 1 }),
+                      }
+                    : undefined;
+            }
+        } catch (error) {
+            const code = (error as { code?: string }).code;
+
+            if (error instanceof HttpError || code === "ENOENT" || code === "not_found") {
+                throw new HttpError(404, `${path} is not there.`);
+            }
+
+            throw new HttpError(409, describe(error));
+        }
+
+        if (found === undefined) {
+            throw new HttpError(409, "Only a file can be downloaded, not a folder.");
+        }
+
+        return found;
     }
 
     /** noid: a file in a session's folder on the shared computer, as the person may reach it (`conversationFile`). */

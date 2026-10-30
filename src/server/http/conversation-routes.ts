@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
 import { basename, extname, join, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { Attachment, SubmitRequest } from "../commands.ts";
@@ -458,6 +459,35 @@ export async function conversationRoutes(
         }
 
         return json(response, 200, await app.workspace.viewFile(id, user, requested));
+    }
+
+    // A file of the session saved to the person's own machine: sent as bytes to save, never as a page to open.
+    if (third === "download" && method === "GET") {
+        const requested = url.searchParams.get("path") ?? "";
+
+        if (requested.trim() === "") {
+            throw new HttpError(400, "path is required");
+        }
+
+        const download = await app.workspace.downloadFile(id, user, requested);
+        const fallback = download.name.replace(/[^\x20-\x7e]|["\\]/g, "_");
+        const encoded = encodeURIComponent(download.name).replace(
+            /['()*]/g,
+            (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+        );
+
+        response.writeHead(200, {
+            "content-type": "application/octet-stream",
+            "content-length": String(download.size),
+            "content-disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`,
+            "x-content-type-options": "nosniff",
+            "cache-control": "private, no-store",
+        });
+
+        // Cut off part way (the file went away, or the person stopped it): the browser sees the download fail.
+        return pipeline(Readable.from(download.chunks), response).catch(() => {
+            response.destroy();
+        });
     }
 
     if (third === "changes" && fourth === "revert" && method === "POST") {
