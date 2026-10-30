@@ -522,3 +522,23 @@ test("ids from addresses name only real hooks", async () => {
     await until(async () => !app.isBusy(id) && (await messages(id)).length === 1, "Pi to answer");
     await app.commands.removeHook(owner(app), hook.id);
 });
+
+test("a retry of the same delivery goes to Pi once, by webhook-id or svix-id too (rakazo e0195824f)", async () => {
+    const id = await newSession(app);
+    const hook = await app.commands.addHook(owner(app), { target: Number(id), name: "Svix" });
+    const post = (headers: Record<string, string>, body: string) =>
+        fetch(`${base}${hook.path}`, { method: "POST", headers, body });
+
+    for (const name of ["webhook-id", "svix-id"]) {
+        assert.equal((await post({ [name]: `msg_${name}` }, `first by ${name}`)).status, 202);
+        await until(async () => !app.isBusy(id), "Pi to answer");
+        await post({ [name]: `msg_${name}` }, `first by ${name}`);
+        await until(async () => !app.isBusy(id), "Pi to answer");
+    }
+
+    // Another delivery of the same event, under its own id, goes too.
+    await post({ "webhook-id": "msg_other" }, "first by webhook-id");
+    await until(async () => !app.isBusy(id) && (await messages(id)).length === 3, "Pi to answer");
+    assert.equal((await messages(id)).length, 3);
+    await app.commands.removeHook(owner(app), hook.id);
+});

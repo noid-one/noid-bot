@@ -3,7 +3,7 @@
  * message to one session's Pi, or to Noid, as the work of the person who made it. The message is their instructions,
  * then what came, trimmed and fenced as data. A GitHub hook is signed: a post gets in only with GitHub's signature made
  * with the hook's secret (`X-Hub-Signature-256`), which is not in its address. Any other hook has the secret in its
- * address. A post goes to Pi once even when sent again (by GitHub's delivery id, or an `Idempotency-Key`); anything
+ * address. A post goes to Pi once even when sent again (by GitHub's delivery id, an `Idempotency-Key`, or a `webhook-id` or `svix-id`); anything
  * else gets a 404, as if there were no such hook. GitHub's posts about what someone outside the repository wrote (an
  * issue, a comment, a PR) are dropped, unless the hook's person made it for anyone: its people are its owner, and the
  * members and collaborators GitHub tells `gh` can write to it. The address works only where the
@@ -613,7 +613,12 @@ export class Hooks {
             content.json = json;
         }
 
-        const delivery = header(post, "x-github-delivery") ?? header(post, "idempotency-key");
+        // Standard Webhooks and Svix name each delivery too, the same on a retry (rakazo e0195824f).
+        const delivery =
+            header(post, "x-github-delivery") ??
+            header(post, "idempotency-key") ??
+            header(post, "webhook-id") ??
+            header(post, "svix-id");
         const key = clientKey(
             `hook-${hook.id}-${delivery === undefined ? randomBytes(9).toString("base64url") : createHash("sha256").update(delivery).digest("base64url").slice(0, 32)}`,
         );
