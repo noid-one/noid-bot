@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fauxAssistantMessage, fauxText } from "@earendil-works/pi-ai/providers/faux";
 
-/** About 2,750 tokens (10,046 when set). Raise it only on purpose, in the change that needs more. */
-const LIMIT = 11_000;
+/** About 3,000 tokens (10,046 when set; 11,361 with the ask tool). Raise it only on purpose, in the change that needs more. */
+const LIMIT = 12_000;
 /** Pi's own tools, and the owner's AGENTS.md and skills: not Pi Pocket's to count. */
 const NOT_OURS = new Set(["read", "bash", "edit", "write", "project_context", "skills"]);
 

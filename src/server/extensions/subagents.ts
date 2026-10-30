@@ -43,6 +43,8 @@ import { whyUnanswered } from "../subagent-runs.ts";
 
 // Exclude Agent Teams by name even while it is off; enabling it later must not give nested agents delegation.
 const AgentTeams = defineExtension({ name: "pocket-agent-teams" });
+// Nor does a subagent ask the person (`ask.ts`): it works for another agent, and nobody reads its chat.
+const Ask = defineExtension({ name: "pocket-ask" });
 
 function textOf(message: AssistantMessage | undefined): string {
     return (message?.content ?? [])
@@ -985,7 +987,7 @@ export default function createSubagents(host: PocketHost) {
                     });
 
                     await configure(tx, child.id, {
-                        extensions: { remove: [SubagentTools, AgentTeams] },
+                        extensions: { remove: [SubagentTools, AgentTeams, Ask] },
                         instructions: `You are the subagent "${name}". You work for another agent, not directly for a person, although a person may open your conversation and talk to you. Answer requests completely but concisely: your final answer is what gets reported back.${profile === undefined || profile.instructions === "" ? "" : `\n\n${profile.instructions}`}`,
                         ...(model === undefined ? {} : { model }),
                         ...(thinking === undefined ? {} : { thinkingLevel: thinking }),

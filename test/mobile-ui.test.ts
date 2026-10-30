@@ -1,8 +1,11 @@
 import {
     type App,
     cleanUp,
+    lastText,
+    modelTexts,
     newSession,
     openApp,
+    owner,
     root,
     say,
     scriptedModel,
@@ -15,6 +18,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import type { FauxResponseStep } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { Browsers } from "../src/server/browser.ts";
 import { findBrowser } from "../src/server/browser/discovery.ts";
@@ -26,6 +31,23 @@ const chromium = findBrowser();
 const real = {
     skip: chromium === undefined ? "no Chromium-based browser on this machine" : false,
 } as const;
+
+/** "ask me" makes Pi ask one question (`ask`); anything else is echoed. */
+const route: FauxResponseStep = (request) => {
+    if (lastText(request as never).text === "ask me") {
+        const options = [
+            { label: "Postgres", description: "One server" },
+            { label: "SQLite", description: "A file" },
+        ];
+        const questions = [{ header: "Database", question: "Which database?", options }];
+
+        return fauxAssistantMessage([fauxToolCall("ask", { questions })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    return fauxAssistantMessage([fauxText(`echo: ${lastText(request as never).text}`)]);
+};
 
 let app: App;
 let server: Server;
@@ -134,7 +156,7 @@ before(async () => {
 
     writeFileSync(join(work, "README.md"), "# Hello\n\nA file to read.\n");
     writeFileSync(join(work, "web.env"), "PORT=3000\nHOST=127.0.0.1\n");
-    app = await openApp(scriptedModel());
+    app = await openApp(scriptedModel(route));
     server = createServer(
         createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
     );
@@ -583,3 +605,20 @@ test(
         assert.equal(requests.after, 2, "Refresh asks for the diff again");
     },
 );
+
+test("Pi's question shows its answers as buttons a thumb can tap", real, async () => {
+    const id = await newSession(app);
+    const heights = `return JSON.stringify([...document.querySelectorAll("button.ask-option")].map((b) => b.offsetHeight))`;
+
+    await fresh();
+    await goTo(id);
+    await app.commands.submit(id, owner(app), { text: "ask me", requestId: "ask-ui" });
+    await until(async () => (await inPage<number[]>(heights)).length === 2, "the answers", 20_000);
+    assert.ok((await inPage<number[]>(heights)).every((height) => height >= 44));
+    await page.evaluate(`document.querySelectorAll("button.ask-option")[1].click()`);
+    await page.evaluate(`document.querySelector(".approval.ask button[type=submit]").click()`);
+    await until(
+        async () => (await modelTexts(app, id)).join().includes("Database: SQLite"),
+        "the answer",
+    );
+});

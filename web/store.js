@@ -1228,9 +1228,13 @@ export const actions = {
     /** Watch the session's pull request: its branch's, or `pr` (a number or address). */
     watchPr: (pr) => api(`c/${current()}/watch`, pr ? { pr } : {}),
     unwatchPr: () => api(`c/${current()}/watch`, { stop: true }),
-    /** `always`: noid keeps a rule, so this bot's calls of this tool stop asking. */
-    approve: (id, allow, always = false) =>
-        api(`approvals/${encodeURIComponent(id)}`, { allow, ...(always ? { always } : {}) }),
+    /** `always`: noid keeps a rule, so this bot's calls of this tool stop asking. A question (`ask`) has `values`. */
+    approve: (id, allow, always = false, values = undefined) =>
+        api(`approvals/${encodeURIComponent(id)}`, {
+            allow,
+            ...(always ? { always } : {}),
+            ...(values ? { values } : {}),
+        }),
     /** noid: make a bot (its session is made with it), or change one. */
     createBot: (bot) => api("bots", bot),
     updateBot: (id, bot) => api(`bots/${id}`, bot),

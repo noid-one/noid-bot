@@ -1022,7 +1022,12 @@ function ToolStep({
         memoryAvailable(conversationId)
             ? details.lesson
             : null;
-    const extras = result?.images > 0 || artifact || watch || lesson;
+    // What the person answered to Pi's questions (`ask.ts`).
+    const answers =
+        call.name === "ask" && !result?.isError && Array.isArray(details?.answers)
+            ? details.answers
+            : null;
+    const extras = result?.images > 0 || artifact || watch || lesson || answers;
 
     return html`<div
         class=${`step ${open ? "open" : ""} ${settled ? "settled" : ""}`}
@@ -1075,12 +1080,13 @@ function ToolStep({
                 class=${`step-decision ${decision.allow ? "allowed" : "denied"}`}
                 title=${new Date(decision.at).toLocaleString()}
             >
-                <${Icon} name="shield" size=${13} /> ${decision.allow ? "Allowed" : "Denied"} by ${decision.by}
+                <${Icon} name="shield" size=${13} /> ${decided(decision)} by ${decision.by}
             </div>`
         }
         ${
             extras &&
             html`<div class="step-extras" data-part="step-detail">
+                ${answers && html`<${AskAnswers} answers=${answers} />`}
                 ${
                     lesson &&
                     html`<${LessonCall} lessonId=${lesson} conversationId=${conversationId} />`
@@ -1514,7 +1520,178 @@ function stepLive(step, results, slots, approvals, busy) {
     return status === "running" || status === "approval";
 }
 
+/**
+ * One question on Pi's card (`ask`): the question, a button for each answer (pressed when chosen; with `multiple`, each
+ * toggles), and with `other` a line to type an answer of one's own instead.
+ */
+function AskChoices({ field, chosen, busy, onChange }) {
+    const { picked, other } = chosen;
+
+    const pick = (label) => {
+        const on = picked.includes(label);
+        const next = field.multiple
+            ? on
+                ? picked.filter((each) => each !== label)
+                : [...picked, label]
+            : [label];
+
+        onChange({ picked: next, other: "" });
+    };
+
+    return html`<fieldset class="ask-choices" disabled=${busy}>
+        <legend class="ask-question">
+            ${field.header && html`<span class="ask-header">${field.header}</span>`}
+            <span>${field.label}</span>
+            ${field.multiple && html`<span class="ask-hint">Choose one or more</span>`}
+        </legend>
+        <div class="ask-options">
+            ${field.choices.map(
+                (choice) => html`<button
+                    type="button"
+                    class="ask-option"
+                    key=${choice.label}
+                    aria-pressed=${picked.includes(choice.label)}
+                    onClick=${() => pick(choice.label)}
+                >
+                    <span class="ask-option-label">${choice.label}</span>
+                    ${
+                        choice.description &&
+                        html`<span class="ask-option-text">${choice.description}</span>`
+                    }
+                </button>`,
+            )}
+        </div>
+        ${
+            field.other &&
+            html`<input
+                class="ask-other"
+                type="text"
+                aria-label=${`Your own answer to: ${field.label}`}
+                placeholder=${field.placeholder ?? "Or type your own answer"}
+                value=${other}
+                onInput=${(event) => onChange({ picked: [], other: event.currentTarget.value })}
+            />`
+        }
+    </fieldset>`;
+}
+
+/** A question's value: the labels picked, in the card's order and one per line, or what was typed instead. */
+function choiceValue(field, { picked, other }) {
+    if (other.trim() !== "") {
+        return other;
+    }
+
+    return field.choices
+        .map((choice) => choice.label)
+        .filter((label) => picked.includes(label))
+        .join("\n");
+}
+
+/**
+ * Pi's questions (`ask`) for the person Pi works for (the owner when nobody is known): sent only by that person, and
+ * declined by anyone who can steer.
+ */
+function AskCard({ approval }) {
+    const { me, users } = store.state;
+    const form = approval.form;
+    const [values, setValues] = useState(() =>
+        Object.fromEntries(form.fields.map((field) => [field.name, { picked: [], other: "" }])),
+    );
+    const [busy, setBusy] = useState(false);
+    const owner = users?.find?.((each) => each.role === "owner")?.id;
+    const mine = (approval.requestedBy ?? owner) === me?.id;
+    const who =
+        users?.find?.((each) => each.id === approval.requestedBy)?.name ??
+        "the person Pi works for";
+    const typed = Object.fromEntries(
+        form.fields.map((field) => [field.name, choiceValue(field, values[field.name])]),
+    );
+    const ready = form.fields.every((field) => typed[field.name] !== "");
+
+    const answer = (allow) => {
+        setBusy(true);
+        attempt(() =>
+            actions.approve(approval.id, allow, false, allow ? typed : undefined),
+        ).finally(() => setBusy(false));
+    };
+
+    return html`<form
+        class="approval ask"
+        data-part="approval"
+        onSubmit=${(event) => {
+            event.preventDefault();
+
+            if (mine && ready && !busy) {
+                answer(true);
+            }
+        }}
+    >
+        <div class="approval-head">
+            <span class="approval-shield" aria-hidden="true"><${Icon} name="shield" size=${16} /></span>
+            <div class="approval-title">
+                <span class="approval-ask">${form.title}</span>
+                ${form.text && html`<span class="approval-reason">${form.text}</span>`}
+            </div>
+        </div>
+        ${
+            mine
+                ? form.fields.map(
+                      (field) => html`<${AskChoices}
+                          key=${field.name}
+                          field=${field}
+                          chosen=${values[field.name]}
+                          busy=${busy}
+                          onChange=${(chosen) => setValues({ ...values, [field.name]: chosen })}
+                      />`,
+                  )
+                : html`<div class="muted small">Waiting for ${who} to answer.</div>`
+        }
+        ${
+            canSteer() &&
+            html`<div class="approval-actions">
+                <button type="button" class="button deny" disabled=${busy} onClick=${() => answer(false)}>
+                    Decline
+                </button>
+                ${
+                    mine &&
+                    html`<button type="submit" class="button primary" disabled=${busy || !ready}>
+                        ${form.submit}
+                    </button>`
+                }
+            </div>`
+        }
+    </form>`;
+}
+
+/** What the person answered to Pi's `ask`, under its call, for everyone in the session: each question and its answer. */
+function AskAnswers({ answers }) {
+    return html`<dl class="ask-answers">
+        ${answers.map(
+            (each, at) => html`<div class="ask-answer" key=${at}>
+                <dt>
+                    <span class="ask-header">${each.header}</span>
+                    <span>${each.question}</span>
+                </dt>
+                <dd>${each.answer}</dd>
+            </div>`,
+        )}
+    </dl>`;
+}
+
+/** What someone did with a call that waited for them: a question (`ask`) is answered or declined. */
+function decided(decision) {
+    if (decision.ask) {
+        return decision.allow ? "Answered" : "Declined";
+    }
+
+    return decision.allow ? "Allowed" : "Denied";
+}
+
 function ApprovalCard({ approval }) {
+    if (approval.form) {
+        return html`<${AskCard} approval=${approval} />`;
+    }
+
     const { me, server, sessions, conversationId } = store.state;
     const [busy, setBusy] = useState(false);
     // noid: a bot's question can be answered for good (its rule), by the owner.
@@ -2293,17 +2470,20 @@ function runStart(conversationId, entries, busy) {
 
 /** Whether this person can answer one of the approvals waiting: one who can steer, and for a call not of their own asking where that needs someone else. */
 function canAnswer(approvals) {
-    const { me, server } = store.state;
+    const { me, server, users } = store.state;
+    const owner = users?.find?.((each) => each.role === "owner")?.id;
 
     return (
         canSteer() &&
-        approvals.some(
-            (approval) =>
-                !(
-                    server?.approvalRule === "others" &&
-                    me?.role !== "owner" &&
-                    approval.requestedBy === me?.id
-                ),
+        approvals.some((approval) =>
+            // A question (`ask`) is for the person Pi works for, or the owner when nobody is known.
+            approval.form
+                ? (approval.requestedBy ?? owner) === me?.id
+                : !(
+                      server?.approvalRule === "others" &&
+                      me?.role !== "owner" &&
+                      approval.requestedBy === me?.id
+                  ),
         )
     );
 }
@@ -2495,7 +2675,16 @@ function LiveLine({ live, approvals, start, entries, conversationId }) {
     let state;
 
     if (waiting) {
-        state = canAnswer(approvals) ? "Waiting for your approval" : "Waiting for approval";
+        // Pi's questions (`ask`) wait for an answer, not an approval.
+        const asks = approvals.every((approval) => approval.form);
+
+        state = canAnswer(approvals)
+            ? asks
+                ? "Waiting for your answer"
+                : "Waiting for your approval"
+            : asks
+              ? "Waiting for an answer"
+              : "Waiting for approval";
     } else if (retry) {
         state = "Retrying";
     } else if ((live.compactions ?? []).length > 0) {

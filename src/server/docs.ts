@@ -339,7 +339,8 @@ export const TurnsDoc = defineDoc<Turns>({
     initial: () => ({ on: false, asks: [] }),
 });
 
-export type Decision = { allow: boolean; by: string; userId: string; at: number };
+/** `ask`: a question (Pi's `ask`), answered or declined rather than allowed or denied. */
+export type Decision = { allow: boolean; by: string; userId: string; at: number; ask?: true };
 
 /** Who allowed or denied each tool call Lancet Guard asked about, by tool call id. */
 export const DecisionsDoc = defineDoc<{ calls: Record<string, Decision> }>({

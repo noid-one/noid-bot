@@ -291,6 +291,8 @@ const CLEAN_RESULTS = new Set([
     "session_follow",
     "session_stop",
     "session_archive",
+    // What the owner chose on a question's card (`ask.ts`).
+    "ask",
 ]);
 /** How many of a conversation's newest entries are looked through for the run since the owner last wrote. */
 const RUN_LOOKBACK = 500;
@@ -376,7 +378,7 @@ function siteOpened(tool: string, args: Record<string, unknown>): string | undef
 }
 
 /** How long a question waits before it is denied (NOID_APPROVAL_MINUTES, default an hour). */
-function waitMs(): number {
+export function waitMs(): number {
     const minutes = Number(process.env.NOID_APPROVAL_MINUTES ?? 60);
 
     return (minutes > 0 ? minutes : 60) * 60_000;
