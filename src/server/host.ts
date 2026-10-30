@@ -85,9 +85,41 @@ export interface ApprovalRequest {
     createdAt: number;
     /** Who Pi was working for when the call asked: set by `Approvals`, not by the asker. */
     requestedBy?: string;
+    /** A question for the person Pi works for (Pi's `ask` tool): the card shows its fields, not Allow and Deny. */
+    form?: AskForm;
 }
 
-export type ApprovalAnswer = { allow: boolean; by: string };
+/** An answer to pick on an ask's card (`AskField.choices`): a button with its label, and a line under it. */
+export interface AskChoice {
+    /** Up to 60 characters, one line: the value when it is chosen. */
+    label: string;
+    /** Up to 160 characters, one line. */
+    description?: string;
+}
+
+/** One question on an ask's card. */
+export interface AskField {
+    /** The value's key in the answer: letters, digits, and _, starting with a letter. */
+    name: string;
+    /** The question: one line of up to 300 characters. */
+    label: string;
+    /** A short tag over the question, such as "Database": up to 12 characters. */
+    header?: string;
+    /** 2 to 4 answers to pick, with different labels, shown as buttons; the value is the label chosen. */
+    choices: AskChoice[];
+    /** One or more can be chosen, and the value is their labels, one per line. */
+    multiple?: boolean;
+    /** The person can type an answer of their own instead, which is then the value. */
+    other?: boolean;
+    /** What the `other` line shows while empty. */
+    placeholder?: string;
+}
+
+/** What an ask's card shows: a title, maybe words under it, its questions, and the button that sends. */
+export type AskForm = { title: string; text?: string; fields: AskField[]; submit: string };
+
+/** The answer to an approval; an ask's also carries what the person chose, for the tool that asked. */
+export type ApprovalAnswer = { allow: boolean; by: string; values?: Record<string, string> };
 
 /**
  * Tool calls waiting for a human. In memory on purpose: the guard hook runs before a call's intent is stored, so after

@@ -474,7 +474,12 @@ function PeekAsk({ approval, compact, who }) {
         <div class=${`peek-ask-what mono ${wholeOnTile(approval) ? "whole" : ""}`}>
             ${approval.subject}
         </div>
-        ${!compact && approval.reason && html`<div class="peek-ask-why">${approval.reason}</div>`}
+        ${
+            // A question (a form) is in its reason, its title alone says little: a compact tile shows it too.
+            (!compact || approval.form) &&
+            approval.reason &&
+            html`<div class="peek-ask-why">${approval.reason}</div>`
+        }
     </div>`;
 }
 
@@ -491,6 +496,22 @@ function PeekApproval({ approval, me, rule, whole }) {
     };
 
     const ownCall = rule === "others" && me?.role !== "owner" && approval.requestedBy === me?.id;
+
+    // A question (Pi's `ask`) is answered on its card, where its answers are: from here, open it or decline.
+    if (approval.form) {
+        return html`<span class="peek-actions">
+            <button class="button small" disabled=${busy} onClick=${() => answer(false)}>
+                Decline
+            </button>
+            <button
+                class="button small primary"
+                title="Answer it where it waits"
+                onClick=${() => navigate(approval.conversationId)}
+            >
+                Open
+            </button>
+        </span>`;
+    }
 
     return html`<span class="peek-actions">
         <button class="button small" disabled=${busy} onClick=${() => answer(false)}>Deny</button>

@@ -56,6 +56,7 @@ const ORDER = [
     "session-tools.ts",
     "triggers.ts",
     "gallery.ts",
+    "ask.ts",
 ];
 
 /** The built-in modules' names (their files' without `.ts`): a drop-in with one of them is never loaded. */
@@ -80,6 +81,7 @@ const TITLES: Record<string, string> = {
     "session-tools.ts": "Noid's session tools",
     "triggers.ts": "Triggers",
     "gallery.ts": "Extension gallery",
+    "ask.ts": "Ask",
 };
 
 /**
@@ -115,6 +117,7 @@ export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     "watch_pr",
     "repo_watch",
     "session_watch_pr",
+    "ask",
     // noid's bot mail, overseer, and desktop.
     "bots",
     "bot_message",

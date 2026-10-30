@@ -5,8 +5,8 @@
  * configured to run on their own, such as a git diff driver or file system monitor, run as they would for anyone.
  */
 
-/** Tools that change nothing, or whose own calls are checked one by one (codemode). */
-const ALWAYS_ALLOWED = new Set(["read", "artifact", "codemode"]);
+/** Tools that change nothing, or whose own calls are checked one by one (codemode); `ask` waits for the owner. */
+const ALWAYS_ALLOWED = new Set(["read", "artifact", "codemode", "ask"]);
 /** What the browser does when it only looks at pages, without acting on them. */
 const BROWSER_LOOKS = new Set([
     "navigate",

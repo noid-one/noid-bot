@@ -91,6 +91,7 @@ import {
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { Bots, type PersonFace } from "./noid/bots.ts";
 import { ownerOf } from "./noid/owner.ts";
+import { checkValues } from "./asks.ts";
 import { Chromium } from "./browser/cdp.ts";
 import { Computer, COMPUTER_HOME, onComputer } from "./noid/computer.ts";
 import { connectHostChrome, windowsPowerShell } from "./noid/host-chrome.ts";
@@ -2252,6 +2253,14 @@ export class PocketApp {
             return "This call is too long to show whole: deny it, and ask for it in smaller parts.";
         }
 
+        // A question (Pi's `ask`) is answered by the person Pi works for: it asks what they want. With nobody known (a
+        // bot's run, say), the owner answers it. Anyone who can steer can decline it.
+        if (request.form !== undefined) {
+            return (request.requestedBy ?? ownerOf(this)?.id) === user.id
+                ? undefined
+                : "Only the person Pi works for here can answer this.";
+        }
+
         if (this.config.approvalRule !== "others" || user.role === "owner") {
             return undefined;
         }
@@ -2266,7 +2275,13 @@ export class PocketApp {
             : undefined;
     }
 
-    async answerApproval(id: string, allow: boolean, user: User, always = false): Promise<boolean> {
+    async answerApproval(
+        id: string,
+        allow: boolean,
+        user: User,
+        always = false,
+        values?: unknown,
+    ): Promise<boolean> {
         this.requireSteer(user);
         const request = this.approvals.all().find((each) => each.id === id);
 
@@ -2280,7 +2295,24 @@ export class PocketApp {
             throw new HttpError(403, refused);
         }
 
-        if (!this.approvals.answer(id, { allow, by: user.name })) {
+        let given: Record<string, string> | undefined;
+
+        // A question's answer is what was chosen, for each question: a plain Allow (from a notification, say) is not one.
+        if (allow && request.form !== undefined) {
+            try {
+                given = checkValues(request.form.fields, values);
+            } catch (error) {
+                throw new HttpError(400, describe(error));
+            }
+        }
+
+        if (
+            !this.approvals.answer(id, {
+                allow,
+                by: user.name,
+                ...(given === undefined ? {} : { values: given }),
+            })
+        ) {
             return false;
         }
 
@@ -2326,16 +2358,19 @@ export class PocketApp {
                         by: user.name,
                         userId: user.id,
                         at: Date.now(),
+                        ...(request.form === undefined ? {} : { ask: true as const }),
                     };
                 }, context)
                 .catch((error: unknown) => this.#log(`decision not recorded: ${describe(error)}`));
         }
 
-        await this.collab.activity(
-            conversationId,
-            user,
-            `${allow ? "allowed" : "denied"} the ${request.tool} call: ${snippet(request.subject, 120)}`,
-        );
+        // A question is answered or declined, and named by what it asks.
+        const what =
+            request.form === undefined
+                ? `${allow ? "allowed" : "denied"} the ${request.tool} call: ${request.subject}`
+                : `${allow ? "answered" : "declined"}: ${request.reason}`;
+
+        await this.collab.activity(conversationId, user, snippet(what, 160));
 
         return true;
     }
