@@ -63,7 +63,9 @@ const route: FauxResponseStep = (request) => {
             };
             const given = JSON.stringify({ systemPrompt, messages: messages.slice(0, -1) });
 
-            return fauxAssistantMessage([fauxText(`has ${rest[0]}: ${given.includes(rest[0]!)}`)]);
+            const word = rest.join(" ");
+
+            return fauxAssistantMessage([fauxText(`has ${word}: ${given.includes(word)}`)]);
         }
 
         default:
@@ -152,6 +154,14 @@ async function sayAs(user: User, id: ConversationId, text: string): Promise<void
 
     await (await app.harness.submission(submissionId, context))!.wait(context);
 }
+
+test("without lessons there is no lesson section, and the rules for saving come with the tool (pp 6a3f2b52)", async () => {
+    assert.ok(!(await given(repo, "Lessons kept from earlier sessions")), "no section");
+    assert.ok(await given(repo, "Use add only when a person asks you to save or remember"));
+    assert.ok(await given(repo, "When unsure, do not save"));
+    assert.ok(await given(repo, "Never save a one-off fact"));
+    assert.ok(await given(repo, "Use scope everywhere only for a person's general preferences"));
+});
 
 test("a lesson Pi saves reaches later sessions in the repository and its worktrees, not other folders", async () => {
     const id = await newSession(app, repo);

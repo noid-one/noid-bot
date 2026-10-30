@@ -4,6 +4,7 @@ import {
     cleanUp,
     context,
     lastText,
+    loadTools,
     newSession,
     openApp,
     owner,
@@ -267,6 +268,8 @@ test("a scheduled message goes out at its time, also after a restart, once; a re
 test("Pi schedules, lists, and cancels its own messages with its tool", async () => {
     const id = await newSession(app);
 
+    await loadTools(app, id, "schedule");
+
     await say(id, "remind yourself");
     const [mine] = await items(id);
 
@@ -279,6 +282,8 @@ test("Pi schedules, lists, and cancels its own messages with its tool", async ()
 
 test("a schedule Pi sets up is the work of whom it worked for, and is cancelled once they may not steer", async () => {
     const id = await newSession(app);
+
+    await loadTools(app, id, "schedule");
     const hal = app.config.addUser("Hal", "guest").user;
     const ida = app.config.addUser("Ida", "guest").user;
 

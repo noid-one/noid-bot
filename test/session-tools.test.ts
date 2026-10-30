@@ -6,6 +6,7 @@ import {
     context,
     fakeTab,
     lastText,
+    loadTools,
     newSession,
     openApp,
     owner,
@@ -656,6 +657,8 @@ test("schedules count against Noid's hourly actions, its own too, once each; ref
     app = await open();
     const id = await noid();
     const session = await newSession(app);
+
+    await loadTools(app, id, "schedule");
     const own = (key: string, when = "tomorrow 9:00") =>
         app.sessionTools.countSchedule(id, key, () =>
             app.schedules.add(id, { when, text: "check back", key }),

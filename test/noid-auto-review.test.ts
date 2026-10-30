@@ -5,6 +5,7 @@ import {
     cleanUp,
     context,
     lastText,
+    loadTools,
     openApp,
     owner,
     root,
@@ -156,6 +157,8 @@ async function bot(name: string) {
         model: { provider: "faux", modelId: "faux-1" },
         thinkingLevel: "off",
     });
+    // Waits for a search (`tool-search.ts`): offered as if the bot had loaded it.
+    await loadTools(app, id, "browser");
 
     return id;
 }

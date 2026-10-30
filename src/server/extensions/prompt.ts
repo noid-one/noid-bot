@@ -6,12 +6,8 @@
  * Edit freely: saving this file reloads it into the running server.
  */
 import { readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import {
-    formatSkillsForPrompt,
-    getDocsPath,
-    loadProjectContextFiles,
-} from "@earendil-works/pi-coding-agent";
+import { basename, dirname, join, resolve } from "node:path";
+import { getDocsPath, loadProjectContextFiles, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, type PromptInput, section } from "@earendil-works/pi-durable";
 import { APP_ROOT } from "../config.ts";
 import type { PocketHost } from "../host.ts";
@@ -43,7 +39,7 @@ Your work is durable: if the server restarts, you continue where you left off. A
 const GUIDELINES = `- Keep replies short and easy to read on a small screen. Lead with the answer; use short paragraphs, lists, and small code blocks.
 - Use read to look at files instead of cat or sed. Use edit for precise changes and write for new files or full rewrites.
 - Show file paths clearly when you work with files.
-- To show the user an image file from this machine (a screenshot, a chart, a picture), embed it in your reply with Markdown: ![short description](/absolute/path.png). Paths relative to the working directory work too. Files the user attaches are saved on the server; their paths are listed in the message.
+- To show an image file from this machine, embed it: ![short description](/absolute/or/relative/path.png). Files the user attaches are saved on the server; the message lists their paths.
 - Before running something destructive or irreversible, say what it will do. A guard may ask a human to approve risky commands; if a call is blocked, do not try to get around the block.
 - Do not commit, push, publish, or deploy unless asked.`;
 
@@ -55,12 +51,55 @@ function docs(dataDir: string): string {
     const code = resolve(APP_ROOT);
     const folder = join(code, "docs");
 
-    return `Pi Pocket documentation (read only when someone asks about Pi Pocket itself: how it works, changing how you behave in it, extending it, or changing its code):
-- Start here: ${join(folder, "index.md")}
-- Pi Pocket's code is in ${code}; its data (people, settings, sessions) in ${dataDir}. Change the data through the app, never by editing its files, except extensions/ in it, where drop-in extensions go, and themes/, where the owner's themes are.
-- When asked about: changing how you behave without code, such as instructions, AGENTS.md, skills, or prompt templates (docs/customizing.md); a new tool, prompt section, or hook, or a page, button, or route in the app (docs/extensions.md, an index of the guides in docs/extensions/, with working examples in docs/examples/ and the exact types in types/pocket.d.ts); how the app looks or is laid out: a theme (docs/extensions/themes.md, with every token and part in docs/extensions/reference/theme-surface.md); changing Pi Pocket's own code while it runs (docs/self-editing.md); where its code is (docs/map.md); how its parts depend on each other (docs/architecture.md); what a feature does (docs/features.md)
-- Resolve docs/... and types/... under ${code}, not the working directory. Read a doc completely before changing anything. docs/index.md and docs/extensions.md are indexes: follow the links your task needs, not all of them.
-- Pi's own documentation (skills, prompt templates, models, providers, settings): ${getDocsPath()}`;
+    // docs/index.md routes each kind of question to its page: the prompt names only the way in (pp 1c3bc2b2).
+    return `Pi Pocket's docs, only for questions about Pi Pocket itself (how it works, changing how you behave in it, extending it, changing its code): start at ${join(folder, "index.md")}, an index (follow only the links your task needs), and read a doc completely before changing anything.
+- Code: ${code}. Data: ${dataDir}; change it through the app, never by editing its files, except extensions/ (drop-ins) and themes/.
+- Pi's own docs (skills, prompt templates, models, providers, settings): ${getDocsPath()}`;
+}
+
+/**
+ * The skills the model may pick, one line each. Pi's own format (XML, a location per skill) costs about 150
+ * characters more for each; here a folder that holds several skills as `<folder>/<name>/SKILL.md` is named once.
+ * Skills that ask not to be picked by the model (`disable-model-invocation`) stay out, as in Pi (pp 3d2e96b4).
+ */
+export function formatSkills(skills: readonly Skill[]): string {
+    const visible = skills.filter((skill) => !skill.disableModelInvocation);
+
+    if (visible.length === 0) {
+        return "";
+    }
+
+    // A description cannot close the block early.
+    const oneLine = (text: string) =>
+        text.replace(/\s+/g, " ").replaceAll("</skills", "&lt;/skills").trim();
+    const groups = new Map<string, string[]>();
+    const others: string[] = [];
+
+    for (const skill of visible) {
+        const folder = dirname(dirname(skill.filePath));
+        const usual =
+            basename(skill.filePath) === "SKILL.md" &&
+            basename(dirname(skill.filePath)) === skill.name;
+
+        if (usual) {
+            groups.set(folder, [
+                ...(groups.get(folder) ?? []),
+                `- ${skill.name}: ${oneLine(skill.description)}`,
+            ]);
+        } else {
+            others.push(`- ${skill.name} (${skill.filePath}): ${oneLine(skill.description)}`);
+        }
+    }
+
+    const blocks = [...groups].map(
+        ([folder, lines]) => `In ${join(folder, "<name>", "SKILL.md")}:\n${lines.join("\n")}`,
+    );
+
+    if (others.length > 0) {
+        blocks.push(`At their own paths:\n${others.join("\n")}`);
+    }
+
+    return `<skills>\nWhen a task matches a skill's description, read its SKILL.md with the read tool and follow it. Resolve a relative path in it against the skill's folder.\n\n${blocks.join("\n\n")}\n</skills>`;
 }
 
 const STALE_MS = 30_000;
@@ -111,7 +150,7 @@ export default function createPrompt(host: PocketHost) {
         }
 
         try {
-            const text = formatSkillsForPrompt(host.skills(cwd), "read").trim();
+            const text = formatSkills(host.skills(cwd));
 
             skills = text === "" ? undefined : text;
         } catch (error) {
@@ -206,7 +245,7 @@ export default function createPrompt(host: PocketHost) {
         perFolder(remoteSkillTexts, cwd, "skills", async () => {
             const skills = await skillsIn(input.env!, skillFoldersIn(cwd, COMPUTER_HOME), context);
 
-            return formatSkillsForPrompt(skills, "read").trim() || undefined;
+            return formatSkills(skills) || undefined;
         });
 
     const onComputer = (input: PromptInput) =>

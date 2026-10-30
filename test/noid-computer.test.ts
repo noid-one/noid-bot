@@ -303,8 +303,11 @@ test("skills come from the claimed folder, not from this machine", async () => {
 
     await say(app, id, "check Shadowed-ibis");
     assert.equal(await answer(id), "has Shadowed-ibis: true", ".pi/skills comes first");
-    await say(app, id, `check ${VIRTUAL}/bots/eta/.pi/skills/heron-report/SKILL.md`);
+    // Its folder there, named once for its skills (`formatSkills`).
+    await say(app, id, `check ${VIRTUAL}/bots/eta/.pi/skills/<name>/SKILL.md`);
     assert.match(await answer(id), /: true$/, "the skill's location is its path there");
+    await say(app, id, "check - heron-report:");
+    assert.match(await answer(id), /: true$/, "the skill is listed");
     await say(app, id, "check Heron-kestrel");
     assert.equal(await answer(id), "has Heron-kestrel: false", "the first of each name wins");
     await say(app, id, "check no-description");

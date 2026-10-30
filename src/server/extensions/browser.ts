@@ -10,7 +10,13 @@ import { COMPUTER_HOME } from "../noid/computer.ts";
 import { awaitWithContext } from "@earendil-works/chord/context";
 import { type ImageContent, type TextContent, Type } from "@earendil-works/pi-ai";
 import type { Context } from "@earendil-works/chord";
-import { AgentDoc, defineExtension, defineTool, section } from "@earendil-works/pi-durable";
+import {
+    AgentDoc,
+    type ConversationId,
+    defineExtension,
+    defineTool,
+    section,
+} from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { BrowserPage, LogEntry, Target } from "../browser/page.ts";
 import { displayUrl, normalizeUrl } from "../browser/urls.ts";
@@ -147,6 +153,13 @@ export async function uploadable(
     }
 
     return files;
+}
+
+/** What Pi needs to know to use the browser in `conversationId`: a bot's window, or this machine's Chromium. */
+export function browserGuide(host: PocketHost, conversationId: ConversationId): string {
+    return host.botOf(conversationId) !== undefined || !host.onHost(conversationId)
+        ? BOT_GUIDE
+        : GUIDE;
 }
 
 export default function createBrowser(host: PocketHost) {
@@ -589,10 +602,7 @@ export default function createBrowser(host: PocketHost) {
             section("browser", (input) =>
                 !input.agent.tools.some((tool) => tool.name === "browser")
                     ? undefined
-                    : host.botOf(input.conversationId) !== undefined ||
-                        !host.onHost(input.conversationId)
-                      ? BOT_GUIDE
-                      : GUIDE,
+                    : browserGuide(host, input.conversationId),
             ),
         ],
     });

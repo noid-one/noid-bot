@@ -56,6 +56,7 @@ const ORDER = [
     "session-tools.ts",
     "triggers.ts",
     "gallery.ts",
+    "tool-search.ts",
 ];
 
 /** The built-in modules' names (their files' without `.ts`): a drop-in with one of them is never loaded. */
@@ -80,6 +81,7 @@ const TITLES: Record<string, string> = {
     "session-tools.ts": "Noid's session tools",
     "triggers.ts": "Triggers",
     "gallery.ts": "Extension gallery",
+    "tool-search.ts": "Tool search",
 };
 
 /**
@@ -102,6 +104,7 @@ export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     "team",
     "schedule",
     "codemode",
+    "tool_search",
     "memory",
     "sessions",
     "session_read",

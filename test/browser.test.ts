@@ -3,6 +3,7 @@ import {
     cleanUp,
     fakeTab,
     lastText,
+    loadTools,
     newSession,
     openApp,
     owner,
@@ -1035,6 +1036,7 @@ test(
             await app.commands.configure(id, owner(app), {
                 model: { provider: "faux", modelId: "faux-vision" },
             });
+            await loadTools(app, id, "browser");
             const tab = fakeTab(id, owner(app));
 
             await app.attach(tab.client);

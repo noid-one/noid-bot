@@ -14,7 +14,7 @@
  * or provider failed is reported as such, and Pi is told to stop and tell the user, never to try another model.
  */
 import type { AssistantMessage, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type { Context } from "@earendil-works/chord";
 import {
     AgentDoc,
@@ -766,25 +766,17 @@ export default function createSubagents(host: PocketHost) {
     // tool offers Pi a model only while some are allowed. Its call checks the list as it is then, whatever it offered.
     const choosing = allowedModels(host).length > 0;
     const base = {
-        action: Type.Union([
-            Type.Literal("spawn"),
-            Type.Literal("send"),
-            Type.Literal("stop"),
-            Type.Literal("status"),
-        ]),
+        action: StringEnum(["spawn", "send", "stop", "status"] as const),
         name: Type.Optional(
             Type.String({ description: "Short kebab-case name, for example test-runner." }),
         ),
         message: Type.Optional(Type.String()),
         followUp: Type.Optional(Type.Boolean()),
         thinking: Type.Optional(
-            Type.Union(
-                THINKING_LEVELS.map((level) => Type.Literal(level)),
-                {
-                    description:
-                        "spawn only: its thinking level; left out, yours. One its model lacks becomes the nearest lower one it has, else its lowest.",
-                },
-            ),
+            StringEnum(THINKING_LEVELS, {
+                description:
+                    "spawn only: its thinking level; left out, yours. One its model lacks becomes the nearest lower one it has, else its lowest.",
+            }),
         ),
         tools: Type.Optional(
             Type.Array(Type.String(), {
@@ -921,7 +913,11 @@ export default function createSubagents(host: PocketHost) {
                 action === "spawn"
                     ? await chosenModel(host, (args as { model?: unknown }).model, parent.model)
                     : undefined;
-            const parentTools = action === "spawn" && args.tools !== undefined ? parent.tools : [];
+            // Tools that wait for a search (`tool-search.ts`) can be asked for too: the subagent is offered them.
+            const parentTools =
+                action === "spawn" && args.tools !== undefined
+                    ? [...parent.tools, ...parent.deferred]
+                    : [];
             const tools =
                 args.tools === undefined
                     ? undefined
@@ -936,6 +932,8 @@ export default function createSubagents(host: PocketHost) {
 
                           return found;
                       });
+            // Every tool given that waits for a search, also one this session loaded: the subagent has no search.
+            const waiting = (tools ?? []).filter((tool) => tool.deferred === true);
             // TypeBox infers no type from a union built from a list; the schema itself checks the value.
             const asked = args.thinking as ModelThinkingLevel | undefined;
             // noid: an agent file's instructions, after a subagent's own.
@@ -992,6 +990,9 @@ export default function createSubagents(host: PocketHost) {
                         ...(model === undefined ? {} : { model }),
                         ...(thinking === undefined ? {} : { thinkingLevel: thinking }),
                         ...(tools === undefined ? {} : { tools }),
+                        ...(waiting.length === 0
+                            ? {}
+                            : { modelTools: { remove: [], add: waiting } }),
                     });
                     state.agents[name] = { conversationId: child.id, reported: [] };
                 }

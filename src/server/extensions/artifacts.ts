@@ -5,7 +5,7 @@
  */
 import { extname } from "node:path";
 import type { Context } from "@earendil-works/chord";
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { ArtifactBodyDoc, type ArtifactMeta, ArtifactsDoc, type ArtifactType } from "../docs.ts";
@@ -121,44 +121,37 @@ function applyEdits(
     return next;
 }
 
-const GUIDE = `Use the artifact tool for results the user should see rendered rather than read as text: interactive demos, games, visualizations, charts, diagrams, formatted reports. Do not use it for plain answers or for project files (write those with write).
-- HTML artifacts open in a sandboxed frame on the user's device (often a phone). They cannot reach this app, its cookies, or the parent page. Make them self-contained, responsive (include a viewport meta tag), and touch-friendly.
-- Load libraries from a CDN with full URLs, such as https://esm.sh or https://cdn.jsdelivr.net. For ES modules that import bare specifiers (three.js addons import "three"), add an import map, for example: <script type="importmap">{"imports":{"three":"https://esm.sh/three@0.170.0","three/addons/":"https://esm.sh/three@0.170.0/examples/jsm/"}}</script>
-- Show loading and error states inside the page (window.onerror, a visible message), so a broken artifact explains itself.
-- Reuse the id to publish a new version. For small fixes, send edits against the latest version instead of the whole content.
-- To publish an existing local HTML, Markdown, or SVG file without repeating its contents, give path instead of content or edits. This copies a UTF-8 snapshot (up to 2,000,000 bytes), not a live link or its neighboring assets. Everyone who can see the conversation can open the snapshot.`;
+// Short: the tool schema says the rest (pp 1f1b1243).
+const GUIDE = `Use the artifact tool for results the user should see rendered rather than read as text: interactive demos, games, visualizations, charts, diagrams, formatted reports. Not for plain answers or project files (write those with write).
+- HTML artifacts open in a sandboxed frame on the user's device (often a phone) and cannot reach this app, its cookies, or the parent page. Make them self-contained, responsive (a viewport meta tag), and touch-friendly, with visible loading and error states (window.onerror).
+- Load libraries from a CDN with full URLs (https://esm.sh, https://cdn.jsdelivr.net). For ES modules that import bare specifiers (three.js addons import "three"), add an import map.
+- For small fixes, send edits instead of the whole content.
+- To publish an existing local file without repeating it, give path. Everyone who can see the conversation can open the copy.`;
 
 export default function createArtifacts(_host: PocketHost) {
     const artifact = defineTool({
         name: "artifact",
         description:
-            "Publish a viewable artifact (self-contained HTML page, Markdown document, or SVG image) that the user opens in the app's artifact viewer. " +
-            "Calling again with the same id publishes a new version. Give exactly one of content, nonempty edits, or a local UTF-8 file path (up to 2,000,000 bytes).",
+            "Publish an HTML page, Markdown document, or SVG image that the user opens in the app's artifact viewer. The same id publishes a new version. Give exactly one of content, edits, or path (up to 2,000,000 bytes).",
         parameters: Type.Object({
-            id: Type.String({
-                description:
-                    "Stable kebab-case id, for example solar-system. Reuse it for new versions.",
-            }),
-            title: Type.String({ description: "Short human-readable title." }),
+            id: Type.String({ description: "Stable kebab-case id; reuse it for a new version." }),
+            title: Type.String({ description: "Short title." }),
             type: Type.Optional(
-                Type.Union([Type.Literal("html"), Type.Literal("markdown"), Type.Literal("svg")], {
+                StringEnum(["html", "markdown", "svg"] as const, {
                     description:
-                        "Default html for content, inferred from .html/.md/.markdown/.svg for a new path, or the existing artifact's type. A path cannot change an existing type.",
+                        "Default: html, or from a new path's extension. A path cannot change an existing type.",
                 }),
             ),
-            content: Type.Optional(
-                Type.String({ description: "The complete content of the new version." }),
-            ),
+            content: Type.Optional(Type.String({ description: "The whole new version." })),
             path: Type.Optional(
                 Type.String({
                     description:
-                        "A UTF-8 file where this session runs, to copy as this version: absolute, ~/…, or relative to the session folder. Regular files only, not a final symlink. No neighboring assets are copied.",
+                        "A UTF-8 file where this session runs, to copy as this version (a snapshot, not a live link, without the files beside it): absolute, ~/…, or relative to the session folder.",
                 }),
             ),
             edits: Type.Optional(
                 Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() }), {
-                    description:
-                        "Exact, unique replacements applied to the latest version instead of sending content.",
+                    description: "Exact, unique replacements on the latest version.",
                 }),
             ),
         }),
