@@ -630,7 +630,8 @@ export function Composer() {
 
     /**
      * What went out stays for ↑; its pastes are done with. Given the box as it was sent, words the person typed
-     * on since stay in the box, without the ones that went.
+     * on since stay in the box, without the ones that went. A box edited elsewhere stays as it is, with its pastes: it
+     * is their next draft now, and clearing it would lose what they just did.
      */
     const sent = (full, was) => {
         if (full.length <= REMEMBER_CHARS) {

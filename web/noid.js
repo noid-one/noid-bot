@@ -34,6 +34,19 @@ export async function askNoid(text) {
     toNoid();
 }
 
+/** A bot's changes, one request for all its cards: kept a little, and dropped once one is undone here. */
+const changesOf = new Map();
+const CHANGES_KEPT_MS = 30_000;
+
+function botChanges(id) {
+    if (!changesOf.has(id)) {
+        changesOf.set(id, api(`bots/${id}/changes`).then(({ changes }) => changes));
+        setTimeout(() => changesOf.delete(id), CHANGES_KEPT_MS);
+    }
+
+    return changesOf.get(id);
+}
+
 /**
  * Under a bot's `bot_settings` call that changed something: what changed and, for the owner, Undo, which puts back what
  * it replaced. Whether it was undone comes from the server, so a reload shows the same.
@@ -49,17 +62,16 @@ export function BotChangeCall({ change, summary, conversationId }) {
             return;
         }
 
-        api(`bots/${id}/changes`)
-            .then(({ changes }) =>
-                setUndone(changes.some((each) => each.id === change && each.undone)),
-            )
-            .catch(() => {});
+        botChanges(id)
+            .then((changes) => setUndone(changes.some((each) => each.id === change && each.undone)))
+            .catch(() => changesOf.delete(id));
     }, [id, change, owner]);
 
     const undo = () => {
         setBusy(true);
         attempt(async () => {
             await api(`bots/${id}/changes/${encodeURIComponent(change)}/undo`, {});
+            changesOf.delete(id);
             setUndone(true);
             notify("info", "Undone: the bot's settings are as they were.");
         }).finally(() => setBusy(false));

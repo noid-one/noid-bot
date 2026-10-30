@@ -341,9 +341,30 @@ test("a call waiting for approval shows on its session's tile, and goes when ans
         assert.equal(shown.tool, "bash");
         assert.equal(shown.subject.length, 500, "a long command is cut short");
         assert.ok(!("taskId" in shown), "only what the tile shows");
+        assert.ok(!("form" in shown));
         assert.equal(await app.answerApproval("call-1", true, owner(app)), true);
         assert.deepEqual(await asked, { allow: true, by: owner(app).name });
         await until(() => peeks(tab).at(-1)?.approvals.length === 0, "the approval to go");
+
+        // A question says so: its tile opens it rather than allowing it.
+        const question = app.approvals.request(
+            {
+                id: "call-2",
+                conversationId: id,
+                taskId: 1 as unknown as TaskId,
+                tool: "ask",
+                subject: "Pi asks",
+                reason: "Which database?",
+                form: { title: "Pi asks", fields: [], submit: "Answer" },
+                createdAt: Date.now(),
+            },
+            context,
+        );
+
+        await until(() => peeks(tab).at(-1)?.approvals.length === 1, "the question on the tile");
+        assert.equal(peeks(tab).at(-1)!.approvals[0]!.form, true);
+        assert.equal(await app.answerApproval("call-2", false, owner(app)), true);
+        await question;
     } finally {
         app.detach(tab.client);
     }

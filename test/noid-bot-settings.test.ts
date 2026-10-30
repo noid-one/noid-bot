@@ -161,6 +161,30 @@ test("in the owner's own run a change applies at once, shows a card, and the own
     await assert.rejects(app.botSettings.undo(owner(app), id, change!.id), { status: 409 });
 });
 
+test("an Undo keeps a later change, and two at once undo once", async () => {
+    const id = await bot("Layers");
+
+    await send(id, call({ instructions: "Second." }));
+    await send(id, call({ instructions: "Third." }));
+
+    const [first, second] = await app.botSettings.changes(owner(app), id);
+
+    await assert.rejects(app.botSettings.undo(owner(app), id, first!.id), {
+        status: 409,
+        message: /instructions changed since/,
+    });
+    assert.equal(await instructionsOf(id), "Third.");
+    assert.equal((await app.botSettings.changes(owner(app), id))[0]!.undone, undefined);
+
+    const both = await Promise.allSettled([
+        app.botSettings.undo(owner(app), id, second!.id),
+        app.botSettings.undo(owner(app), id, second!.id),
+    ]);
+
+    assert.deepEqual(both.map((each) => each.status).sort(), ["fulfilled", "rejected"]);
+    assert.equal(await instructionsOf(id), "Second.");
+});
+
 test("a rename goes through the bot's own checks; asking for what it has changes nothing", async () => {
     const id = await bot("Namer");
 
@@ -174,6 +198,11 @@ test("a rename goes through the bot's own checks; asking for what it has changes
     await send(id, call({ name: "Scribe" }));
     assert.equal(app.sessionMeta(id)?.bot?.name, "Scribe");
     assert.equal((await lastResult(id)).details?.summary, "Name updated");
+    assert.equal(
+        (await app.botSettings.changes(owner(app), id)).length,
+        1,
+        "the refused one is not kept",
+    );
 });
 
 test("an instruction change that another bot's mail asked for waits for the owner, every time", async () => {

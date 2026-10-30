@@ -140,7 +140,10 @@ export class BotSettings {
         return (await this.#app.harness.snapshot(BotChangesDoc, id, context))?.changes ?? [];
     }
 
-    /** Put back what a change replaced, as the owner: through the same checks as the bot's settings. */
+    /**
+     * Put back what a change replaced, as the owner: through the same checks as the bot's settings. Only while the bot's
+     * settings still hold what the change made them: a later change is not silently thrown away.
+     */
     async undo(user: User, id: ConversationId, changeId: string): Promise<BotChange> {
         const app = this.#app;
 
@@ -157,39 +160,119 @@ export class BotSettings {
             throw new HttpError(409, "That change was undone already.");
         }
 
-        const { before } = change;
+        const { before, after } = change;
 
-        if (before.name !== undefined || before.instructions !== undefined) {
-            await app.bots.update(user, id, {
-                ...(before.name === undefined ? {} : { name: before.name }),
-                ...(before.instructions === undefined ? {} : { instructions: before.instructions }),
-            });
+        if (after.model !== undefined && before.model === undefined) {
+            throw new HttpError(409, "The bot had no model before: choose one in its settings.");
         }
 
-        if (before.model !== undefined || before.thinkingLevel !== undefined) {
-            await app.commands.configure(id, user, {
-                ...(before.model === undefined ? {} : { model: before.model }),
-                ...(before.thinkingLevel === undefined
-                    ? {}
-                    : { thinkingLevel: before.thinkingLevel }),
-            });
+        const moved = await this.#changedSince(id, after);
+
+        if (moved !== undefined) {
+            throw new HttpError(
+                409,
+                `The bot's ${moved} changed since: change it in the bot's settings.`,
+            );
         }
 
-        let undone = change;
+        // Claimed first, in one commit: two quick taps, or two tabs, undo it once.
+        const claimed = await this.#mark(id, changeId, { at: Date.now(), by: user.id });
 
-        await app.harness.commit(async (tx) => {
+        if (claimed === undefined) {
+            throw new HttpError(409, "That change was undone already.");
+        }
+
+        try {
+            if (before.name !== undefined || before.instructions !== undefined) {
+                await app.bots.update(user, id, {
+                    ...(before.name === undefined ? {} : { name: before.name }),
+                    ...(before.instructions === undefined
+                        ? {}
+                        : { instructions: before.instructions }),
+                });
+            }
+
+            if (before.model !== undefined || before.thinkingLevel !== undefined) {
+                await app.commands.configure(id, user, {
+                    ...(before.model === undefined ? {} : { model: before.model }),
+                    ...(before.thinkingLevel === undefined
+                        ? {}
+                        : { thinkingLevel: before.thinkingLevel }),
+                });
+            }
+        } catch (error) {
+            await this.#mark(id, changeId, undefined);
+
+            throw error;
+        }
+
+        return claimed;
+    }
+
+    /** Which of `after`'s settings the bot no longer has, if any. */
+    async #changedSince(id: ConversationId, after: BotSettingsValues): Promise<string | undefined> {
+        const agent = await this.#app.agentState(id);
+
+        if (after.name !== undefined && this.#app.sessionMeta(id)?.bot?.name !== after.name) {
+            return "name";
+        }
+
+        if (
+            after.instructions !== undefined &&
+            (agent?.instructions ?? "") !== after.instructions
+        ) {
+            return "instructions";
+        }
+
+        if (
+            after.model !== undefined &&
+            (agent?.model?.provider !== after.model.provider ||
+                agent.model.modelId !== after.model.modelId)
+        ) {
+            return "model";
+        }
+
+        if (
+            after.thinkingLevel !== undefined &&
+            (agent?.thinkingLevel ?? "off") !== after.thinkingLevel
+        ) {
+            return "thinking";
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Mark a change undone (or not, to give it back after a failed Undo), in one commit; a copy of it once marked, and
+     * undefined when it was marked so already or is gone.
+     */
+    async #mark(
+        id: ConversationId,
+        changeId: string,
+        undone: BotChange["undone"],
+    ): Promise<BotChange | undefined> {
+        let marked: BotChange | undefined;
+
+        await this.#app.harness.commit(async (tx) => {
             const stored = (await tx.doc(BotChangesDoc, id)).changes.find(
                 (each) => each.id === changeId,
             );
 
-            if (stored !== undefined) {
-                stored.undone = { at: Date.now(), by: user.id };
-                // A copy: the stored one is gone once the commit ends.
-                undone = JSON.parse(JSON.stringify(stored)) as BotChange;
+            if (stored === undefined || (undone !== undefined && stored.undone !== undefined)) {
+                return;
             }
+
+            if (undone === undefined) {
+                delete stored.undone;
+            } else {
+                stored.undone = undone;
+            }
+
+            // A copy: the stored one is gone once the commit ends.
+            marked = JSON.parse(JSON.stringify(stored)) as BotChange;
         }, context);
 
-        return undone;
+        return marked;
     }
 
     /** The settings now, for a call with no fields. */
@@ -253,23 +336,28 @@ export class BotSettings {
                     (each) => each.id === changeId,
                 );
 
-                if (done !== undefined) {
-                    return reply(`${changeSummary(done.after)}.`, {
-                        change: done.id,
-                        summary: changeSummary(done.after),
-                    });
-                }
-
-                if (
-                    args.name === undefined &&
-                    args.instructions === undefined &&
-                    args.model === undefined &&
-                    args.thinkingLevel === undefined
-                ) {
-                    return reply(await this.#read(id));
-                }
-
                 try {
+                    // Kept before it applies: a call cut off by a restart in between applies it again, and the same.
+                    if (done !== undefined) {
+                        if (done.undone === undefined) {
+                            await this.#apply(id, done.after);
+                        }
+
+                        return reply(`${changeSummary(done.after)}.`, {
+                            change: done.id,
+                            summary: changeSummary(done.after),
+                        });
+                    }
+
+                    if (
+                        args.name === undefined &&
+                        args.instructions === undefined &&
+                        args.model === undefined &&
+                        args.thinkingLevel === undefined
+                    ) {
+                        return reply(await this.#read(id));
+                    }
+
                     const change = await this.#change(id, String(api.callId), args);
 
                     if (change === undefined) {
@@ -284,6 +372,18 @@ export class BotSettings {
                         doc.changes.splice(0, Math.max(0, doc.changes.length - KEPT));
                     }, context);
 
+                    try {
+                        await this.#apply(id, change.after);
+                    } catch (error) {
+                        await app.harness.commit(async (tx) => {
+                            const doc = await tx.doc(BotChangesDoc, id);
+
+                            doc.changes = doc.changes.filter((each) => each.id !== changeId);
+                        }, context);
+
+                        throw error;
+                    }
+
                     const summary = changeSummary(change.after);
 
                     return reply(`${summary}. The owner can undo it from the card in the chat.`, {
@@ -297,14 +397,13 @@ export class BotSettings {
         });
     }
 
-    /** Apply the asked changes, after every check; undefined when nothing differs. */
+    /** The asked changes, after every check, not yet applied; undefined when nothing differs. */
     async #change(
         id: ConversationId,
         callId: string,
         args: { name?: string; instructions?: string; model?: string; thinkingLevel?: string },
     ): Promise<BotChange | undefined> {
         const app = this.#app;
-        const owner = ownerOf(app)!;
         const bot = app.sessionMeta(id)!.bot!;
         const agent = await app.agentState(id);
         const before: BotSettingsValues = {};
@@ -388,10 +487,18 @@ export class BotSettings {
             return undefined;
         }
 
-        // Name and instructions through the bot's own edit, which checks them (a file's bot, a name taken); then the
-        // model, which nothing there can refuse.
+        return { id: "", at: Date.now(), before, after };
+    }
+
+    /**
+     * Give the bot `after`'s settings: name and instructions through the bot's own edit, which checks them (a file's bot,
+     * a name taken); then the model, which nothing there can refuse. The same again changes nothing.
+     */
+    async #apply(id: ConversationId, after: BotSettingsValues): Promise<void> {
+        const app = this.#app;
+
         if (after.name !== undefined || after.instructions !== undefined) {
-            await app.bots.update(owner, id, {
+            await app.bots.update(ownerOf(app)!, id, {
                 ...(after.name === undefined ? {} : { name: after.name }),
                 ...(after.instructions === undefined ? {} : { instructions: after.instructions }),
             });
@@ -403,12 +510,12 @@ export class BotSettings {
             ).configure(
                 {
                     ...(after.model === undefined ? {} : { model: after.model }),
-                    thinkingLevel,
+                    ...(after.thinkingLevel === undefined
+                        ? {}
+                        : { thinkingLevel: after.thinkingLevel }),
                 },
                 context,
             );
         }
-
-        return { id: "", at: Date.now(), before, after };
     }
 }

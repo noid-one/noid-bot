@@ -244,12 +244,15 @@ export class Schedules {
             return undefined;
         }
 
-        const message = await this.#app.harness.commit(async (tx) => {
+        // The provider's words, when they were written, and by which provider: a wait it names counts from then.
+        const failure = await this.#app.harness.commit(async (tx) => {
             const submission = await tx.submissionByRequest(runtime.conversationId, last.requestId);
 
             // A run whose model failed ends unanswered, with the provider's words; or answered with them.
             if (submission?.status === "unanswered") {
-                return typeof submission.detail === "string" ? submission.detail : undefined;
+                return typeof submission.detail === "string"
+                    ? { message: submission.detail, at: last.at }
+                    : undefined;
             }
 
             if (submission?.type !== "input" || submission.status !== "done") {
@@ -259,9 +262,29 @@ export class Schedules {
             const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
                 AssistantMessage | undefined;
 
-            return answer?.stopReason === "error" ? answer.errorMessage : undefined;
+            return answer?.stopReason === "error" && answer.errorMessage !== undefined
+                ? {
+                      message: answer.errorMessage,
+                      at: answer.timestamp ?? last.at,
+                      provider: answer.provider,
+                  }
+                : undefined;
         }, context);
-        const reset = message === undefined ? undefined : quotaReset(message, last.at);
+
+        if (failure === undefined) {
+            return undefined;
+        }
+
+        // A quota is its provider's: a session moved to another since runs.
+        if (failure.provider !== undefined) {
+            const now = (await this.#app.agentState(runtime.conversationId))?.model?.provider;
+
+            if (now !== undefined && now !== failure.provider) {
+                return undefined;
+            }
+        }
+
+        const reset = quotaReset(failure.message, failure.at);
 
         return reset !== undefined && reset > runtime.now() ? reset : undefined;
     }

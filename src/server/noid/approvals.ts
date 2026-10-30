@@ -310,6 +310,8 @@ const CLEAN_RESULTS = new Set([
     "session_archive",
     // What the owner chose on a question's card (`ask.ts`).
     "ask",
+    // Tool schemas Pi Pocket wrote (`tool-search.ts`).
+    "tool_search",
 ]);
 /** How many of a conversation's newest entries are looked through for the run since the owner last wrote. */
 const RUN_LOOKBACK = 500;

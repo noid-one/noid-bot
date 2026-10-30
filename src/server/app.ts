@@ -174,8 +174,11 @@ const FAILURE_TEXT = 120;
 /** How much of a waiting call the session list carries (a tile's peek has more): enough to tell calls apart. */
 const ASK_SUBJECT = 200;
 const ASK_REASON = 200;
-/** The most failed subagents a session's row names: the list goes to every tab. */
-const FAILED_AGENTS = 5;
+/**
+ * The most failed subagents a session's row carries for Dismiss: the list goes to every tab, but one Dismiss should deal
+ * with a whole fan-out that failed together (a provider down fails them all).
+ */
+const FAILED_AGENTS = 30;
 
 /**
  * The call a session waits on, as its row in the session list carries it (Priority's Needs you). noid: a bot's call

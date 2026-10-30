@@ -117,6 +117,8 @@ export type PeekSummary = {
         subject: string;
         reason: string;
         requestedBy?: string;
+        /** A question (`ask`): answered on its card, not allowed from a tile. */
+        form?: true;
     }[];
 };
 
@@ -925,6 +927,7 @@ export class Room {
                     ...(request.requestedBy === undefined
                         ? {}
                         : { requestedBy: request.requestedBy }),
+                    ...(request.form === undefined ? {} : { form: true as const }),
                 })),
         };
     }

@@ -329,6 +329,9 @@ test("the rules: where a bot runs decides; on this machine, anything that is not
         "its own state",
     );
     assert.equal(classify(computer, "host", "bot_message", { to: "x", message: "y" }).ask, false);
+    // Loading a waiting tool and searching its own chats only read.
+    assert.equal(classify(computer, "host", "tool_search", { names: ["browser"] }).ask, false);
+    assert.equal(classify(computer, "host", "chat_search", { query: "x" }).ask, false);
     assert.equal(
         classify(computer, "computer", "bot_update", { name: "x", instructions: "y" }).ask,
         true,
