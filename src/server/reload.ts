@@ -129,6 +129,7 @@ export const BUILT_IN_TOOLS: ReadonlySet<string> = new Set([
     "bot_update",
     "bot_archive",
     "bot_settings",
+    "chat_search",
     "desktop",
 ]);
 

@@ -29,6 +29,7 @@ import { SESSION_TOOLS_EXTENSION } from "./session-tools.ts";
 import { BOT_MAIL_EXTENSION, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { DESKTOP_EXTENSION } from "./noid/desktop.ts";
 import { BOT_SETTINGS_EXTENSION } from "./noid/bot-settings.ts";
+import { CHAT_SEARCH_EXTENSION } from "./noid/chat-search.ts";
 
 /**
  * A bot's own extensions (`Bots.#toolsOf`): the session tools and bot mail act as the owner, its settings are its own, and the desktop is held
@@ -39,6 +40,7 @@ const BOT_ONLY = new Set([
     BOT_MAIL_EXTENSION,
     OVERSEER_EXTENSION,
     BOT_SETTINGS_EXTENSION,
+    CHAT_SEARCH_EXTENSION,
     DESKTOP_EXTENSION,
 ]);
 

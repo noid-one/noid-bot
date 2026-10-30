@@ -90,6 +90,7 @@ import {
 } from "./noid/approvals.ts";
 import { BOT_MAIL_EXTENSION, BotMail, OVERSEER_EXTENSION } from "./noid/botmail.ts";
 import { BOT_SETTINGS_EXTENSION, BotSettings } from "./noid/bot-settings.ts";
+import { CHAT_SEARCH_EXTENSION, ChatSearch } from "./noid/chat-search.ts";
 import { Bots, type PersonFace } from "./noid/bots.ts";
 import { ownerOf } from "./noid/owner.ts";
 import { checkValues } from "./asks.ts";
@@ -416,6 +417,7 @@ export class PocketApp {
     readonly botMail = new BotMail(this);
     /** noid: a bot's own settings, changed from chat, and their Undo. */
     readonly botSettings = new BotSettings(this);
+    readonly chatSearch = new ChatSearch(this);
     /** Each person's favorite working folders, shared by their devices. */
     readonly folderFavorites = new FolderFavorites(this);
     /** Other people's drop-ins, from a reviewed index: found, installed off, read, updated, removed (`gallery.ts`). */
@@ -717,6 +719,7 @@ export class PocketApp {
         registry.install(this.botMail.extension);
         registry.install(this.botMail.overseer);
         registry.install(this.botSettings.extension);
+        registry.install(this.chatSearch.extension);
         registry.install(this.desktop.extension);
         registry.install(this.groups.extension);
         // Durable work of the app itself, whatever extension modules are on.
@@ -1234,6 +1237,7 @@ export class PocketApp {
                             extension.name !== BOT_MAIL_EXTENSION &&
                             extension.name !== OVERSEER_EXTENSION &&
                             extension.name !== BOT_SETTINGS_EXTENSION &&
+                            extension.name !== CHAT_SEARCH_EXTENSION &&
                             extension.name !== DESKTOP_EXTENSION,
                     );
             },

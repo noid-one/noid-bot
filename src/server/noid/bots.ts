@@ -609,7 +609,7 @@ export class Bots {
     }
 
     /**
-     * A bot's own tools: mail and its own settings for every bot, the overseer's for Noid, and the desktop for bots on
+     * A bot's own tools: mail, its own settings, and its chats' search for every bot, the overseer's for Noid, and the desktop for bots on
      * the computer.
      */
     #toolsOf(bot: BotProfile) {
@@ -618,6 +618,7 @@ export class Bots {
         return [
             mail.extension,
             this.#app.botSettings.extension,
+            this.#app.chatSearch.extension,
             ...(bot.main === true ? [mail.overseer] : []),
             ...(bot.kind === "computer" ? [this.#app.desktop.extension] : []),
         ];
