@@ -27,6 +27,7 @@ import { describe, HttpError } from "./errors.ts";
 import { FROM_PREFIX } from "./entry-format.ts";
 import { snippet } from "./projection.ts";
 import { FAILED_RUN, whyUnanswered } from "./subagent-runs.ts";
+import { quotaReset } from "./quota.ts";
 import { ownRequest, requestFor } from "./requests.ts";
 import { nextRepeat, parseWhen } from "./when.ts";
 
@@ -170,8 +171,19 @@ export class Schedules {
         // worked for when it set them up.
         const requestId = sendingRequest(schedule, String(schedule.runs));
         const stopped = this.#stopped(conversationId, schedule);
+        // A repeat whose last run hit a quota that resets hours away waits it out: a run now would fail the same way.
+        const held =
+            stopped === undefined && schedule.every !== undefined
+                ? await this.#quotaHeld(runtime, schedule, context)
+                : undefined;
 
-        if (stopped === undefined) {
+        if (held !== undefined) {
+            this.#app.log?.(
+                `schedule ${id} held: its model's quota resets at ${new Date(held).toISOString()}`,
+            );
+        }
+
+        if (stopped === undefined && held === undefined) {
             await conversation.submit(
                 { type: "input", content: schedule.content, whenBusy: "followUp", requestId },
                 context,
@@ -203,7 +215,7 @@ export class Schedules {
                 return finished;
             }
 
-            if (stopped === undefined) {
+            if (stopped === undefined && held === undefined) {
                 remember(item, { at: runtime.now(), requestId });
             }
 
@@ -218,6 +230,40 @@ export class Schedules {
 
             return { status: "running", checkpoint: { phase: "wait" } };
         }, context);
+    }
+
+    /** When the quota the schedule's last run failed on resets, while that is still to come. */
+    async #quotaHeld(
+        runtime: Runtime,
+        schedule: Schedule,
+        context: Context,
+    ): Promise<number | undefined> {
+        const last = schedule.history?.at(-1);
+
+        if (last === undefined) {
+            return undefined;
+        }
+
+        const message = await this.#app.harness.commit(async (tx) => {
+            const submission = await tx.submissionByRequest(runtime.conversationId, last.requestId);
+
+            // A run whose model failed ends unanswered, with the provider's words; or answered with them.
+            if (submission?.status === "unanswered") {
+                return typeof submission.detail === "string" ? submission.detail : undefined;
+            }
+
+            if (submission?.type !== "input" || submission.status !== "done") {
+                return undefined;
+            }
+
+            const answer = (await tx.entry(AssistantEntry, submission.answer))?.model?.[0] as
+                AssistantMessage | undefined;
+
+            return answer?.stopReason === "error" ? answer.errorMessage : undefined;
+        }, context);
+        const reset = message === undefined ? undefined : quotaReset(message, last.at);
+
+        return reset !== undefined && reset > runtime.now() ? reset : undefined;
     }
 
     /** Whether a conversation is Noid's while its person cannot have it (the session tools are off). */

@@ -107,6 +107,13 @@ const route: FauxResponseStep = (request) => {
         return call({ action: "cancel", id: cancel });
     }
 
+    if (text.includes("quota ping")) {
+        return fauxAssistantMessage([], {
+            stopReason: "error",
+            errorMessage: "Monthly usage limit reached. Try again in 3 hours.",
+        });
+    }
+
     return fauxAssistantMessage([fauxText(`echo: ${text}`)]);
 };
 
@@ -263,6 +270,29 @@ test("a scheduled message goes out at its time, also after a restart, once; a re
     );
     await app.commands.cancelSchedule(id, owner(app), repeat.id);
     assert.deepEqual(await items(id), []);
+});
+
+test("a repeat whose run hit a quota that resets hours away waits it out (rakazo 800edb462)", async () => {
+    const id = await newSession(app);
+    const repeat = await app.commands.schedule(id, owner(app), {
+        when: "every 20m quota ping",
+        zone: "UTC",
+    });
+    const sent = async () =>
+        (await userTexts(id)).filter((text) => text.includes("[scheduled] quota ping")).length;
+
+    // The first goes out and fails: the limit resets in 3 hours.
+    await restartLater(21);
+    await until(async () => (await sent()) === 1 && !app.isBusy(id), "the first run");
+    await until(async () => (await items(id))[0]?.runs === 1, "the repeat to sleep");
+    // Twenty minutes on, the repeat holds: no run that would fail the same way.
+    await restartLater(21);
+    await until(async () => (await items(id))[0]?.runs === 2, "the held tick");
+    assert.equal(await sent(), 1, "held while the quota is out");
+    // Past the reset, it goes out again.
+    await restartLater(180);
+    await until(async () => (await sent()) === 2, "the run after the reset");
+    await app.commands.cancelSchedule(id, owner(app), repeat.id);
 });
 
 test("Pi schedules, lists, and cancels its own messages with its tool", async () => {
