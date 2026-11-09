@@ -15,6 +15,7 @@ import {
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { keptPart } from "../src/server/http/events.ts";
 import { fingerprint } from "../web/text-hash.js";
@@ -108,6 +109,17 @@ async function freshly(id: ConversationId): Promise<Kept> {
     return viewOf(tab);
 }
 
+/**
+ * A tab still open ends with what a fresh tab has. The fresh tab loads first: an update the room batches may still be on
+ * its way to the open one, so it is waited for, and a tab that never gets there fails with the difference.
+ */
+async function endsAsFresh(tab: Tab, id: ConversationId, start: Kept, what: string): Promise<void> {
+    const fresh = await freshly(id);
+
+    await until(() => isDeepStrictEqual(viewOf(tab, start), fresh), what, 5_000).catch(() => {});
+    assert.deepEqual(viewOf(tab, start), fresh, what);
+}
+
 /** The ids of every entry sent to a tab. */
 const sent = (tab: Tab) =>
     views(tab).flatMap((view) => view.entries.filter((e) => e.partial !== true).map((e) => e.id));
@@ -155,7 +167,7 @@ test("a tab that kept a session gets only what came after, and ends with what a 
         first.entries.map((entry) => entry.text ?? entry.kind),
         ["message 4", "assistant"],
     );
-    assert.deepEqual(viewOf(later, kept), await freshly(id), "the same as a fresh tab's");
+    await endsAsFresh(later, id, kept, "the same as a fresh tab's");
 
     // An update of a tab that has the order brings only the end of it, too.
     await say(app, id, "message 5");
@@ -168,7 +180,29 @@ test("a tab that kept a session gets only what came after, and ends with what a 
     assert.equal(update.full, false);
     assert.equal(update.orderFrom, kept.order.length + 2);
     assert.ok(update.order!.length <= 2, `${update.order!.length} ids`);
-    assert.deepEqual(viewOf(later, kept), await freshly(id), "still the same as a fresh tab's");
+    await endsAsFresh(later, id, kept, "still the same as a fresh tab's");
+    app.detach(later.client);
+});
+
+test("an update still on its way when a fresh tab loads: the open tab ends with what the fresh one has", async () => {
+    const id = await newSession(app);
+
+    await say(app, id, "message 1");
+    const kept = await freshly(id);
+    const later = fakeTab(id, owner(app), 6);
+
+    later.client.have = haveOf(kept);
+    await opened(later);
+    // A long reply: its last update is batched after the tab first hears of the message.
+    await say(app, id, "message 2 " + "word ".repeat(1500));
+    await until(
+        () =>
+            views(later).some((each) =>
+                each.entries.some((e) => e.text?.startsWith("message 2") === true),
+            ),
+        "the update with the message",
+    );
+    await endsAsFresh(later, id, kept, "the same as a fresh tab's");
     app.detach(later.client);
 });
 
