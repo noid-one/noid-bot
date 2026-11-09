@@ -434,14 +434,6 @@ export class BotSettings {
 
         if (args.model !== undefined) {
             const chosen = modelFor(app, args.model);
-            const problem = await app.providers.problem(
-                { provider: chosen.provider, modelId: chosen.id },
-                true,
-            );
-
-            if (problem !== undefined) {
-                throw new Error(`${chosen.provider}/${chosen.id} cannot be used now: ${problem}.`);
-            }
 
             if (chosen.provider !== model?.provider || chosen.id !== model?.modelId) {
                 model = { provider: chosen.provider, modelId: chosen.id };
@@ -488,6 +480,17 @@ export class BotSettings {
                 throw new Error(
                     "Your name, model, and thinking change only when the owner asks you in their own message, before you read anything else. Tell them what you would change.",
                 );
+            }
+        }
+
+        // Only once the owner asked, and only for a new model: a fresh check can renew a provider's sign-in, and a
+        // failed renewal warns the owner.
+        if (after.model !== undefined) {
+            const { provider, modelId } = after.model;
+            const problem = await app.providers.problem({ provider, modelId }, true);
+
+            if (problem !== undefined) {
+                throw new Error(`${provider}/${modelId} cannot be used now: ${problem}.`);
             }
         }
 

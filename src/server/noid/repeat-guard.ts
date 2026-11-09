@@ -4,20 +4,23 @@
  * rakazo's tool-loop guard (26f284c8d, 29cd6da25, af36999b7, eb6613c5c).
  *
  * Within one run, each call is keyed by its tool and its arguments (in a set order), and shaped with the digits of its
- * text blanked (`echo noop-1`, `echo noop-2`). The sixth identical call after five failing answers in a row is stuck,
- * and so is the 25th call in a row of one shape. An answer the run has not had before starts the count over: polling a
- * page or a build that changes is progress. A stuck call is refused with a line that says so, and the run stops, so the
- * bot cannot try once more; the owner gets a notice.
+ * text blanked (`echo noop-1`, `echo noop-2`; numbers such as a read's `offset` stay). The sixth identical call after
+ * five failing answers in a row is stuck, and so is the 25th call in a row of one shape. An answer the run has not had
+ * before starts the count over: polling a page or a build that changes is progress. So does the model's own text: it
+ * said what it is doing. Calls of one shape from one model answer are one step: reading 30 files at once is not a
+ * loop. A stuck call is refused with a line that says so, and the run stops, so the bot cannot try once more; the owner
+ * gets one notice, and any call the run still makes is refused too.
  *
  * Only bots' runs: a person's own session has them watching. Calls a codemode script makes (`parent`) are a program's,
  * not the model going round, and are not counted. State is memory only: a restart starts each count over.
  */
 import { createHash } from "node:crypto";
 import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { awaitWithContext, BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
     type ConversationId,
     defineExtension,
+    GenerationTask,
     hook,
     LiveDoc,
     ToolTask,
@@ -40,6 +43,12 @@ type Streak = {
     results: string[];
     /** Identical calls in a row whose answer failed. */
     failures: number;
+    /** The streak's last counted call, whose answer `afterTool` reads, and the model answer it came from. */
+    callId?: string;
+    response?: number;
+    /** Once the run is stopped, what every later call of it is refused with, and the stop, settled once it is done. */
+    stopped?: string;
+    stopping?: Promise<void>;
 };
 
 /** JSON with object keys in order, so `{a, b}` and `{b, a}` are the same call. */
@@ -61,8 +70,26 @@ function stable(value: unknown): string {
     return JSON.stringify(value) ?? "null";
 }
 
-/** The call with the digits of its text blanked: a numbered run of calls is one shape. */
-const shapeOf = (name: string, args: string) => `${name}:${args.replace(/\d+/g, "#")}`;
+/** The call with the digits in its text arguments blanked: numbered calls are one shape, pages of a read are not. */
+const shapeOf = (name: string, args: unknown) => `${name}:${stable(blankDigits(args))}`;
+
+function blankDigits(value: unknown): unknown {
+    if (typeof value === "string") {
+        return value.replace(/\d+/g, "#");
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(blankDigits);
+    }
+
+    if (value !== null && typeof value === "object") {
+        return Object.fromEntries(
+            Object.entries(value).map(([key, each]) => [key, blankDigits(each)]),
+        );
+    }
+
+    return value;
+}
 
 /** What the model got back: failed or not, and its content, hashed (details can carry timings). */
 function fingerprint(result: { output?: unknown; isError?: boolean }): string {
@@ -81,6 +108,9 @@ export function stuckText(tool: string, count: number, failing: boolean): string
 
 export function createRepeatGuard(app: PocketApp) {
     const streaks = new Map<ConversationId, Streak>();
+    /** The newest model answer of each bot's conversation, numbered: its tool calls are one step. */
+    const responses = new Map<ConversationId, number>();
+    let answered = 0;
 
     /** The run `id` is in now, as its live document says: the streak of an earlier run is over. */
     const streakOf = async (id: ConversationId, context: Context): Promise<Streak> => {
@@ -96,16 +126,18 @@ export function createRepeatGuard(app: PocketApp) {
         return streak;
     };
 
-    /** Stop the run, once the refusal is in: the bot does not get one more try. */
-    const stop = (id: ConversationId, tool: string) => {
-        setImmediate(() => {
-            void app
-                .conversation(id)
-                .then((conversation) => conversation.abort(BACKGROUND_CONTEXT))
-                .catch((error: unknown) =>
-                    app.log(`repeat guard: stop failed: ${describe(error)}`),
-                );
-        });
+    /**
+     * Stop the run, once the refusal is in: the bot does not get one more try. Until the stop lands, `beforeRequest`
+     * holds the model's next request, so none is sent (and paid for) after the refusal.
+     */
+    const stop = (id: ConversationId, streak: Streak, tool: string) => {
+        streak.stopping = new Promise<void>((resolve) => setImmediate(resolve))
+            .then(() => app.conversation(id))
+            .then((conversation) => conversation.abort(BACKGROUND_CONTEXT))
+            .then(
+                () => undefined,
+                (error: unknown) => app.log(`repeat guard: stop failed: ${describe(error)}`),
+            );
         app.notice(
             "warning",
             `${app.bots.of(id)?.name ?? "A bot"} kept calling ${tool} without getting anywhere: its run was stopped.`,
@@ -116,6 +148,44 @@ export function createRepeatGuard(app: PocketApp) {
     return defineExtension({
         name: "noid-repeat-guard",
         hooks: [
+            hook(GenerationTask, {
+                // A stopped run's next request waits for the stop, which cancels it.
+                beforeRequest: async (_request, api, context) => {
+                    const stopping = streaks.get(api.conversationId)?.stopping;
+
+                    if (stopping !== undefined) {
+                        await awaitWithContext(stopping, context);
+                    }
+
+                    return undefined;
+                },
+                afterResponse: (message, api) => {
+                    const id = api.conversationId;
+
+                    if (app.bots.of(id) === undefined) {
+                        return;
+                    }
+
+                    responses.set(id, ++answered);
+                    const streak = streaks.get(id);
+                    const wrote = message.content.some(
+                        (part) => part.type === "text" && part.text.trim() !== "",
+                    );
+
+                    // The model said what it is doing: what it calls next is a new step, not more of the same.
+                    if (streak !== undefined && wrote) {
+                        Object.assign(streak, {
+                            key: undefined,
+                            shape: undefined,
+                            count: 0,
+                            shapeCount: 0,
+                            results: [],
+                            failures: 0,
+                            callId: undefined,
+                        });
+                    }
+                },
+            }),
             hook(ToolTask, {
                 beforeTool: async (call, api, context) => {
                     const id = api.conversationId;
@@ -125,9 +195,26 @@ export function createRepeatGuard(app: PocketApp) {
                     }
 
                     const streak = await streakOf(id, context);
-                    const args = stable(call.arguments ?? {});
-                    const key = `${call.name}:${args}`;
-                    const shape = shapeOf(call.name, args);
+
+                    if (streak.stopped !== undefined) {
+                        return { block: streak.stopped };
+                    }
+
+                    const key = `${call.name}:${stable(call.arguments ?? {})}`;
+                    const shape = shapeOf(call.name, call.arguments ?? {});
+                    const response = responses.get(id);
+
+                    // Another call of the same shape from the same answer: one step, already counted.
+                    if (
+                        response !== undefined &&
+                        response === streak.response &&
+                        shape === streak.shape
+                    ) {
+                        return undefined;
+                    }
+
+                    streak.callId = call.id;
+                    streak.response = response;
 
                     if (key === streak.key) {
                         streak.count++;
@@ -144,15 +231,14 @@ export function createRepeatGuard(app: PocketApp) {
                         return undefined;
                     }
 
-                    stop(id, call.name);
+                    streak.stopped = stuckText(
+                        call.name,
+                        failing ? streak.count : streak.shapeCount,
+                        failing,
+                    );
+                    stop(id, streak, call.name);
 
-                    return {
-                        block: stuckText(
-                            call.name,
-                            failing ? streak.count : streak.shapeCount,
-                            failing,
-                        ),
-                    };
+                    return { block: streak.stopped };
                 },
                 afterTool: async (call, result, api, context) => {
                     const id = api.conversationId;
@@ -163,7 +249,10 @@ export function createRepeatGuard(app: PocketApp) {
 
                     const streak = await streakOf(id, context);
 
-                    if (streak.key !== `${call.name}:${stable(call.arguments ?? {})}`) {
+                    if (
+                        streak.callId !== call.id ||
+                        streak.key !== `${call.name}:${stable(call.arguments ?? {})}`
+                    ) {
                         return undefined;
                     }
 

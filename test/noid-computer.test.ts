@@ -540,6 +540,11 @@ test("a docker command that does not answer fails in time, so the computer's sta
 
     await assert.rejects(docker(["inspect", "noid-computer"]), /did not answer in 0 s/);
     assert.ok(Date.now() - started < 5_000, "failed in time, not after the sleep");
+    // On another machine, the error names the command, not the host flag.
+    await assert.rejects(
+        docker(["-H", "ssh://me@box", "inspect", "noid-computer"]),
+        /docker inspect did not answer/,
+    );
 
     // A build may take as long as it takes; starting and stopping get longer than a look.
     assert.equal(dockerLimit(["build", "--quiet"]), undefined);
@@ -554,12 +559,16 @@ test("a computer on another machine: every docker command names its engine", asy
     const docker: Docker = (args, input) => {
         assert.equal(args[0], "-H");
         engines.add(args[1]!);
+        // The host changes no time limit: a build there may take as long as it takes, as here.
+        assert.equal(dockerLimit(args), dockerLimit(args.slice(2)), args.join(" "));
 
         return inner.docker(args.slice(2), input);
     };
 
     const computer = new Computer({ dockerHost: "ssh://me@box" }, docker);
 
+    assert.equal(dockerLimit(["-H", "ssh://me@box", "build", "--quiet"]), undefined);
+    assert.equal(dockerLimit(["-H", "ssh://me@box", "start", "noid-computer"]), 120_000);
     await computer.start();
     await computer.stop();
     assert.deepEqual([...engines], ["ssh://me@box"]);

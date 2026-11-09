@@ -141,19 +141,32 @@ function renderMath(katex, source, display) {
     });
 }
 
+/** `load`, run once and kept, unless it fails: a failed load (a dropped connection) is tried again next time. */
+export function loadOnce(load) {
+    let loading = null;
+
+    return () =>
+        (loading ??= load().catch((error) => {
+            loading = null;
+
+            throw error;
+        }));
+}
+
 export default function (pocket) {
     const { h, useEffect, useRef, useState } = pocket;
-    const runtime = { active: true, pele: null, katex: null, katexStyle: false };
-    const loadPele = () => (runtime.pele ??= import("/vendor/pele.mjs"));
-    const loadKatex = () =>
-        (runtime.katex ??= import("/vendor/katex.mjs").then((module) => {
+    const runtime = { active: true, katexStyle: false };
+    const loadPele = loadOnce(() => import("/vendor/pele.mjs"));
+    const loadKatex = loadOnce(() =>
+        import("/vendor/katex.mjs").then((module) => {
             if (runtime.active && !runtime.katexStyle) {
                 pocket.style("math.css");
                 runtime.katexStyle = true;
             }
 
             return module;
-        }));
+        }),
+    );
 
     function Mermaid({ source, lang, streaming }) {
         const text = typeof source === "string" ? source : "";

@@ -14,6 +14,12 @@ import { createHandler } from "../src/server/http.ts";
 
 after(cleanUp);
 
+// The browser module, loaded as the browser loads it; its path as a value keeps the type checker from looking for types.
+const MODULE: string = "../src/server/extensions/diagrams/index.js";
+const { loadOnce } = (await import(MODULE)) as {
+    loadOnce<T>(load: () => Promise<T>): () => Promise<T>;
+};
+
 const browserAvailable = {
     skip: findBrowser() === undefined ? "no Chromium-based browser on this machine" : false,
 } as const;
@@ -50,6 +56,24 @@ test("diagrams is on by default and its browser files leave with the module", as
     } finally {
         await app.close();
     }
+});
+
+test("a renderer that failed to load is loaded again next time; one that loaded is kept", async () => {
+    let tries = 0;
+    const load = loadOnce(async () => {
+        tries++;
+
+        if (tries === 1) {
+            throw new Error("connection dropped");
+        }
+
+        return { render: true };
+    });
+
+    await assert.rejects(load(), /connection dropped/);
+    assert.deepEqual(await load(), { render: true });
+    assert.deepEqual(await load(), { render: true });
+    assert.equal(tries, 2);
 });
 
 test("local renderers bound input and disable Pele links and images", () => {
