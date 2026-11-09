@@ -18,7 +18,7 @@ import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
-import { SubagentsDoc } from "../src/server/docs.ts";
+import { RunFailureDoc, SubagentsDoc } from "../src/server/docs.ts";
 
 /** "fail now" ends the run in an error; "start a helper" starts a subagent whose own run fails; the rest is echoed. */
 const route: FauxResponseStep = (request) => {
@@ -158,4 +158,62 @@ test("failed subagents nobody dealt with are named, and leave when dealt with", 
     });
     await until(() => row(id).failedAgents === undefined, "the failure dealt with");
     assert.equal(row(id).subagents?.dealt, 1);
+});
+
+test("a failed run's line and when it failed outlast a restart; one a later run cleared, or a crash left, does not (pi-pocket e55e001d)", async () => {
+    const dataDir = join(root, "priority-restart-data");
+    let first: App | undefined = await openApp(scriptedModel(route), dataDir);
+    const rowOf = (on: App, id: ConversationId) =>
+        on.sessions(owner(on)).find((session) => session.id === Number(id))!;
+
+    try {
+        const failed = await newSession(first);
+        const fixed = await newSession(first);
+        const crashed = await newSession(first);
+
+        await first.commands.submit(failed, owner(first), { text: "fail now", requestId: "r-1" });
+        await first.commands.submit(fixed, owner(first), { text: "fail now", requestId: "r-2" });
+        await until(
+            () => rowOf(first!, failed).failed === true && rowOf(first!, fixed).failed === true,
+            "the failures",
+        );
+        await first.commands.submit(fixed, owner(first), { text: "again", requestId: "r-3" });
+        await first.commands.submit(crashed, owner(first), { text: "fine", requestId: "r-4" });
+        await until(
+            () =>
+                rowOf(first!, fixed).failed === undefined &&
+                !first!.isBusy(fixed) &&
+                !first!.isBusy(crashed),
+            "the runs after",
+        );
+        const endedAt = rowOf(first, failed).endedAt;
+
+        // A line a crash left behind: written, while the session's newest run was answered.
+        await first.harness.commit(async (tx) => {
+            Object.assign(await tx.doc(RunFailureDoc, crashed), { text: "stale", at: 1 });
+        }, context);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await first.close();
+        first = undefined;
+
+        const again = await openApp(scriptedModel(route), dataDir);
+
+        try {
+            assert.equal(rowOf(again, failed).failed, true);
+            assert.match(rowOf(again, failed).failure!, /^Invalid request: unsupported parameter/);
+            assert.equal(rowOf(again, failed).endedAt, endedAt, "when it failed, for Needs you");
+            assert.equal(rowOf(again, fixed).failed, undefined, "a later run cleared it");
+            assert.equal(rowOf(again, crashed).failed, undefined, "a stale line is not revived");
+            await until(
+                async () =>
+                    (await again.harness.snapshot(RunFailureDoc, crashed, context))?.text ===
+                    undefined,
+                "the stale line cleared",
+            );
+        } finally {
+            await again.close();
+        }
+    } finally {
+        await first?.close();
+    }
 });

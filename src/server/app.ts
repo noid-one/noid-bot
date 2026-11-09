@@ -34,6 +34,7 @@ import {
     ProviderDoc,
     type Registry,
     type Storage,
+    type SubmissionRecord,
     UsageDoc,
     type UsageState,
 } from "@earendil-works/pi-durable";
@@ -60,6 +61,7 @@ import {
     DecisionsDoc,
     FolderFavoritesDoc,
     MemoryDoc,
+    RunFailureDoc,
     type SessionMeta,
     SessionsDoc,
     SpendDoc,
@@ -471,8 +473,8 @@ export class PocketApp {
     /** noid: what each bot last said, for its row in the list (Grok's list shows it): read once, and as its runs end. */
     readonly #lastSaid = new Map<string, string | undefined>();
     /**
-     * Conversations whose last run ended because the model or provider failed (not stopped by someone), since this
-     * server started: the session list marks them until their next run starts.
+     * Sessions whose last run ended because the model or provider failed (not stopped by someone): the session list marks
+     * them until their next run starts. Kept in `RunFailureDoc` too, so a restart reads them back (`#recoverFailure`).
      */
     readonly #failed = new Map<ConversationId, string>();
     readonly #agents = new Map<ConversationId, AgentState>();
@@ -950,6 +952,10 @@ export class PocketApp {
                     this.#busy.add(id);
                 }
 
+                if (this.#sessions[String(id)] !== undefined) {
+                    await this.#recoverFailure(storage, id, live?.run !== undefined);
+                }
+
                 const agent = await this.harness.snapshot(AgentDoc, id, context);
 
                 if (agent !== undefined) {
@@ -976,6 +982,70 @@ export class PocketApp {
         await this.attribution.repair(unrecorded);
 
         return conversations;
+    }
+
+    /**
+     * A session's failed run after a restart: its line, and when it failed, so the list shows it as before and a browser
+     * that has not seen it yet still finds it in Needs you. The line is written after the run's own commit, so a crash in
+     * between can leave it missing or stale: only a session whose newest run input gave up keeps it, and a run still
+     * going clears it (pi-pocket e55e001d, b704f214).
+     */
+    async #recoverFailure(storage: Storage, id: ConversationId, running: boolean): Promise<void> {
+        const stored = await this.harness.snapshot(RunFailureDoc, id, context);
+
+        if (stored?.text === undefined) {
+            return;
+        }
+
+        let record: SubmissionRecord | undefined;
+        let cursor: Cursor | undefined;
+
+        if (!running) {
+            do {
+                const page = await storage.scanSubmissions(
+                    { conversationId: id, order: "descending" },
+                    64,
+                    cursor,
+                    context,
+                );
+
+                // A queued input, or one withdrawn from the queue, never joined a run; one a run gave up on may have no
+                // entry of its own.
+                record = page.items.find(
+                    (each) =>
+                        each.type === "input" &&
+                        (each.entry !== undefined ||
+                            (each.status === "unanswered" && FAILED_RUN.has(each.reason))),
+                );
+                cursor = record === undefined ? page.next : undefined;
+            } while (cursor !== undefined);
+        }
+
+        if (record?.status === "unanswered" && FAILED_RUN.has(record.reason)) {
+            this.#failed.set(id, stored.text);
+            this.#endedAt.set(id, stored.at ?? Date.now());
+        } else {
+            this.#storeRunFailure(id, undefined);
+        }
+    }
+
+    /** Keep or clear a session's failure line, so the next process still knows. A commit listener may not commit. */
+    #storeRunFailure(id: ConversationId, failure: { text: string; at: number } | undefined): void {
+        setImmediate(() => {
+            this.harness
+                .commit(async (tx) => {
+                    const doc = await tx.doc(RunFailureDoc, id);
+
+                    if (failure === undefined) {
+                        delete doc.text;
+                        delete doc.at;
+                    } else {
+                        doc.text = failure.text;
+                        doc.at = failure.at;
+                    }
+                }, context)
+                .catch((error: unknown) => this.log(`run failure not kept: ${describe(error)}`));
+        });
     }
 
     /** Every commit, as Pi Durable publishes it: what the app keeps in memory follows it, and so do the open views. */
@@ -1053,13 +1123,13 @@ export class PocketApp {
                     this.#sessions[String(change.value.conversationId)] !== undefined &&
                     !this.#failed.has(change.value.conversationId)
                 ) {
-                    this.#failed.set(
-                        change.value.conversationId,
-                        cutWhole(
-                            whyUnanswered(change.value.reason, change.value.detail),
-                            FAILURE_TEXT,
-                        ),
+                    const text = cutWhole(
+                        whyUnanswered(change.value.reason, change.value.detail),
+                        FAILURE_TEXT,
                     );
+
+                    this.#failed.set(change.value.conversationId, text);
+                    this.#storeRunFailure(change.value.conversationId, { text, at: Date.now() });
                     sessionsChanged = true;
                 }
             }
@@ -1102,8 +1172,11 @@ export class PocketApp {
             if (busy !== this.#busy.has(id)) {
                 if (busy) {
                     this.#busy.add(id);
+
                     // A new run starts over: whether it fails is its own to say.
-                    this.#failed.delete(id);
+                    if (this.#failed.delete(id)) {
+                        this.#storeRunFailure(id, undefined);
+                    }
 
                     if (this.#sessions[String(id)] !== undefined) {
                         this.#movedUp(id, Date.now());

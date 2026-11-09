@@ -69,6 +69,20 @@ export const FolderFavoritesDoc = defineDoc<{ users: Record<string, string[]> }>
 });
 
 /**
+ * noid: a session's last run's failure line, and when it failed, so the session list still shows it after a restart
+ * (pi-pocket 223a03d8, e55e001d): `#failed` and `#endedAt` in app.ts are memory only. A later run clears it.
+ */
+export const RunFailureDoc = defineDoc<{ text?: string; at?: number }>({
+    kind: "x.noid.run-failure",
+    version: 1,
+    ...rebased,
+    scope: "conversation",
+    history: "latest",
+    fork: "initial",
+    initial: () => ({}),
+});
+
+/**
  * The addresses this session knows its linked sessions by, so no session id goes into its transcript. A fork starts with
  * none, so it leaves the team: the addresses in the history it inherited do not resolve there.
  */
