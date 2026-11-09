@@ -16,7 +16,10 @@ const OPEN_MS = 1000;
 
 let opening;
 
-/** Whether an open went unanswered: then it is not tried again while the page lasts, and every call fails at once. */
+/**
+ * Whether an open is still unanswered after the wait: until it answers, it is not tried again and every call fails at
+ * once. One that answers late is used from then on (a slow phone); one that never answers keeps the cache off.
+ */
 let unanswered = false;
 
 function database() {
@@ -42,13 +45,7 @@ function database() {
             const db = request.result;
 
             clearTimeout(timer);
-
-            // It answered after the wait: nothing uses it, and a later call opens it again.
-            if (late) {
-                db.close();
-
-                return;
-            }
+            unanswered = false;
 
             // Another tab deletes or upgrades it: let go, and open it again when next needed.
             db.onversionchange = () => {
@@ -56,11 +53,23 @@ function database() {
                 opening = undefined;
             };
 
+            // It answered after the wait: the calls from now on use it, unless one of them opens it again already.
+            if (late) {
+                if (opening === undefined) {
+                    opening = Promise.resolve(db);
+                } else {
+                    db.close();
+                }
+
+                return;
+            }
+
             resolve(db);
         };
 
         request.onerror = () => {
             clearTimeout(timer);
+            unanswered = false;
             reject(request.error);
         };
 
@@ -83,8 +92,9 @@ function database() {
 const done = (transaction) =>
     new Promise((resolve, reject) => {
         transaction.oncomplete = () => resolve();
-        transaction.onabort = () => reject(transaction.error);
-        transaction.onerror = () => reject(transaction.error);
+        // A request's error reaches the transaction before the transaction has it as its own.
+        transaction.onabort = (event) => reject(transaction.error ?? event.target.error);
+        transaction.onerror = (event) => reject(transaction.error ?? event.target.error);
     });
 
 const result = (request) =>

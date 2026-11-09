@@ -938,8 +938,12 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
-/** How long a switch to a session waits for the device's copy before it connects without one. */
-const DEVICE_WAIT_MS = 150;
+/**
+ * How long a switch to a session waits for the device's copy before it connects without one: a large session's read
+ * on a slow phone takes a few hundred ms (an 8 MB one, some 25 ms on a desktop), while a device that never answers
+ * is waited for once (`session-cache.js`).
+ */
+const DEVICE_WAIT_MS = 400;
 
 /**
  * A session the device kept, as `keptView` gives one from memory, if it is this person's, from this run of the server,
@@ -993,18 +997,62 @@ function usable(found, id) {
 }
 
 /**
+ * The session each subagent this tab has seen works for, by the subagent's conversation id: from its session's
+ * subagents bar, or the subagents board. A subagent is never in the session list; its session is.
+ */
+const subagentOf = new Map();
+let subagentsSeen = null;
+let boardSeen = null;
+
+store.subscribe((state) => {
+    const { view, boardAgents } = state;
+
+    if (view.subagents !== subagentsSeen) {
+        subagentsSeen = view.subagents;
+
+        for (const agent of view.conversation == null ? [] : (view.subagents ?? [])) {
+            subagentOf.set(agent.conversationId, view.conversation.id);
+        }
+    }
+
+    if (boardAgents !== boardSeen) {
+        boardSeen = boardAgents;
+
+        for (const agent of boardAgents ?? []) {
+            subagentOf.set(agent.conversationId, agent.id);
+        }
+    }
+});
+
+/** Whether the session list has session `id`, or, for a subagent, the session it works for (a subagent's, in turn). */
+function listed(id) {
+    const { sessions } = store.state;
+    const seen = new Set();
+
+    for (let at = id; at !== undefined && !seen.has(at); at = subagentOf.get(at)) {
+        if (sessions.some((session) => session.id === at)) {
+            return true;
+        }
+
+        seen.add(at);
+    }
+
+    return false;
+}
+
+/**
  * A session the device kept (`readDevice`), as `deviceView` gives it, once it is checked: over an empty view, so a field
  * that newer code added has its first value.
  */
 function adopt(id, found) {
-    const { conversationId, view, sessionsLoaded, sessions } = store.state;
+    const { conversationId, view, sessionsLoaded } = store.state;
 
-    // Once the list is in, only a session it has: one it no longer has is not this person's to see.
+    // Once the list is in, only a session it has, or a subagent of one: one it no longer has is not this person's to see.
     if (
         !usable(found, id) ||
         conversationId !== id ||
         view.conversation != null ||
-        (sessionsLoaded && !sessions.some((session) => session.id === id))
+        (sessionsLoaded && !listed(id))
     ) {
         return undefined;
     }

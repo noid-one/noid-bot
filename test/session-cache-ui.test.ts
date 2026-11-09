@@ -491,7 +491,7 @@ test(
         await keptOnDevice(elsewhere);
         await keptAs(elsewhere, Number(slow));
 
-        // Every transaction of the device answers 400 ms after it is done.
+        // Every transaction of the device answers a second after it is done: past the switch's wait (400 ms).
         const slowed = await switchTo(
             Number(slow),
             "words from elsewhere",
@@ -502,17 +502,17 @@ test(
                 const made = transaction.apply(this, args);
                 let then;
 
-                made.addEventListener("complete", () => setTimeout(() => then?.(), 400));
+                made.addEventListener("complete", () => setTimeout(() => then?.(), 1000));
                 Object.defineProperty(made, "oncomplete", { set: (f) => { then = f; }, get: () => then });
 
                 return made;
             };
             `,
             `IDBDatabase.prototype.transaction = transaction;`,
-            800,
+            1400,
         );
 
-        assert.ok(slowed.waited < 400, `connected after ${slowed.waited} ms`);
+        assert.ok(slowed.waited < 700, `connected after ${slowed.waited} ms`);
         assert.doesNotMatch(slowed.asked, /&have=/, "nothing named, as nothing was kept in time");
         assert.equal(slowed.painted, false, "the device's late copy is not shown");
         await shown("the slow one's own");
@@ -546,6 +546,37 @@ test("a session the list does not have is not shown from the device", real, asyn
 });
 
 test(
+    "a subagent of a listed session, never in the list itself, is shown from the device",
+    real,
+    async () => {
+        const source = await newSession(app);
+        const subagent = 99_998;
+
+        await say(app, source, "kept for a subagent");
+        await page.navigate(`${base}/s/${source}`);
+        await shown("kept for a subagent");
+        await settled();
+        await keptOnDevice(source);
+        await keptAs(source, subagent);
+        await goTo(source);
+        await shown("kept for a subagent");
+        // Its session's subagents bar names it, as the server's view of the session does.
+        await page.evaluate(`
+        const { store } = await import("/store.js");
+        const { view } = store.state;
+
+        store.set({ view: { ...view, subagents: [{ name: "helper", conversationId: ${subagent}, busy: false }] } });
+    `);
+
+        const went = await switchTo(subagent, "kept for a subagent", "", "", 300);
+
+        assert.match(went.asked, /&have=/, "what the device kept is named");
+        assert.ok(went.painted, "the device's copy is shown");
+        await goTo(null);
+    },
+);
+
+test(
     "storage that is full: the older sessions kept go, and the save goes through",
     real,
     async () => {
@@ -562,18 +593,26 @@ test(
             await new Promise((resolve) => setTimeout(resolve, 5));
         }
 
-        // The next put of a view finds the storage full, once.
-        const put = IDBObjectStore.prototype.put;
+        // The next save finds the storage full, once, as browsers tell it: its requests go through, and then its
+        // transaction aborts with the error.
+        const getAll = IDBObjectStore.prototype.getAll;
         let full = true;
 
-        IDBObjectStore.prototype.put = function (...args) {
-            if (full && this.name === "views") {
-                full = false;
+        IDBObjectStore.prototype.getAll = function (...args) {
+            const request = getAll.apply(this, args);
+            const transaction = this.transaction;
 
-                throw new DOMException("The storage is full", "QuotaExceededError");
+            if (full && transaction.mode === "readwrite" && transaction.objectStoreNames.contains("views")) {
+                full = false;
+                request.addEventListener("success", () => {
+                    const error = new DOMException("The storage is full", "QuotaExceededError");
+
+                    Object.defineProperty(transaction, "error", { value: error });
+                    transaction.abort();
+                });
             }
 
-            return put.apply(this, args);
+            return request;
         };
 
         let saved = true;
@@ -583,7 +622,7 @@ test(
         } catch {
             saved = false;
         } finally {
-            IDBObjectStore.prototype.put = put;
+            IDBObjectStore.prototype.getAll = getAll;
         }
 
         const left = (await disk.list()).map((each) => each.id).filter((id) => id >= 90_000);
@@ -639,7 +678,7 @@ test(
         try {
             const once = await switchTo(Number(second), "", hang, restore, 0);
 
-            assert.ok(once.waited < 400, `the first switch connected after ${once.waited} ms`);
+            assert.ok(once.waited < 700, `the first switch connected after ${once.waited} ms`);
             // Past the open's own wait (a second): it has failed, for good.
             await new Promise((resolve) => setTimeout(resolve, 1200));
 
@@ -655,6 +694,55 @@ test(
             // A fresh page, with the device as it was.
             await page.navigate(`${base}/`);
         }
+    },
+);
+
+test(
+    "a device slow to open its storage, not stuck: once it answers, the cache is used",
+    real,
+    async () => {
+        const late = await inPage<{ first: string; second: string; saved: string; opens: number }>(`
+        // A copy of the module of its own, so the app's is left as it is.
+        const disk = await import("/session-cache.js?late-open");
+        const open = IDBFactory.prototype.open;
+        let opens = 0;
+
+        // Every open answers 1.3 s on: past the module's wait (a second), as a slow phone's may.
+        IDBFactory.prototype.open = function (...args) {
+            opens++;
+            const request = open.apply(this, args);
+            const slow = { get result() { return request.result; }, get error() { return request.error; } };
+
+            request.onupgradeneeded = (event) => slow.onupgradeneeded?.(event);
+            request.onerror = (event) => slow.onerror?.(event);
+            request.onsuccess = (event) => setTimeout(() => slow.onsuccess?.(event), 1300);
+
+            return slow;
+        };
+
+        const outcome = (promise) => promise.then(() => "ok", (error) => error.message);
+
+        try {
+            const first = await outcome(disk.read(90_100));
+
+            await new Promise((resolve) => setTimeout(resolve, 600));
+
+            return JSON.stringify({
+                first,
+                second: await outcome(disk.read(90_100)),
+                saved: await outcome(disk.save(90_100, { view: 1 }, { owner: "test", build: "test", size: 1 }, 1e9)),
+                opens,
+            });
+        } finally {
+            IDBFactory.prototype.open = open;
+            await disk.drop((each) => each.id === 90_100).catch(() => {});
+        }
+    `);
+
+        assert.equal(late.first, "The session cache did not open", "not waited for past a second");
+        assert.equal(late.second, "ok", "read once it answered");
+        assert.equal(late.saved, "ok", "saved once it answered");
+        assert.equal(late.opens, 1, "the open that answered late is the one used");
     },
 );
 
