@@ -3,6 +3,8 @@ import { onRoute, pushRoute } from "./back.js";
 import { sessionForest, unfolded } from "./session-tree.js";
 import { liveMessage } from "./live.js";
 import { cutWhole } from "./cut.js";
+import { fingerprint } from "./text-hash.js";
+import * as disk from "./session-cache.js";
 
 /** A random id. crypto.randomUUID only exists on https and localhost pages; plain-http network addresses lack it. */
 export function uid() {
@@ -61,6 +63,9 @@ const emptyView = () => ({
     watch: null,
     branch: null,
     subagentsHeld: null,
+    /** The run of the server whose entries these are, and the one that may be kept and named (`have`), or null. */
+    run: null,
+    build: null,
 });
 
 /** Where this browser keeps the sessions whose linked sessions are folded away (`toggleFoldedLinked`). */
@@ -631,6 +636,17 @@ function forgetUnsent() {
 /** End this browser's sign-in, and go to the sign-in page. */
 export function signOut() {
     return attempt(async () => {
+        // What this browser kept of this person's sessions goes with their sign-in, and nothing saves it again: not a save
+        // of this tab still to come, nor one of the other tabs, which hear of it through the storage event.
+        deviceCacheStopped = true;
+
+        try {
+            localStorage.setItem(SIGNED_OUT_KEY, String(Date.now()));
+        } catch {
+            // Storage refused: the other tabs find out at their next request.
+        }
+
+        await disk.clear().catch(() => {});
         await api("logout", {});
         forgetUnsent();
         location.href = "/";
@@ -639,7 +655,522 @@ export function signOut() {
 
 let source;
 
+// ─── Sessions this tab keeps, to show again at once (pi-pocket 6ea6d3e5, 2cf83526) ─────────────────────────────────
+
+/**
+ * What the sessions this tab keeps in its memory may take in all, as the length of their JSON: once parsed they take
+ * about 1.6 times that, so about 25 MB. The device keeps more (`DEVICE_CHARS`): a session that went from memory loads
+ * from there in a moment.
+ */
+const KEPT_CHARS = 16_000_000;
+/**
+ * What the sessions this browser keeps on the device (`session-cache.js`, IndexedDB) may take in all, as the length of
+ * their JSON: about 100 MB. Shared by every tab of the browser; the sessions used longest ago go first.
+ */
+const DEVICE_CHARS = 100_000_000;
+/**
+ * The shape of what the device keeps of a session (`keptRecord`). The web app reloads with new code while the server
+ * runs on, so a record saved by older code may be read by newer: one whose shape changes bumps this, and records of
+ * another shape are not used.
+ */
+const KEPT_FORMAT = 1;
+
+/**
+ * The views of sessions this tab left, by conversation id, least recently shown first: `{ view, size }`, with `size` as
+ * `keptSize` measures it (undefined until the next `trimKept`).
+ */
+const keptViews = new Map();
+/** Each entry's JSON length, measured once: an entry does not change (a new one replaces it). */
+const entrySizes = new WeakMap();
+let trimming;
+/** Sessions kept in memory since the last `settleKept`, to save on the device too. */
+const unsaved = new Set();
+
+/**
+ * Whether a view can be kept: one this run of the server sent whole (`build`). A light entry (`partial`) would have to
+ * come again, and another run of the server may give the same ids to other entries.
+ */
+function keepable(view) {
+    return (
+        view.conversation != null &&
+        view.build != null &&
+        view.build === store.state.server?.build &&
+        loadedFrom(view) < view.order.length &&
+        ![...view.entries.values()].some((entry) => entry.partial)
+    );
+}
+
+/** A view as it is kept: its newest entries (one whose earlier messages were all loaded, as Find does, keeps fewer). */
+function keptRecord(view) {
+    return { view: newestOf(view), size: undefined };
+}
+
+/** Keep the view of the session this tab leaves, to show it again at once (`keptView`), here and on the device. */
+function keepView(view) {
+    const id = view.conversation?.id;
+
+    if (id === undefined) {
+        return;
+    }
+
+    keptViews.delete(id);
+
+    if (!keepable(view)) {
+        return;
+    }
+
+    keptViews.set(id, keptRecord(view));
+    unsaved.add(id);
+    // Measured and saved after the switch has drawn: not in the tap's time. A switch does not put off one already
+    // planned, so quick switches one after another still trim what is kept (pi-pocket 70f629a6).
+    trimming ??= setTimeout(() => {
+        trimming = undefined;
+        settleKept();
+    }, 500);
+}
+
+function settleKept() {
+    // Saved first: what goes from memory may stay on the device, which has more room.
+    for (const id of unsaved) {
+        const kept = keptViews.get(id);
+
+        if (kept !== undefined) {
+            void saveToDevice(kept);
+        }
+    }
+
+    unsaved.clear();
+    trimKept();
+}
+
+/** Drop the views kept longest without a visit until what is kept fits in `KEPT_CHARS`. */
+function trimKept() {
+    let total = 0;
+
+    for (const kept of keptViews.values()) {
+        kept.size ??= keptSize(kept.view);
+        total += kept.size;
+    }
+
+    for (const [oldest, kept] of keptViews) {
+        if (total <= KEPT_CHARS) {
+            break;
+        }
+
+        keptViews.delete(oldest);
+        total -= kept.size;
+    }
+}
+
+/** What a kept view takes, as JSON: its entries, its order's ids, and the rest of the view (authors grows with it). */
+function keptSize(view) {
+    const { entries, order, ...rest } = view;
+    let size = order.length * 8 + JSON.stringify(rest).length;
+
+    for (const entry of entries.values()) {
+        let each = entrySizes.get(entry);
+
+        if (each === undefined) {
+            each = JSON.stringify(entry).length;
+            entrySizes.set(entry, each);
+        }
+
+        size += each;
+    }
+
+    return size;
+}
+
+/** Entries a view keeps when it is left: at most this many of the newest, which is still more than it opens with. */
+const KEPT_PER_SESSION = 1500;
+
+/** The view with only its newest entries (`KEPT_PER_SESSION`), or as it is when it has no more. */
+function newestOf(view) {
+    if (view.entries.size <= KEPT_PER_SESSION) {
+        return view;
+    }
+
+    const entries = new Map();
+
+    for (const id of view.order.slice(-KEPT_PER_SESSION)) {
+        const entry = view.entries.get(id);
+
+        if (entry !== undefined) {
+            entries.set(id, entry);
+        }
+    }
+
+    return { ...view, entries };
+}
+
+/**
+ * Forget every view this tab kept, here and on the device, and keep the one it shows from being kept or named (`build`
+ * null, as for a view mixed from two runs): this person's access changed (a role, the sessions shared with them),
+ * another person signed in, the server started again, or a session left the list. Until the server answers again, a
+ * kept view could show what they may no longer see.
+ */
+function forgetKept() {
+    keptViews.clear();
+    unsaved.clear();
+    lastSaved = null;
+    // A read ahead from the device that is under way keeps nothing it read before this.
+    warmedFor = null;
+    void disk.clear().catch(() => {});
+
+    const { view } = store.state;
+
+    if (view.build != null) {
+        store.set({ view: { ...view, build: null } });
+    }
+}
+
+/** The view this tab kept of a session, taken out to show (it is kept again when the tab leaves), or an empty one. */
+function keptView(id) {
+    const kept = keptViews.get(id);
+
+    keptViews.delete(id);
+
+    return kept?.view ?? emptyView();
+}
+
+// ─── Sessions kept on the device ───────────────────────────────────────────────────────────────────────────────────
+
+/** Set at sign-out, in this tab or another: the device keeps nothing more (pi-pocket e4d66262). */
+let deviceCacheStopped = false;
+const SIGNED_OUT_KEY = "pocket.signedOut";
+
+addEventListener("storage", (event) => {
+    if (event.key === SIGNED_OUT_KEY) {
+        deviceCacheStopped = true;
+    }
+});
+
+// The server no longer knows this browser's sign-in (it expired, or the owner took it back): what it kept goes too, as at
+// a sign-out. Signing in again loads the page anew.
+store.subscribe((state) => {
+    if (state.me === null && !deviceCacheStopped) {
+        deviceCacheStopped = true;
+        keptViews.clear();
+        void disk.clear().catch(() => {});
+    }
+});
+
+/** Whether this browser keeps sessions on the device: the server allows it (`PI_POCKET_SESSION_CACHE`), and it can. */
+const onDevice = () =>
+    !deviceCacheStopped &&
+    store.state.server?.deviceCache === true &&
+    typeof indexedDB !== "undefined";
+
+/**
+ * Whose sessions these are, and what they may see: a person's id, role, and shared sessions. What the device kept for
+ * another, or before this person's rights changed, is not shown.
+ */
+const ownerOf = (me) => fingerprint(JSON.stringify([me.id, me.role, me.sessions ?? null]));
+
+/** The view the device last saved for the session shown: not saved again unchanged. */
+let lastSaved = null;
+
+/** Save a kept session on the device: `kept` as `keptRecord` makes it. A failure keeps nothing there, which is fine. */
+async function saveToDevice(kept) {
+    const me = store.state.me;
+
+    if (!onDevice() || !me) {
+        return;
+    }
+
+    kept.size ??= keptSize(kept.view);
+
+    try {
+        await disk.save(
+            kept.view.conversation.id,
+            { format: KEPT_FORMAT, view: kept.view },
+            { owner: ownerOf(me), build: kept.view.build, size: kept.size },
+            DEVICE_CHARS,
+        );
+    } catch {
+        // Storage full, refused, or closed: the next save tries again.
+    }
+}
+
+/**
+ * Save the session shown, once it settles: a reload, or a tab the system closed in the background, then opens it at once.
+ * Only a whole view this run of the server sent, and only when it changed since the last save.
+ */
+function saveShown() {
+    const { view, conversationId } = store.state;
+
+    if (
+        !onDevice() ||
+        view.conversation?.id !== conversationId ||
+        !keepable(view) ||
+        lastSaved === view
+    ) {
+        return;
+    }
+
+    lastSaved = view;
+    void saveToDevice(keptRecord(view));
+}
+
+let savingShown;
+let savedFor = null;
+
+// A few seconds after the shown session last changed, and as the page goes to the background, where a phone may close it.
+store.subscribe((state) => {
+    if (state.view !== savedFor) {
+        savedFor = state.view;
+        clearTimeout(savingShown);
+        savingShown = setTimeout(
+            () =>
+                typeof requestIdleCallback === "function"
+                    ? requestIdleCallback(saveShown, { timeout: 2000 })
+                    : saveShown(),
+            3000,
+        );
+    }
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+        saveShown();
+    }
+});
+
+/**
+ * A session the device kept, as `keptView` gives one from memory, if it is this person's, from this run of the server,
+ * and the session still shown: undefined otherwise. The server still checks that the person may see it, and says it is
+ * missing if not.
+ */
+async function deviceView(id) {
+    return onDevice() && store.state.me ? adopt(id, await readDevice(id)) : undefined;
+}
+
+/** What the device kept of a session, unchecked (`adopt` checks it): undefined if nothing, or it cannot be read. */
+function readDevice(id) {
+    return typeof indexedDB === "undefined"
+        ? Promise.resolve(undefined)
+        : disk.read(id).catch(() => undefined);
+}
+
+/** Whether what the device kept of session `id` may be used: this person's, with the same rights, of this run. */
+function usable(found, id) {
+    const { me, server } = store.state;
+
+    return (
+        found !== undefined &&
+        onDevice() &&
+        me != null &&
+        found.record?.format === KEPT_FORMAT &&
+        found.info.owner === ownerOf(me) &&
+        found.info.build === server?.build &&
+        found.record.view?.build === server.build &&
+        found.record.view.run === server.build &&
+        found.record.view.conversation?.id === id &&
+        found.record.view.entries instanceof Map &&
+        Array.isArray(found.record.view.order)
+    );
+}
+
+/**
+ * A session the device kept (`readDevice`), as `deviceView` gives it, once it is checked: over an empty view, so a field
+ * that newer code added has its first value.
+ */
+function adopt(id, found) {
+    if (
+        !usable(found, id) ||
+        store.state.conversationId !== id ||
+        store.state.view.conversation != null
+    ) {
+        return undefined;
+    }
+
+    keptViews.set(id, { view: { ...emptyView(), ...found.record.view }, size: found.info.size });
+
+    return keptView(id);
+}
+
+/** Whose and which run's sessions `warmFromDevice` last read ahead, so it does so once for each. */
+let warmedFor = null;
+
+/**
+ * Read ahead into memory the sessions the device kept that were used last, as many as memory keeps (`KEPT_CHARS`), one
+ * at a time while the page is idle: after a reload, going to one of them shows it at once, as before the reload.
+ */
+async function warmFromDevice() {
+    const { me, server } = store.state;
+
+    if (!onDevice() || !me || !server?.build) {
+        return;
+    }
+
+    const key = `${server.build}:${ownerOf(me)}`;
+
+    if (warmedFor === key) {
+        return;
+    }
+
+    warmedFor = key;
+
+    let infos;
+
+    try {
+        infos = await disk.list();
+    } catch {
+        return;
+    }
+
+    // The ones used last that fit, then read oldest first: memory drops the one first in its order first.
+    const chosen = [];
+    let total = 0;
+
+    for (const kept of keptViews.values()) {
+        total += kept.size ?? 0;
+    }
+
+    // Only sessions the list has: one it no longer has is not this person's to see.
+    const listed = new Set(store.state.sessions.map((session) => session.id));
+
+    for (const info of infos
+        .filter((each) => listed.has(each.id))
+        .sort((a, b) => b.usedAt - a.usedAt)) {
+        if (total + info.size > KEPT_CHARS) {
+            break;
+        }
+
+        chosen.push(info);
+        total += info.size;
+    }
+
+    const read = [];
+
+    for (const info of chosen.reverse()) {
+        await new Promise((resolve) =>
+            typeof requestIdleCallback === "function"
+                ? requestIdleCallback(resolve, { timeout: 1000 })
+                : setTimeout(resolve, 50),
+        );
+
+        if (warmedFor !== key) {
+            return;
+        }
+
+        let found;
+
+        try {
+            found = await disk.read(info.id, false);
+        } catch {
+            return;
+        }
+
+        if (usable(found, info.id)) {
+            read.push([
+                info.id,
+                { view: { ...emptyView(), ...found.record.view }, size: found.info.size },
+            ]);
+        }
+    }
+
+    // Forgotten meanwhile (`forgetKept`: a session no longer shared, another person): what was read stays out.
+    if (warmedFor !== key || read.length === 0) {
+        return;
+    }
+
+    // Before what the tab kept itself meanwhile, which is newer; never the one it shows.
+    const own = [...keptViews];
+
+    keptViews.clear();
+
+    for (const [id, kept] of read) {
+        if (id !== store.state.conversationId) {
+            keptViews.set(id, kept);
+        }
+    }
+
+    for (const [id, kept] of own) {
+        keptViews.delete(id);
+        keptViews.set(id, kept);
+    }
+
+    trimKept();
+}
+
+/** Drop what the device kept of one session (the server says it is missing, or it did not go on from what it had). */
+function dropFromDevice(id) {
+    if (typeof indexedDB !== "undefined") {
+        void disk.drop((info) => info.id === id).catch(() => {});
+    }
+}
+
+/** Drop what the device kept that this server cannot use: another person's, older rights, or another run's. */
+function tidyDevice(me, server) {
+    if (typeof indexedDB === "undefined") {
+        return;
+    }
+
+    if (server?.deviceCache !== true || !me) {
+        void disk.clear().catch(() => {});
+
+        return;
+    }
+
+    const owner = ownerOf(me);
+
+    void disk.drop((info) => info.owner !== owner || info.build !== server.build).catch(() => {});
+}
+
+/**
+ * What this tab has of the session it shows, for the server (`have` in `/api/events`): the order's ids up to the last
+ * one it has, as a fingerprint, and from where on it has their entries. The server checks it (`Room.push`), and then
+ * leaves those out of the view it sends. Null with nothing to name.
+ */
+function haveOf(view) {
+    // A light entry (`partial`) is not had: the server sends it whole after it, and would not if it were named.
+    if (
+        view.conversation?.id !== store.state.conversationId ||
+        view.build == null ||
+        view.build !== store.state.server?.build ||
+        [...view.entries.values()].some((entry) => entry.partial)
+    ) {
+        return null;
+    }
+
+    const from = loadedFrom(view);
+    const count = view.order.length;
+
+    return from >= count
+        ? null
+        : `${from}.${count}.${fingerprint(view.order.join(","))}.${view.build}`;
+}
+
+/**
+ * Whether a view that goes on from `orderFrom` goes on from what this tab has: the same session, with that much order.
+ * A full one goes on from what this tab kept (`have`); an update from the order the tab has, all of it.
+ */
+function goesOn(view, data) {
+    return (
+        view.conversation?.id === data.conversation.id &&
+        (data.full
+            ? view.run === store.state.server?.build && view.order.length >= data.orderFrom
+            : view.order.length === data.orderFrom)
+    );
+}
+
 function applyView(data) {
+    // One of a session this tab has left, sent before its connection closed: not the one it shows.
+    if (data.conversation.id !== store.state.conversationId) {
+        return;
+    }
+
+    // A view that goes on from what this tab kept must go on from what it has. If it does not, which should not happen,
+    // the session opens again from the start.
+    if (data.orderFrom !== undefined && !goesOn(store.state.view, data)) {
+        keptViews.delete(data.conversation.id);
+        dropFromDevice(data.conversation.id);
+        store.set({ view: emptyView() });
+        connect();
+
+        return;
+    }
+
     store.set((state) => ({ view: mergeView(state.view, data), missing: null }));
 }
 
@@ -650,11 +1181,29 @@ function applyView(data) {
 function mergeView(current, data) {
     const same = current.conversation?.id === data.conversation.id;
     const base = data.full || !same ? emptyView() : current;
-    const entries = new Map(data.full && same ? current.entries : base.entries);
+    const build = store.state.server?.build;
+    // Another run of the server may hold other entries under the same ids (another data folder, a restored backup): a
+    // full view from it keeps none of the entries the tab had.
+    const sameRun = same && current.run === build;
+
+    // Nothing came after what this tab kept (`have`): the same order and Map, as for an update that brings none.
+    const nothingNew =
+        data.full &&
+        same &&
+        data.orderFrom === current.order.length &&
+        data.order.length === 0 &&
+        data.entries.length === 0;
+    // Most updates while Pi writes bring no entries: the same Map then, so what is built from it (the transcript's rows)
+    // is not built again for each of them.
+    const unchanged =
+        nothingNew || (!data.full && same && data.entries.length === 0 && !data.order);
+    const entries = unchanged
+        ? current.entries
+        : new Map(data.full && sameRun ? current.entries : base.entries);
 
     // A light one held from before (the tab left before the whole one came) goes: past the newest rows, the server
     // counts it as sent, so only `loadEarlier` brings it whole, and it asks for what is missing.
-    if (data.full && same) {
+    if (data.full && sameRun && !unchanged) {
         for (const [id, entry] of entries) {
             if (entry.partial) {
                 entries.delete(id);
@@ -674,10 +1223,17 @@ function mergeView(current, data) {
         entries.set(entry.id, entry);
     }
 
-    const order = data.order ?? base.order;
+    // Only the end of the order comes after what this tab kept (`have`): it goes on from `orderFrom`.
+    const order = nothingNew
+        ? current.order
+        : data.order === undefined
+          ? base.order
+          : data.orderFrom === undefined
+            ? data.order
+            : current.order.slice(0, data.orderFrom).concat(data.order);
 
-    if (data.order) {
-        const keep = new Set(data.order);
+    if (data.order && !nothingNew) {
+        const keep = new Set(order);
 
         for (const id of entries.keys()) {
             if (!keep.has(id)) {
@@ -691,6 +1247,14 @@ function mergeView(current, data) {
         conversation: data.conversation,
         entries,
         order,
+        run: data.full ? build : base.run,
+        // The run of the server that sent these entries, for what this tab tells the next one it has (`have`). A view
+        // this tab forgot (`forgetKept`) stays so: it is neither kept nor named.
+        build: !data.full
+            ? base.build
+            : !sameRun || current.build === build || data.orderFrom !== undefined
+              ? build
+              : null,
         live: mergeLive(base.live, data.live),
         agent: data.agent,
         stats: data.stats,
@@ -771,7 +1335,20 @@ export function onExtensionEvent(listener) {
 
 /** What the server sends, by event name. Both transports deliver the same events. */
 const handlers = {
-    hello: (data) =>
+    hello: (data) => {
+        const state = store.state;
+
+        // A server that started again may give the same ids to other entries; and this person's rights may have changed
+        // (a role, the sessions shared with them), or another person signed in: what this tab kept goes, and the view it
+        // shows is not kept when it leaves.
+        if (
+            (state.server != null && data.server?.build !== state.server.build) ||
+            (state.me && ownerOf(state.me) !== ownerOf(data.user))
+        ) {
+            forgetKept();
+        }
+
+        tidyDevice(data.user, data.server);
         store.set({
             me: data.user,
             users: data.users,
@@ -783,13 +1360,30 @@ const handlers = {
             themeList: Array.isArray(data.themes) ? data.themes : [],
             // This connection's id, which peek lists name (`peeks.js`). `GET /api/me` answers without one.
             ...(data.connection === undefined ? {} : { streamId: data.connection }),
-        }),
-    sessions: (sessions) =>
+        });
+        // The sessions used last, from the device into memory, once the page settles: after a reload they open at once.
+        setTimeout(() => void warmFromDevice(), 1500);
+    },
+    sessions: (sessions) => {
+        const before = store.state.sessions;
+
+        // A session gone from the list (deleted, or no longer shared with this person): nothing kept stays, its
+        // subagents' views included, and the view shown is not kept when the tab leaves it, though the list may come
+        // before the server says it is missing (a reconnect) (pi-pocket 3cabe340).
+        if (sessions !== before) {
+            const listed = new Set(sessions.map((session) => session.id));
+
+            if (before.some((each) => !listed.has(each.id))) {
+                forgetKept();
+            }
+        }
+
         store.set((state) => ({
             sessions,
             sessionsLoaded: true,
             moving: stillMoving(state.moving, sessions),
-        })),
+        }));
+    },
     "folder-favorites": (folderFavorites) => store.set({ folderFavorites }),
     models: (models) => store.set({ models }),
     // A theme folder came, went, or changed (`theme.js` loads its new version).
@@ -811,7 +1405,16 @@ const handlers = {
     users: (users) => store.set({ users }),
     // Pi's lessons changed somewhere: a Memory sheet or menu that shows them fetches them again (`sheets/memory.js`).
     memory: () => store.set((state) => ({ memoryRev: (state.memoryRev ?? 0) + 1 })),
-    missing: (data) => store.set({ missing: data.message }),
+    // Not this person's to see (any more), or gone: nothing of it stays in this tab, kept or shown.
+    missing: (data) => {
+        keptViews.delete(data.conversationId);
+        dropFromDevice(data.conversationId);
+        store.set((state) => ({
+            // Said of a session this tab has since left, it is not what the tab shows.
+            ...(state.conversationId === data.conversationId ? { missing: data.message } : {}),
+            ...(state.view.conversation?.id === data.conversationId ? { view: emptyView() } : {}),
+        }));
+    },
     // An event an extension module sent its browser module (`extension-ui.js`).
     ext: (data) => {
         for (const listener of extensionListeners) {
@@ -849,10 +1452,11 @@ const handlers = {
  * What this code understands of the server's updates, sent with each connection. 2: it keeps the queue when an update
  * leaves it out. 3: it takes the message being written as what changed (`mergeLive`). 4: a full view brings only the
  * entries of the newest rows, and it loads earlier ones as it shows them (`loadEarlier`). 5: those entries come light
- * (`partial`) at first, whole in the update after. The server sends a tab below 3 the whole message with each update,
- * and one whose code names none (as a tab asleep through an update keeps) the queue too.
+ * (`partial`) at first, whole in the update after. 6: it names what it kept of the session it opens (`have`), and takes a
+ * view that leaves that out (`orderFrom`). The server sends a tab below 3 the whole message with each update, and one
+ * whose code names none (as a tab asleep through an update keeps) the queue too.
  */
-const PROTOCOL = 5;
+const PROTOCOL = 6;
 const TRANSPORT_KEY = "pocket.transport";
 const local = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])$/.test(location.hostname);
 /** After an event stream stalls on this address, poll for a day, then try the stream again: one slow start is not forever. */
@@ -879,10 +1483,17 @@ const connected = () => store.state.connection !== "open" && store.set({ connect
 export function connect() {
     source?.close();
     store.set({ connection: "connecting" });
-    const id = store.state.conversationId;
-    const query = `tab=${encodeURIComponent(TAB)}&p=${PROTOCOL}${id === null ? "" : `&c=${id}`}`;
+    source = pollHere() && !local ? pollEvents() : streamEvents(eventsQuery());
+}
 
-    source = pollHere() && !local ? pollEvents(query) : streamEvents(query);
+/** What a new connection asks for: this tab, what its code understands, the session it shows, and what it kept of it. */
+function eventsQuery() {
+    const id = store.state.conversationId;
+    const have = id === null ? null : haveOf(store.state.view);
+    const shows = id === null ? "" : `&c=${id}`;
+    const kept = have === null ? "" : `&have=${have}`;
+
+    return `tab=${encodeURIComponent(TAB)}&p=${PROTOCOL}${shows}${kept}`;
 }
 
 // A page kept for Back and Forward stays alive, frozen, and so would its stream: each holds one of the few connections a
@@ -982,7 +1593,7 @@ function streamEvents(query) {
 }
 
 /** Long polling: each request waits for events and returns them; the next one acknowledges what arrived. */
-function pollEvents(query) {
+function pollEvents() {
     let session = null;
     let ack = 0;
     let stopped = false;
@@ -1005,8 +1616,10 @@ function pollEvents(query) {
             request = new AbortController();
 
             try {
+                // A poll the server no longer knows (it started again, or this tab fell far behind) attaches afresh: it
+                // names what the tab has now.
                 const response = await fetch(
-                    `/api/poll?${query}${session ? `&session=${session}&ack=${ack}` : ""}`,
+                    `/api/poll?${eventsQuery()}${session ? `&session=${session}&ack=${ack}` : ""}`,
                     { signal: request.signal, cache: "no-store" },
                 );
 
@@ -1159,9 +1772,10 @@ export function navigate(conversationId, { replace = false, sheet = null } = {})
         return;
     }
 
+    keepView(store.state.view);
     store.set((state) => ({
         conversationId,
-        view: emptyView(),
+        view: conversationId === null ? emptyView() : keptView(conversationId),
         ...peopleFor(conversationId),
         browser: null,
         history: null,
@@ -1170,7 +1784,36 @@ export function navigate(conversationId, { replace = false, sheet = null } = {})
         drawer: false,
         ...sheetChange(sheet, state),
     }));
-    connect();
+    showKept(conversationId);
+}
+
+/** The number of the last session gone to, so a read of the device that comes late does not show an older one. */
+let going = 0;
+
+/**
+ * Connect to the session gone to: kept in memory, it shows already; otherwise the device may have it, which a moment's
+ * read brings, and the server then sends only what came since.
+ */
+function showKept(id) {
+    const turn = ++going;
+
+    if (id === null || store.state.view.conversation != null || !onDevice()) {
+        connect();
+
+        return;
+    }
+
+    void deviceView(id).then((found) => {
+        if (turn !== going) {
+            return;
+        }
+
+        if (found !== undefined) {
+            store.set({ view: found });
+        }
+
+        connect();
+    });
 }
 
 // Back or forward to another route. Back that only closes a layer (a sheet, a panel) is back.js's.
@@ -1179,9 +1822,10 @@ onRoute(() => {
 
     if (id !== store.state.conversationId) {
         opened(id);
+        keepView(store.state.view);
         store.set({
             conversationId: id,
-            view: emptyView(),
+            view: id === null ? emptyView() : keptView(id),
             ...peopleFor(id),
             browser: null,
             history: null,
@@ -1190,12 +1834,15 @@ onRoute(() => {
             sheet: null,
             drawer: false,
         });
-        connect();
+        showKept(id);
     }
 });
 
 export async function start() {
     try {
+        // The session the page opens on, from the device, read while the server answers who this is: then checked.
+        const id = store.state.conversationId;
+        const onDisk = id === null ? undefined : readDevice(id);
         const hello = await api("me");
 
         store.set({
@@ -1206,6 +1853,15 @@ export async function start() {
             server: hello.server,
             themeList: Array.isArray(hello.themes) ? hello.themes : [],
         });
+
+        if (onDisk !== undefined && store.state.view.conversation == null) {
+            const found = adopt(id, await onDisk);
+
+            if (found !== undefined) {
+                store.set({ view: found });
+            }
+        }
+
         connect();
     } catch (error) {
         store.set({ me: error.status === 401 ? null : undefined });
