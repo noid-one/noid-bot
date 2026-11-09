@@ -695,7 +695,7 @@ export class Commands {
         id: ConversationId,
         user: User,
         patch: { title?: string; archived?: boolean },
-    ): Promise<void> {
+    ): Promise<{ repeating: number }> {
         const app = this.#app;
 
         app.requireSee(user, id);
@@ -745,6 +745,14 @@ export class Commands {
                     : "brought the session back from the archive",
             );
         }
+
+        // Archiving leaves its repeating schedules running: the person is told how many.
+        const repeating =
+            patch.archived === true
+                ? (await app.schedules.list(id)).filter((item) => item.every !== undefined).length
+                : 0;
+
+        return { repeating };
     }
 
     /**

@@ -334,7 +334,7 @@ export interface PocketHost {
     /** Sessions' goals: the goals extension runs their checks and counts them. */
     readonly goals: Pick<Goals, "get" | "run" | "record" | "mayContinue">;
     /** The built-in browser: a page per conversation, which the people in it watch and use too. */
-    readonly browsers: Pick<Browsers, "open">;
+    readonly browsers: Pick<Browsers, "open" | "downloadPath">;
     /** Noid's session tools, which every bot has: what they do, each as the owner (`session-tools.ts`). */
     readonly sessionTools: Pick<
         SessionTools,

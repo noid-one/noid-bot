@@ -122,6 +122,20 @@ export type Purchase = {
     amountFrom: "button" | "page";
 };
 
+/** noid: a file the page downloads, as the browser tells of it, numbered in the order the downloads began. */
+export type PageDownload = {
+    seq: number;
+    guid: string;
+    url: string;
+    /** The name the site gave it. */
+    name: string;
+    state: "inProgress" | "completed" | "canceled";
+    received: number;
+    total: number;
+    /** Where the browser saved it, once it says. */
+    path?: string;
+};
+
 const MAX_LOGS = 300;
 /** Frame numbers, for every page: a page opened again goes on from where the last one was. */
 let frameCount = 0;
@@ -246,6 +260,9 @@ export class BrowserPage {
     #canGoForward = false;
     #logs: LogEntry[] = [];
     #logSeq = 0;
+    #downloads: PageDownload[] = [];
+    #downloadSeq = 0;
+    readonly #downloadWaiters = new Set<() => void>();
     #errors = 0;
     #crashed = false;
     #closed = false;
@@ -259,6 +276,8 @@ export class BrowserPage {
     #saveTimer: NodeJS.Timeout | undefined;
     /** Last time Pi or a person used this page; idle pages close. */
     usedAt = Date.now();
+    /** noid: the last download Pi's calls told of (`downloadSeq`): the ones after it are the next call's to tell. */
+    downloadsTold = 0;
     readonly #popups = new Map<string, NodeJS.Timeout>();
     /** Tabs already sent here or closed, until the browser says they are gone: their later updates change nothing. */
     readonly #handled = new Set<string>();
@@ -393,6 +412,27 @@ export class BrowserPage {
 
     #event(method: string, params: Json): void {
         switch (method) {
+            case "Page.downloadWillBegin":
+                this.#downloads = [
+                    ...this.#downloads.slice(-49),
+                    {
+                        seq: ++this.#downloadSeq,
+                        guid: String(params.guid),
+                        url: String(params.url ?? ""),
+                        name: String(params.suggestedFilename ?? ""),
+                        state: "inProgress",
+                        received: 0,
+                        total: 0,
+                    },
+                ];
+                this.#downloadChanged();
+
+                return;
+            case "Page.downloadProgress":
+                this.downloadEvent(params);
+
+                return;
+
             case "Page.frameNavigated": {
                 const frame = params.frame;
 
@@ -985,9 +1025,10 @@ export class BrowserPage {
     async navigate(
         url: string,
         options: { wait?: boolean; timeoutMs?: number; signal?: AbortSignal } = {},
-    ): Promise<{ error?: string; status?: number; slow?: boolean }> {
+    ): Promise<{ error?: string; status?: number; slow?: boolean; download?: boolean }> {
         this.usedAt = Date.now();
         const mark = this.#mark();
+        const downloads = this.#downloadSeq;
         const budget = options.wait === false ? 3000 : (options.timeoutMs ?? 30_000);
         // The browser answers once the page starts to arrive: a server that never responds keeps it waiting, while the
         // navigation goes on.
@@ -1002,6 +1043,18 @@ export class BrowserPage {
 
         if (result === undefined) {
             return options.wait === false ? {} : { slow: true };
+        }
+
+        // The address is a file: the browser downloads it and the page stays. Its download begins a moment later.
+        if (result.isDownload === true) {
+            const until = Date.now() + 5000;
+
+            while (this.#downloadSeq === downloads && Date.now() < until && !this.#closed) {
+                await this.downloadChange(until - Date.now(), options.signal);
+                aborted(options.signal);
+            }
+
+            return { download: true };
         }
 
         if (result.errorText) {
@@ -1847,6 +1900,74 @@ export class BrowserPage {
         return this.#logSeq;
     }
 
+    /**
+     * noid: how a download of this page goes, from its page's events or the browser's (`Browser.downloadProgress`, which
+     * also says where the file went). A download of another page changes nothing.
+     */
+    downloadEvent(params: Json): void {
+        const download = this.#downloads.find((each) => each.guid === params.guid);
+
+        if (download === undefined) {
+            return;
+        }
+
+        if (params.state === "completed" || params.state === "canceled") {
+            download.state = params.state;
+        }
+
+        download.received = Number(params.receivedBytes ?? download.received);
+        download.total = Number(params.totalBytes ?? download.total);
+
+        if (typeof params.filePath === "string" && params.filePath !== "") {
+            download.path = params.filePath;
+        }
+
+        this.#downloadChanged();
+    }
+
+    #downloadChanged(): void {
+        for (const wake of this.#downloadWaiters) {
+            wake();
+        }
+
+        this.#downloadWaiters.clear();
+    }
+
+    /** noid: the downloads that began after `after`, as they stand now. */
+    downloads(after = 0): PageDownload[] {
+        return this.#downloads
+            .filter((download) => download.seq > after)
+            .map((each) => ({ ...each }));
+    }
+
+    get downloadSeq(): number {
+        return this.#downloadSeq;
+    }
+
+    /** noid: wait for the next change in this page's downloads, or `ms`, whichever comes first. */
+    downloadChange(ms: number, signal?: AbortSignal): Promise<void> {
+        return new Promise((done) => {
+            const finish = () => {
+                clearTimeout(timer);
+                signal?.removeEventListener("abort", finish);
+                this.#downloadWaiters.delete(finish);
+                done();
+            };
+
+            const timer = setTimeout(finish, Math.max(0, ms));
+
+            signal?.addEventListener("abort", finish, { once: true });
+            this.#downloadWaiters.add(finish);
+        });
+    }
+
+    /** noid: stop a download; the browser deletes what it wrote. */
+    async cancelDownload(guid: string): Promise<void> {
+        await this.#connection
+            .send("Browser.cancelDownload", { guid, browserContextId: this.#context })
+            .catch(() => {});
+    }
+
     clearLogs(): void {
         this.#logs = [];
         this.#errors = 0;
@@ -1878,6 +1999,7 @@ export class BrowserPage {
             wake();
         }
 
+        this.#downloadChanged();
         this.#connection.unlisten(this.#session);
         this.#changed();
     }

@@ -104,6 +104,11 @@ export class Browsers {
         return this.executable !== undefined;
     }
 
+    /** noid: where the shared browser saves downloads, when it saves them at all. */
+    get downloadPath(): string | undefined {
+        return this.#options.remote?.downloadPath;
+    }
+
     subscribe(listener: (conversationId: number, state: BrowserState) => void): () => void {
         this.#listeners.add(listener);
 
@@ -170,6 +175,17 @@ export class Browsers {
     /** Route the browser's target events to its own pages: windows of the shared browser, or pages here. */
     #routeTargets(chromium: Chromium, shared: boolean): void {
         chromium.connection.onEvent = (method, params) => {
+            // noid: where a page's download went, which only the browser says.
+            if (method === "Browser.downloadProgress") {
+                for (const page of this.#pages.values()) {
+                    if (page.shared === shared) {
+                        page.downloadEvent(params);
+                    }
+                }
+
+                return;
+            }
+
             if (!method.startsWith("Target.")) {
                 return;
             }
@@ -262,7 +278,12 @@ export class Browsers {
                     "Browser.setDownloadBehavior",
                     remote.downloadPath === undefined
                         ? { behavior: "deny" }
-                        : { behavior: "allow", downloadPath: remote.downloadPath },
+                        : {
+                              behavior: "allow",
+                              downloadPath: remote.downloadPath,
+                              // A bot's page says what it downloaded, for its call to move it to the bot's folder.
+                              eventsEnabled: true,
+                          },
                 )
                 .catch(() => {});
             this.#options.log?.("Browser started on the shared computer");

@@ -261,20 +261,28 @@ function failureDealtWith(record: SubagentRecord): boolean {
 }
 
 /**
+ * The model a subagent runs on, as its row shows it: the model's name (its id when the model is not known here), its
+ * thinking level, and `other` when it is not the model of the conversation that started it.
+ */
+export type SubagentModel = { name: string; thinking?: string; other?: true };
+
+/**
  * One subagent as the web app shows it, in its parent's subagents bar and on the subagents board: what it was asked and
  * when, whether it works, and how it ended (`stopped` is a `failed` that was stopped; `dealt`, a failure a person
- * dealt with, which needs nobody now).
+ * dealt with, which needs nobody now), and the model it runs on (`runsOn`).
  */
 export function subagentView(
     name: string,
     record: SubagentRecord,
     busy: boolean,
     reporting: boolean,
+    runsOn?: SubagentModel,
 ) {
     return {
         name,
         conversationId: record.conversationId,
         busy,
+        ...(runsOn === undefined ? {} : { runsOn }),
         ...(record.asked === undefined ? {} : { asked: record.asked }),
         ...(record.askedAt === undefined ? {} : { askedAt: record.askedAt }),
         ...(record.answeredAt === undefined ? {} : { answeredAt: record.answeredAt }),
@@ -669,6 +677,7 @@ export class Room {
                     record,
                     this.#app.isBusy(record.conversationId),
                     this.#reporting.has(name),
+                    this.#app.subagentModel(record.conversationId),
                 ),
             ),
             // Reports on their way that a spend limit holds back, and why: the subagents bar says so.
