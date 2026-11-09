@@ -122,6 +122,7 @@ A module split into parts keeps its name for the part others import, with the re
 | `browser/keys.ts`                        | Key names and combinations as key events                                                                                                   |
 | `browser/viewport.ts`, `browser/urls.ts` | Page sizes and their presets; what people and Pi type, made into addresses                                                                 |
 | `browser/local-servers.ts`               | The web servers running on this machine, for the panel's start screen                                                                      |
+| `browser/downloads.ts`                   | noid: what a bot's page downloads, moved from the shared browser's folder into the bot's `Downloads`, for its call's result                |
 
 ### Elsewhere
 
