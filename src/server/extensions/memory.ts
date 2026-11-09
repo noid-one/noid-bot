@@ -56,7 +56,7 @@ export default function createMemory(host: PocketHost) {
         description: DESCRIPTION,
         parameters: obj(
             {
-                action: StringEnum(["add", "update", "remove", "list"]),
+                action: StringEnum(["add", "update", "remove", "list"] as const),
                 text: opt(
                     str({
                         description: `add, update: the lesson, one or two sentences (${String(MAX_LESSON)} characters at most)`,
