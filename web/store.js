@@ -935,13 +935,32 @@ document.addEventListener("visibilitychange", () => {
     }
 });
 
+/** How long a switch to a session waits for the device's copy before it connects without one. */
+const DEVICE_WAIT_MS = 150;
+
 /**
  * A session the device kept, as `keptView` gives one from memory, if it is this person's, from this run of the server,
  * and the session still shown: undefined otherwise. The server still checks that the person may see it, and says it is
- * missing if not.
+ * missing if not. A device slow to answer counts as nothing kept, and what it brings after is not used: the server
+ * sends the whole view by then.
  */
 async function deviceView(id) {
-    return onDevice() && store.state.me ? adopt(id, await readDevice(id)) : undefined;
+    if (!onDevice() || !store.state.me) {
+        return undefined;
+    }
+
+    const late = Symbol("late");
+    let timer;
+    const found = await Promise.race([
+        readDevice(id),
+        new Promise((resolve) => {
+            timer = setTimeout(resolve, DEVICE_WAIT_MS, late);
+        }),
+    ]);
+
+    clearTimeout(timer);
+
+    return found === late ? undefined : adopt(id, found);
 }
 
 /** What the device kept of a session, unchecked (`adopt` checks it): undefined if nothing, or it cannot be read. */
@@ -975,10 +994,14 @@ function usable(found, id) {
  * that newer code added has its first value.
  */
 function adopt(id, found) {
+    const { conversationId, view, sessionsLoaded, sessions } = store.state;
+
+    // Once the list is in, only a session it has: one it no longer has is not this person's to see.
     if (
         !usable(found, id) ||
-        store.state.conversationId !== id ||
-        store.state.view.conversation != null
+        conversationId !== id ||
+        view.conversation != null ||
+        (sessionsLoaded && !sessions.some((session) => session.id === id))
     ) {
         return undefined;
     }

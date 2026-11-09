@@ -16,12 +16,20 @@ const OPEN_MS = 1000;
 
 let opening;
 
+/** Whether an open went unanswered: then it is not tried again while the page lasts, and every call fails at once. */
+let unanswered = false;
+
 function database() {
+    if (unanswered) {
+        return Promise.reject(new Error("The session cache did not open"));
+    }
+
     opening ??= new Promise((resolve, reject) => {
         const request = indexedDB.open(NAME, 1);
         let late = false;
         const timer = setTimeout(() => {
             late = true;
+            unanswered = true;
             reject(new Error("The session cache did not open"));
         }, OPEN_MS);
 
@@ -56,8 +64,11 @@ function database() {
             reject(request.error);
         };
 
+        // Only an upgrade waits on another tab's connection: this one gives up, and an open that goes through after
+        // is let go of as one that answered late.
         request.onblocked = () => {
             clearTimeout(timer);
+            late = true;
             reject(new Error("The session cache is open in an older tab"));
         };
     }).catch((error) => {
@@ -85,16 +96,48 @@ const result = (request) =>
 /**
  * Keep a session's view: `record` is `{ view, place, seen }` as `store.js` keeps it in memory, `info` is
  * `{ owner, build, size }`. Then drop the sessions used longest ago until what is kept fits in `limit` (JSON characters,
- * as `size` counts them).
+ * as `size` counts them). Storage that is full drops the older half of the others first, and tries once more.
  */
 export async function save(id, record, info, limit) {
     const db = await database();
+
+    try {
+        await put(db, id, record, info, limit);
+    } catch (error) {
+        if (error?.name !== "QuotaExceededError") {
+            throw error;
+        }
+
+        // The drops above went with the put that failed: they go on their own, and leave room.
+        const others = (await list()).filter((each) => each.id !== id);
+
+        const oldest = new Set(
+            others
+                .sort((a, b) => a.usedAt - b.usedAt)
+                .slice(0, Math.ceil(others.length / 2))
+                .map((each) => each.id),
+        );
+
+        await drop((each) => oldest.has(each.id));
+        await put(db, id, record, info, limit);
+    }
+}
+
+/** `save`'s one try, in one transaction. */
+async function put(db, id, record, info, limit) {
     const transaction = db.transaction(["views", "info"], "readwrite");
+    const finished = done(transaction);
     const all = transaction.objectStore("info");
 
+    // A put that fails aborts the transaction: its error is the transaction's, not the requests' after it.
+    finished.catch(() => {});
     transaction.objectStore("views").put(record, id);
     all.put({ id, ...info, usedAt: Date.now() }, id);
-    const kept = await result(all.getAll());
+    const kept = await result(all.getAll()).catch(async (error) => {
+        await finished;
+
+        throw error;
+    });
     let total = kept.reduce((sum, each) => sum + each.size, 0);
 
     for (const each of kept.sort((a, b) => a.usedAt - b.usedAt)) {
@@ -107,7 +150,7 @@ export async function save(id, record, info, limit) {
         total -= each.size;
     }
 
-    await done(transaction);
+    await finished;
 }
 
 /**

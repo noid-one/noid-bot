@@ -411,6 +411,253 @@ test(
     },
 );
 
+/**
+ * Keep on the device what it kept of session `from` as if it were session `to`'s: a copy the page may show for `to`
+ * only if it checks it, with words of `from`'s alone.
+ */
+const keptAs = (from: ConversationId, to: number) =>
+    inPage(`
+        const disk = await import("/session-cache.js");
+        const found = await disk.read(${Number(from)});
+        const view = { ...found.record.view, conversation: { ...found.record.view.conversation, id: ${to} } };
+
+        await disk.save(${to}, { ...found.record, view }, found.info, 1e9);
+
+        return "true";
+    `);
+
+/** Leave session `id` for the list, and wait until the device keeps it. */
+async function keptOnDevice(id: ConversationId): Promise<void> {
+    await goTo(null);
+    await until(async () => (await onDevice()).includes(Number(id)), "saved on the device", 15_000);
+}
+
+type Switch = { waited: number; asked: string; painted: boolean };
+
+/**
+ * Go to session `id` from inside the app, with `setUp` run first and `tearDown` after: how long it took to connect, what
+ * the connection asked for, and whether the page ever showed `foreign` in it, up to `watchMs` after.
+ */
+const switchTo = (id: number, foreign: string, setUp: string, tearDown: string, watchMs: number) =>
+    inPage<Switch>(`
+        const { navigate, store } = await import("/store.js");
+        const Source = window.EventSource;
+        let at = 0;
+        let asked = "";
+        let painted = false;
+
+        window.EventSource = class extends Source {
+            constructor(url) {
+                super(url);
+                at ||= performance.now();
+                asked ||= String(url);
+            }
+        };
+        const stop = store.subscribe((state) => {
+            painted ||= state.view.conversation?.id === ${id} &&
+                [...state.view.entries.values()].some((each) => each.text === ${JSON.stringify(foreign)});
+        });
+        ${setUp}
+        const started = performance.now();
+
+        try {
+            navigate(${id});
+
+            while (at === 0 && performance.now() - started < 5000) {
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, ${watchMs}));
+
+            return JSON.stringify({ waited: Math.round(at - started), asked, painted });
+        } finally {
+            window.EventSource = Source;
+            stop();
+            ${tearDown}
+        }
+    `);
+
+test(
+    "a device slow to answer does not hold a switch back, and what it brings late is not shown",
+    real,
+    async () => {
+        const [elsewhere, slow] = [await newSession(app), await newSession(app)];
+
+        await say(app, elsewhere, "words from elsewhere");
+        await say(app, slow, "the slow one's own");
+        await page.navigate(`${base}/s/${elsewhere}`);
+        await shown("words from elsewhere");
+        await settled();
+        await keptOnDevice(elsewhere);
+        await keptAs(elsewhere, Number(slow));
+
+        // Every transaction of the device answers 400 ms after it is done.
+        const slowed = await switchTo(
+            Number(slow),
+            "words from elsewhere",
+            `
+            const transaction = IDBDatabase.prototype.transaction;
+
+            IDBDatabase.prototype.transaction = function (...args) {
+                const made = transaction.apply(this, args);
+                let then;
+
+                made.addEventListener("complete", () => setTimeout(() => then?.(), 400));
+                Object.defineProperty(made, "oncomplete", { set: (f) => { then = f; }, get: () => then });
+
+                return made;
+            };
+            `,
+            `IDBDatabase.prototype.transaction = transaction;`,
+            800,
+        );
+
+        assert.ok(slowed.waited < 400, `connected after ${slowed.waited} ms`);
+        assert.doesNotMatch(slowed.asked, /&have=/, "nothing named, as nothing was kept in time");
+        assert.equal(slowed.painted, false, "the device's late copy is not shown");
+        await shown("the slow one's own");
+        await settled();
+        await sameAsFresh(slow, "after a slow device");
+    },
+);
+
+test("a session the list does not have is not shown from the device", real, async () => {
+    const source = await newSession(app);
+    const unlisted = 99_999;
+
+    await say(app, source, "not for an unlisted session");
+    await page.navigate(`${base}/s/${source}`);
+    await shown("not for an unlisted session");
+    await settled();
+    await keptOnDevice(source);
+    await keptAs(source, unlisted);
+    assert.ok(
+        await inPage<boolean>(
+            `return JSON.stringify((await import("/store.js")).store.state.sessionsLoaded)`,
+        ),
+        "the list is in",
+    );
+
+    const went = await switchTo(unlisted, "not for an unlisted session", "", "", 300);
+
+    assert.doesNotMatch(went.asked, /&have=/, "nothing named");
+    assert.equal(went.painted, false, "the device's copy is not shown");
+    await goTo(null);
+});
+
+test(
+    "storage that is full: the older sessions kept go, and the save goes through",
+    real,
+    async () => {
+        const kept = await inPage<{ saved: boolean; ids: number[] }>(`
+        const disk = await import("/session-cache.js");
+        const ids = [90_001, 90_002, 90_003];
+        const info = { owner: "test", build: "test", size: 10 };
+
+        // Only these three kept, oldest first.
+        await disk.clear();
+
+        for (const id of ids) {
+            await disk.save(id, { view: id }, info, 1e9);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+
+        // The next put of a view finds the storage full, once.
+        const put = IDBObjectStore.prototype.put;
+        let full = true;
+
+        IDBObjectStore.prototype.put = function (...args) {
+            if (full && this.name === "views") {
+                full = false;
+
+                throw new DOMException("The storage is full", "QuotaExceededError");
+            }
+
+            return put.apply(this, args);
+        };
+
+        let saved = true;
+
+        try {
+            await disk.save(90_004, { view: 90_004 }, info, 1e9);
+        } catch {
+            saved = false;
+        } finally {
+            IDBObjectStore.prototype.put = put;
+        }
+
+        const left = (await disk.list()).map((each) => each.id).filter((id) => id >= 90_000);
+
+        await disk.drop((each) => each.id >= 90_000);
+
+        return JSON.stringify({ saved, ids: left.sort() });
+    `);
+
+        assert.ok(kept.saved, "the save went through");
+        assert.deepEqual(kept.ids, [90_003, 90_004], "the older half of the others went");
+    },
+);
+
+test(
+    "a device that never answers holds a switch back only a moment, and is not waited for again",
+    real,
+    async () => {
+        const [first, second, third] = [
+            await newSession(app),
+            await newSession(app),
+            await newSession(app),
+        ];
+
+        await say(app, first, "before it stops answering");
+        await page.navigate(`${base}/s/${first}`);
+        await shown("before it stops answering");
+        await settled();
+
+        // Dropping the database makes the page let go of its connection, so its next use opens it again: an open that
+        // never answers, as some browsers' do.
+        await inPage(`
+            await new Promise((resolve) => {
+                const request = indexedDB.deleteDatabase("pocket-sessions");
+
+                request.onsuccess = request.onerror = request.onblocked = resolve;
+            });
+
+            return "true";
+        `);
+        const hang = `
+            const open = IDBFactory.prototype.open;
+
+            window.opens ??= 0;
+            IDBFactory.prototype.open = function () {
+                window.opens++;
+
+                return {};
+            };
+        `;
+        const restore = `IDBFactory.prototype.open = open;`;
+
+        try {
+            const once = await switchTo(Number(second), "", hang, restore, 0);
+
+            assert.ok(once.waited < 400, `the first switch connected after ${once.waited} ms`);
+            // Past the open's own wait (a second): it has failed, for good.
+            await new Promise((resolve) => setTimeout(resolve, 1200));
+
+            const again = await switchTo(Number(third), "", hang, restore, 0);
+
+            assert.ok(again.waited < 100, `the next switch connected after ${again.waited} ms`);
+            assert.equal(
+                await inPage<number>(`return JSON.stringify(window.opens)`),
+                1,
+                "one open",
+            );
+        } finally {
+            // A fresh page, with the device as it was.
+            await page.navigate(`${base}/`);
+        }
+    },
+);
+
 test(
     "two tabs of a browser share what the device keeps; a sign-out in one stops the other's saves",
     real,
