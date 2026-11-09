@@ -8,7 +8,7 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -835,10 +835,14 @@ async function changeAccess(): Promise<void> {
             return;
         }
 
+        // prepareServe() saves the serve choice before it tries: a switch that fails puts back what was saved.
+        const saved = loadSettings().access;
+
         if (next === "tailscale-serve" && !prepareServe()) {
-            // prepareServe() saved the serve choice before it tried; the mode that still runs is the one to keep.
-            if (state.mode !== "custom") {
-                saveSettings(state.mode);
+            if (saved === undefined) {
+                rmSync(settingsFile, { force: true });
+            } else {
+                saveSettings(saved);
             }
 
             return;
