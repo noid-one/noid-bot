@@ -141,6 +141,23 @@ export async function discardDownload(
     await env.remove(path, { force: true }, context).catch(() => {});
 }
 
+/**
+ * A bot's download no call places: stopped while it goes, or deleted once finished (one stopped may have finished
+ * before the browser was told to stop it). A canceled one the browser deleted itself.
+ */
+async function drop(
+    page: BrowserPage,
+    download: PageDownload,
+    options: { env: ExecutionEnv; source: string },
+    context: Context = BACKGROUND_CONTEXT,
+): Promise<void> {
+    if (download.state === "inProgress") {
+        await page.cancelDownload(download.guid);
+    } else if (download.state === "completed") {
+        await discardDownload(options.env, sourceOf(download, options.source), context);
+    }
+}
+
 /** The owner's downloads being named, one after another. */
 let naming: Promise<void> = Promise.resolve();
 
@@ -243,28 +260,18 @@ export async function saveDownloads(
     const saved: SavedDownload[] = [];
     const later: { download: PageDownload; name: string }[] = [];
 
-    // Every download this call does not place or leave to `finishLater` is deleted from the shared folder: one stopped
-    // may have finished before the browser was told to stop it. A canceled one the browser deleted itself.
-    const drop = async (download: PageDownload) => {
-        if (download.state === "inProgress") {
-            await page.cancelDownload(download.guid);
-        } else if (download.state === "completed") {
-            await discardDownload(env, sourceOf(download, source), context);
-        }
-    };
-
+    // Every download this call does not place or leave to `finishLater` is dropped from the shared folder.
     for (const download of downloads.slice(0, MAX_DOWNLOADS)) {
         const name = downloadName(download.name);
+        const error = !ready
+            ? DOWNLOADS_UNUSABLE
+            : stopped.has(download.guid) || download.state === "canceled"
+              ? (stopped.get(download.guid) ?? DOWNLOAD_FAILED)
+              : undefined;
 
-        if (!ready) {
-            await drop(download);
-            saved.push({ name, error: DOWNLOADS_UNUSABLE });
-            continue;
-        }
-
-        if (stopped.has(download.guid) || download.state === "canceled") {
-            await drop(download);
-            saved.push({ name, error: stopped.get(download.guid) ?? DOWNLOAD_FAILED });
+        if (error !== undefined) {
+            await drop(page, download, options, context);
+            saved.push({ name, error });
             continue;
         }
 
@@ -299,13 +306,13 @@ export async function saveDownloads(
                 size: placed.size,
             });
         } catch {
-            await drop(download);
+            await drop(page, download, options, context);
             saved.push({ name, error: DOWNLOAD_FAILED });
         }
     }
 
     for (const download of downloads.slice(MAX_DOWNLOADS)) {
-        await drop(download);
+        await drop(page, download, options, context);
     }
 
     if (downloads.length > MAX_DOWNLOADS) {
@@ -341,46 +348,32 @@ async function finishLater(
 
         for (const item of [...left]) {
             const now = current(item);
+            const allowed = now !== undefined && overLimit(now, 0) === undefined;
 
-            if (now === undefined || now.state === "canceled") {
-                left.splice(left.indexOf(item), 1);
-            } else if (overLimit(now, 0) !== undefined) {
-                left.splice(left.indexOf(item), 1);
-                await page.cancelDownload(now.guid);
+            if (now?.state === "inProgress" && allowed) {
+                continue;
+            }
 
-                // Finished before it was stopped: the browser deletes only what is still downloading.
-                if (now.state === "completed") {
-                    await discardDownload(
-                        options.env,
-                        sourceOf(now, options.source),
-                        BACKGROUND_CONTEXT,
-                    );
-                }
-            } else if (now.state === "completed") {
-                left.splice(left.indexOf(item), 1);
-                const from = sourceOf(now, options.source);
+            left.splice(left.indexOf(item), 1);
 
+            if (now?.state === "completed" && allowed) {
                 await place(
                     options.env,
-                    from,
+                    sourceOf(now, options.source),
                     options.folder,
                     item.name,
                     new Set(),
                     BACKGROUND_CONTEXT,
-                ).catch(() => discardDownload(options.env, from, BACKGROUND_CONTEXT));
+                ).catch(() => drop(page, now, options));
+            } else if (now !== undefined) {
+                await drop(page, now, options);
             }
         }
     }
 
     // Given up on: out of time, or the page closed (the shared browser deletes one that finishes after that).
     for (const item of left) {
-        const now = current(item) ?? item.download;
-
-        if (now.state === "inProgress") {
-            await page.cancelDownload(now.guid);
-        } else if (now.state === "completed") {
-            await discardDownload(options.env, sourceOf(now, options.source), BACKGROUND_CONTEXT);
-        }
+        await drop(page, current(item) ?? item.download, options);
     }
 }
 
