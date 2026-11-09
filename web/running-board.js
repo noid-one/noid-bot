@@ -6,6 +6,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { folderColor } from "./avatar.js";
 import { useBack } from "./back.js";
+import { serverNow } from "./seen.js";
 import { api, attempt, canSteer, navigate, notify, store } from "./store.js";
 import { html, Icon, Spinner } from "./ui.js";
 
@@ -176,63 +177,15 @@ function useMatches(query) {
 }
 
 /**
- * The last board this page got, and one asked for ahead: the board shows the last one at once while it asks again,
- * and a press on its button asks before the click lands.
+ * The last board this page got: the board shows it at once while it asks again. Every ask is numbered, and `lastBoard`
+ * keeps the answer to the newest one: a late answer to an older one, from a board closed since, is dropped.
  */
 let lastBoard = null;
-let ahead = null;
-/**
- * Every ask for the board is numbered, and `lastBoard` keeps the answer to the newest one: a late answer to an older
- * one, from a board closed since or from the ask ahead, is dropped.
- */
 let asks = 0;
 let kept = 0;
 
-function keep(ask, data) {
-    if (ask > kept) {
-        kept = ask;
-        lastBoard = data;
-    }
-}
-
 /** The timeline's width when it last showed: 0 until it has been measured once. */
 let lastWidth = 0;
-
-/** Ask for the board now, ahead of opening it (a pointer down on its button); the board takes this answer. */
-export function prefetchRunning() {
-    if (ahead === null) {
-        const ask = ++asks;
-
-        ahead = api("running/board")
-            .then((data) => {
-                keep(ask, data);
-
-                return data;
-            })
-            .finally(() => setTimeout(() => (ahead = null), 1000));
-    }
-
-    return ahead;
-}
-
-// Asked once the page is idle after it loads and someone is signed in, so the first press shows a board at once, not
-// "Looking". Until then it waits, and tries again.
-const idle = globalThis.requestIdleCallback ?? ((run) => setTimeout(run, 1000));
-
-function warm(tries = 0) {
-    idle(
-        () => {
-            if (store.state.me) {
-                prefetchRunning().catch(() => undefined);
-            } else if (tries < 30) {
-                setTimeout(() => warm(tries + 1), 1000);
-            }
-        },
-        { timeout: 5000 },
-    );
-}
-
-warm();
 
 /** The board's data, asked for again every `EVERY_MS` while it shows; `reload` asks now, after an action. */
 function useBoard() {
@@ -243,21 +196,21 @@ function useBoard() {
     const busy = useRef(0);
     const waiting = () => Date.now() - busy.current < STALE_MS;
 
-    const load = (first = false) => {
+    const load = () => {
         const n = ++asked.current;
-        // The answer ahead keeps itself; an ask of its own is numbered here.
-        const ask = first && ahead !== null ? undefined : ++asks;
+        const ask = ++asks;
 
         busy.current = Date.now();
 
-        return (ask === undefined ? ahead : api("running/board"))
+        return api("running/board")
             .finally(() => {
                 busy.current = 0;
             })
             .then(
                 (data) => {
-                    if (ask !== undefined) {
-                        keep(ask, data);
+                    if (ask > kept) {
+                        kept = ask;
+                        lastBoard = data;
                     }
 
                     // A late answer to an ask that a newer one of this board passed is not shown.
@@ -271,7 +224,7 @@ function useBoard() {
     };
 
     useEffect(() => {
-        load(true);
+        load();
         // Not while the tab is hidden, and not over an answer still on its way.
         const timer = setInterval(() => {
             if (!document.hidden && !waiting()) {
@@ -345,16 +298,8 @@ export function RunningBoard() {
         return () => removeEventListener("keydown", keys);
     }, [selected]);
 
-    // The server's clock, moved on by how long ago it answered: what the timeline and countdowns count from.
-    const offset = useRef(0);
-    const measured = useRef(null);
-
-    if (board && measured.current !== board) {
-        measured.current = board;
-        offset.current = board.now - Date.now();
-    }
-
-    const now = Date.now() + offset.current;
+    // The server's clock: what the timeline and countdowns count from.
+    const now = serverNow();
     const cwds = useMemo(() => new Map(listed.map((each) => [each.id, each.cwd])), [listed]);
 
     const rows = useMemo(() => {
@@ -376,8 +321,11 @@ export function RunningBoard() {
         };
 
         for (const run of board.sessions) {
-            // A scheduled message's task only sleeps until its time: the Schedule column shows it.
-            const tasks = run.tasks.filter((task) => task.kind !== "pocket.schedule");
+            // A task asleep until its time is not at work: a scheduled message's shows in the Schedule column, and a
+            // watch's, which only waits for its next look, shows nowhere.
+            const tasks = run.tasks.filter(
+                (task) => task.kind !== "pocket.schedule" && task.status !== "sleeping",
+            );
 
             if (tasks.length > 0 || run.busy || run.approvals > 0) {
                 entry(run.id, run.title).run = { ...run, tasks };
@@ -755,12 +703,22 @@ function Timeline({
     }, [range, width > 0]);
 
     const ticks = [];
+    // Walked in this browser's own hours, from the midnight before the timeline starts: a day with a clock change has
+    // 23 or 25 hours, and each tick still lands on its hour.
+    const hours = r.step / HOUR;
+    const walk = new Date(t0);
 
-    for (let t = Math.ceil(t0 / r.step) * r.step; t < t1; t += r.step) {
+    walk.setHours(0, 0, 0, 0);
+
+    while (walk.getTime() < t1) {
+        const t = walk.getTime();
         const local = new Date(t);
         const midnight = local.getHours() === 0 && local.getMinutes() === 0;
 
-        if (!midnight && Math.abs(x(t) - x(now)) < 46) {
+        // On to the next step's hour, from one a clock change moved too (a skipped midnight is 01:00).
+        walk.setHours(Math.floor(walk.getHours() / hours) * hours + hours);
+
+        if (t < t0 || (!midnight && Math.abs(x(t) - x(now)) < 46)) {
             continue;
         }
 

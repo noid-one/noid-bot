@@ -26,6 +26,7 @@ import type { BrowserPage } from "../src/server/browser/page.ts";
 import { VIEWPORTS } from "../src/server/browser/viewport.ts";
 import { createHandler } from "../src/server/http.ts";
 import { SubagentsDoc } from "../src/server/docs.ts";
+import { runningNow } from "../src/server/running.ts";
 
 const chromium = findBrowser();
 const real = {
@@ -78,6 +79,9 @@ let server: Server;
 let browsers: Browsers;
 let page: BrowserPage;
 let base = "";
+
+/** The browser's time zone: one with a daylight saving change, that is not UTC. */
+const ZONE = "America/New_York";
 
 async function inPage<T>(script: string): Promise<T> {
     return JSON.parse(await page.evaluate(script)) as T;
@@ -136,7 +140,18 @@ before(async () => {
         load: async () => undefined,
         save: () => {},
     });
+    // The browser's clock is New York's, not this machine's (often UTC): the Running now board's ticks follow it.
+    const zone = process.env.TZ;
+
+    process.env.TZ = ZONE;
     page = await browsers.open(1);
+
+    if (zone === undefined) {
+        delete process.env.TZ;
+    } else {
+        process.env.TZ = zone;
+    }
+
     await page.navigate(`${base}/login?token=${encodeURIComponent(app.config.ownerToken)}`);
     await see(
         `return JSON.stringify((await import("/store.js")).store.state.me?.role === "owner")`,
@@ -393,5 +408,211 @@ test(
         await page.evaluate(
             `(await import("/store.js")).store.set({ board: false }); return "true"`,
         );
+    },
+);
+
+test(
+    "Running now: the timeline's ticks fall on the browser's own hours and midnights, across a clock change too",
+    real,
+    async () => {
+        const id = await newSession(app);
+
+        await page.setViewport(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${id}`);
+        await settled();
+        assert.equal(
+            await inPage<string>(
+                `return JSON.stringify(Intl.DateTimeFormat().resolvedOptions().timeZone)`,
+            ),
+            ZONE,
+        );
+
+        // An hour after New York's clocks went back, so the 24 hours before and after hold the change.
+        await page.evaluate(`
+            const real = Date.now.bind(Date);
+            const shift = Date.parse("2026-11-01T02:00:00-05:00") - real();
+
+            globalThis.realNow = real;
+            Date.now = () => real() + shift;
+            return "true"`);
+        await openRunningBoard();
+
+        const ticks = async (range: string) => {
+            await page.click({ selector: `.rb-range button:nth-child(${range})` });
+            await settled();
+
+            return inPage<{ label: string; day: boolean }[]>(
+                `return JSON.stringify([...document.querySelectorAll(".rb-tick")].map((tick) => ({ label: tick.textContent.trim(), day: tick.classList.contains("day") })))`,
+            );
+        };
+
+        await see(
+            `return JSON.stringify(document.querySelectorAll(".rb-tick").length > 0)`,
+            "the timeline's ticks",
+        );
+
+        try {
+            const day = await ticks("1");
+            const hours = day.filter((tick) => !tick.day).map((tick) => tick.label);
+
+            assert.ok(
+                hours.every((label) => /^(00|03|06|09|12|15|18|21):00$/.test(label)),
+                `every three hours, on the hour: ${hours.join(" ")}`,
+            );
+            assert.deepEqual(
+                day.filter((tick) => tick.day).map((tick) => tick.label),
+                ["Sun"],
+                "midnight, as its day",
+            );
+
+            const three = (await ticks("2")).filter((tick) => !tick.day).map((tick) => tick.label);
+
+            assert.ok(
+                three.every((label) => /^(06|12|18):00$/.test(label)),
+                `every six hours: ${three.join(" ")}`,
+            );
+
+            const week = await ticks("3");
+
+            assert.equal(week.length, 7, "a tick a day");
+            assert.ok(
+                week.every((tick) => tick.day),
+                `each at midnight: ${week.map((tick) => tick.label).join(" ")}`,
+            );
+        } finally {
+            await page.evaluate(
+                `Date.now = globalThis.realNow; (await import("/store.js")).store.set({ board: false }); return "true"`,
+            );
+        }
+    },
+);
+
+test(
+    "Running now: a board opened again counts from now, not from when its last answer came",
+    real,
+    async () => {
+        const id = await newSession(app);
+
+        await page.setViewport(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${id}`);
+        await settled();
+        await openRunningBoard();
+        await see(
+            `return JSON.stringify(document.querySelector(".rb-now span") !== null)`,
+            "the board",
+        );
+        await page.evaluate(
+            `(await import("/store.js")).store.set({ board: false }); return "true"`,
+        );
+        // Three hours pass, and the next answer is slow to come: the board shows the last one meanwhile.
+        await page.evaluate(`
+            const real = Date.now.bind(Date);
+
+            globalThis.realNow = real;
+            globalThis.realFetch = window.fetch;
+            Date.now = () => real() + 3 * 3600e3;
+            window.fetch = (url, init) =>
+                String(url).includes("running/board") ? new Promise(() => {}) : globalThis.realFetch(url, init);
+            return "true"`);
+
+        try {
+            await openRunningBoard();
+            await see(
+                `return JSON.stringify(document.querySelector(".rb-now span") !== null)`,
+                "the board again",
+            );
+            await settled();
+            assert.equal(
+                await textOf(".rb-now span"),
+                await inPage<string>(
+                    `return JSON.stringify(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(Date.now()))`,
+                ),
+            );
+        } finally {
+            await page.evaluate(
+                `Date.now = globalThis.realNow; window.fetch = globalThis.realFetch; (await import("/store.js")).store.set({ board: false }); return "true"`,
+            );
+        }
+    },
+);
+
+test("Running now asks the server nothing until it is opened", real, async () => {
+    const id = await newSession(app);
+
+    await page.setViewport(VIEWPORTS.desktop);
+    await page.navigate(`${base}/s/${id}`);
+    await see(
+        `return JSON.stringify(document.querySelector(".composer textarea") !== null)`,
+        "the session",
+    );
+    // Past the page's idle time, when the board used to be asked for ahead.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    assert.deepEqual(
+        await inPage<string[]>(
+            `return JSON.stringify(performance.getEntriesByType("resource").map((each) => each.name).filter((name) => name.includes("running/board")))`,
+        ),
+        [],
+    );
+});
+
+/** GitHub as a fake gh tells it: acme/api, which it can push to, where nothing has happened yet. */
+async function github(args: string[]): Promise<string> {
+    const path = args.filter((arg) => !arg.startsWith("-") && arg !== "api").at(-1) ?? "";
+
+    if (path === "repos/acme/api") {
+        return JSON.stringify({
+            full_name: "acme/api",
+            default_branch: "main",
+            private: true,
+            permissions: { push: true, admin: false },
+        });
+    }
+
+    return path.includes("/actions/runs") ? JSON.stringify({ workflow_runs: [] }) : "[]";
+}
+
+test(
+    "Running now: a session whose watch only sleeps until its next look is not at work",
+    real,
+    async () => {
+        const id = await newSession(app);
+
+        app.watches.gh = github;
+        const watch = await app.repoWatches.add(owner(app), {
+            repo: "acme/api",
+            events: ["ci"],
+            target: id,
+            byPi: false,
+        });
+
+        try {
+            await until(
+                async () =>
+                    (await runningNow(app, owner(app))).some((each) =>
+                        each.tasks.some(
+                            (task) =>
+                                task.kind === "pocket.repo-watch" && task.status === "sleeping",
+                        ),
+                    ),
+                "the watch asleep until its next look",
+            );
+            await page.setViewport(VIEWPORTS.desktop);
+            await page.navigate(`${base}/s/${id}`);
+            await settled();
+            await openRunningBoard();
+            await says(".board-sub", /at work/);
+            assert.equal(
+                await inPage<boolean>(
+                    `return JSON.stringify(document.querySelector('.rb-row[data-row="${id}"]') !== null)`,
+                ),
+                false,
+                "nothing runs there, and nothing is scheduled",
+            );
+        } finally {
+            await app.repoWatches.remove(owner(app), watch.id);
+            await page.evaluate(
+                `(await import("/store.js")).store.set({ board: false }); return "true"`,
+            );
+        }
     },
 );
