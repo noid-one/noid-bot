@@ -269,6 +269,45 @@ test("name and model change only in the owner's own words: mail cannot change th
     assert.equal(app.approvals.forConversation(target).length, 0, "refused, not asked");
 });
 
+test("values a bot already has are no change: padded calls neither ask nor get refused for them", async () => {
+    const target = await bot("Padded");
+    const sender = await bot("Filler");
+
+    // Mail that repeats the current name and thinking: only the instructions ask, and once allowed they apply.
+    const question = until(() => app.approvals.forConversation(target).length > 0, "the question");
+
+    await app.botMail.send(
+        sender,
+        "Padded",
+        call({ name: "Padded", thinkingLevel: "off", instructions: "Be kind." }),
+        "mail-padded",
+    );
+    await question;
+    const [asked] = app.approvals.forConversation(target);
+
+    assert.ok(await app.answerApproval(asked!.id, true, owner(app)));
+    await app.harness.waitForIdle(context);
+    assert.equal(await instructionsOf(target), "Be kind.");
+    assert.doesNotMatch((await lastResult(target)).text, /change only when the owner asks/);
+
+    // A read padded with every current value asks nothing and changes nothing.
+    await app.botMail.send(
+        sender,
+        "Padded",
+        call({ name: "Padded", thinkingLevel: "off", instructions: "Be kind." }),
+        "mail-read",
+    );
+    await until(
+        async () => /Nothing changed/.test((await lastResult(target)).text),
+        "the no-change reply",
+    );
+    assert.equal(app.approvals.forConversation(target).length, 0, "nothing asked");
+
+    // Blank instructions are not asked for: they never wipe the bot's.
+    await send(target, call({ instructions: " " }));
+    assert.equal(await instructionsOf(target), "Be kind.");
+});
+
 test("the rules: only a tainted instruction change asks, wherever the bot runs, and no rule answers it", () => {
     const helper: BotProfile = {
         id: "h",

@@ -119,6 +119,22 @@ function modelFor(app: PocketApp, spec: string): Model<Api> {
     );
 }
 
+type SettingsArgs = {
+    name?: string;
+    instructions?: string;
+    model?: string;
+    thinkingLevel?: string;
+};
+
+/** What a `bot_settings` call asks for: a field left blank is not asked for (it never wipes a setting). */
+export function settingsAsked(args: SettingsArgs): SettingsArgs {
+    return Object.fromEntries(
+        Object.entries(args).filter(
+            ([, value]) => typeof value === "string" && value.trim() !== "",
+        ),
+    );
+}
+
 /** The `bot_settings` tool, its changes, and their Undo. */
 export class BotSettings {
     readonly #app: PocketApp;
@@ -296,7 +312,8 @@ export class BotSettings {
                 ),
             }),
             replay: "safe",
-            execute: async (args, api) => {
+            execute: async (given, api) => {
+                const args = settingsAsked(given);
                 const app = this.#app;
                 const id = api.conversationId;
                 const bot = app.bots.of(id);
@@ -381,29 +398,13 @@ export class BotSettings {
     async #change(
         id: ConversationId,
         callId: string,
-        args: { name?: string; instructions?: string; model?: string; thinkingLevel?: string },
+        args: SettingsArgs,
     ): Promise<BotChange | undefined> {
         const app = this.#app;
         const bot = app.sessionMeta(id)!.bot!;
         const agent = await app.agentState(id);
         const before: BotSettingsValues = {};
         const after: BotSettingsValues = {};
-
-        // Name, model, and thinking: only where the owner asked, and nothing else spoke since. Instructions are guarded
-        // by the approval card instead (approvals.ts), which this run already passed.
-        if (
-            args.name !== undefined ||
-            args.model !== undefined ||
-            args.thinkingLevel !== undefined
-        ) {
-            const run = await runSoFar(app, id, callId);
-
-            if (!run.byOwner || run.outside || callId.includes("/")) {
-                throw new Error(
-                    "Your name, model, and thinking change only when the owner asks you in their own message, before you read anything else. Tell them what you would change.",
-                );
-            }
-        }
 
         if (args.instructions !== undefined) {
             const text = args.instructions.trim();
@@ -465,6 +466,23 @@ export class BotSettings {
 
         if (Object.keys(after).length === 0) {
             return undefined;
+        }
+
+        // Name, model, and thinking: only where the owner asked, and nothing else spoke since. Instructions are guarded
+        // by the approval card instead (approvals.ts), which this run already passed. Checked on what would change, so
+        // a call that repeats the current values (models often fill every field) is not refused for them.
+        if (
+            after.name !== undefined ||
+            after.model !== undefined ||
+            after.thinkingLevel !== undefined
+        ) {
+            const run = await runSoFar(app, id, callId);
+
+            if (!run.byOwner || run.outside || callId.includes("/")) {
+                throw new Error(
+                    "Your name, model, and thinking change only when the owner asks you in their own message, before you read anything else. Tell them what you would change.",
+                );
+            }
         }
 
         return { id: "", at: Date.now(), before, after };

@@ -69,6 +69,33 @@ const changesOwnInstructions = (tool: string, args: Record<string, unknown>) =>
     tool === "bot_settings" && args.instructions !== undefined;
 
 /**
+ * A call's arguments as they would act: a `bot_settings` call's instructions, when blank or what the bot already has,
+ * change nothing, so they ask nothing (models often fill every field with the current values).
+ */
+async function asked(
+    app: PocketApp,
+    id: ConversationId,
+    tool: string,
+    given: unknown,
+): Promise<Record<string, unknown>> {
+    const args = given as Record<string, unknown>;
+
+    if (tool !== "bot_settings" || typeof args.instructions !== "string") {
+        return args;
+    }
+
+    const text = args.instructions.trim();
+
+    if (text !== "" && text !== ((await app.agentState(id))?.instructions ?? "")) {
+        return args;
+    }
+
+    const { instructions: _same, ...rest } = args;
+
+    return rest;
+}
+
+/**
  * Calls asked about every time: forgetting a memory, archiving a bot, changing another bot, making a bot on this
  * machine. "Always allow" never answers them for good (rakazo asks for these whatever the rules say).
  */
@@ -451,7 +478,7 @@ export function createApprovals(app: PocketApp) {
                     const declared = (await runtime.agent?.(context))?.tools.find(
                         (tool) => tool.name === call.name,
                     ) as { annotations?: ToolAnnotations } | undefined;
-                    const args = call.arguments as Record<string, unknown>;
+                    const args = await asked(app, api.conversationId, call.name, call.arguments);
                     const readOnly = BUILT_IN_TOOLS.has(call.name)
                         ? app.readOnlyTools().has(call.name)
                         : declared?.annotations?.readOnlyHint === true;
