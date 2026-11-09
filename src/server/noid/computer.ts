@@ -83,13 +83,18 @@ const WORKING_TICKS = 100;
 /** Runs a docker command, resolving with its output; a failure rejects with what docker said. */
 export type Docker = (args: readonly string[], input?: NodeJS.ReadableStream) => Promise<string>;
 
+/** The docker command `args` run, past a leading `-H <host>` (`NOID_DOCKER_HOST`). */
+export function dockerVerb(args: readonly string[]): string | undefined {
+    return args[0] === "-H" || args[0] === "--host" ? args[2] : args[0];
+}
+
 /**
  * How long a docker command may take before it counts as hung, in ms: a stuck Docker Desktop or an `ssh://` host that
  * does not answer would otherwise hold the computer's one start, and every tool call behind it (rakazo 88737d37e).
  * Starting and stopping get longer; a build, none.
  */
 export function dockerLimit(args: readonly string[]): number | undefined {
-    const [verb] = args;
+    const verb = dockerVerb(args);
 
     if (verb === "build") {
         return undefined;
@@ -114,7 +119,7 @@ export function dockerCommand(binary: string, limitOf = dockerLimit): Docker {
                           child.kill("SIGKILL");
                           reject(
                               new Error(
-                                  `${binary} ${args[0]} did not answer in ${Math.round(limit / 1000)} s: is Docker running?`,
+                                  `${binary} ${dockerVerb(args)} did not answer in ${Math.round(limit / 1000)} s: is Docker running?`,
                               ),
                           );
                       }, limit);
