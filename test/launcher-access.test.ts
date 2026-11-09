@@ -15,6 +15,7 @@ import {
     listenHost,
     serveBailOut,
     serveWithoutTailscale,
+    staleServePorts,
 } from "../src/launcher/access.ts";
 
 /** A launch where only `ready` modes can be used. */
@@ -173,9 +174,25 @@ test("the serve mode is spelled the way systemd's unit and its guide spell it", 
     ]);
 });
 
-test("--host is where the server listens, whatever the access mode", () => {
+test("--host is where the server listens, whatever the access mode but one", () => {
     assert.equal(listenHost("lan", "127.0.0.2"), "127.0.0.2");
     assert.equal(listenHost("local", "::1"), "::1");
     assert.equal(listenHost("lan", undefined), "0.0.0.0");
     assert.equal(listenHost("custom", undefined), "127.0.0.1");
+
+    // Serve is the exception `--help` documents: tailscaled reaches the server on loopback, so a bind address of its own
+    // would leave the mount pointing at nothing (or at the LAN, which the panel calls the tailnet).
+    assert.equal(listenHost("tailscale-serve", "192.168.1.5"), "127.0.0.1");
+    assert.equal(listenHost("tailscale-serve", undefined), "127.0.0.1");
+});
+
+test("stale cleanup covers only a mount this launcher made, whatever port this run uses", () => {
+    // A killed run on --port 9000 left its mount, and its receipt, pointing at 9000.
+    assert.deepEqual(staleServePorts("local", 9000), [9000]);
+    assert.deepEqual(staleServePorts("lan", 8787), [8787]);
+    assert.deepEqual(staleServePorts("custom", 8787), [8787]);
+    // No receipt: a mount at this run's port is the owner's own `tailscale serve`, as 0.27's docs suggested.
+    assert.deepEqual(staleServePorts("local", undefined), []);
+    // In serve mode, prepareServe() made or adopted the mount for this run's port: nothing is stale.
+    assert.deepEqual(staleServePorts("tailscale-serve", 9000), []);
 });

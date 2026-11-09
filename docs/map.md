@@ -4,12 +4,14 @@ Where things are in Pi Pocket, for agents working on it. [index.md](index.md) li
 
 ## Processes
 
-`bin/pi-pocket.js` checks Node, then runs `src/launcher/main.ts`. The launcher reads its options (`options.ts`), asks how devices connect (`access.ts`: this device, LAN, Cloudflare quick tunnel, Tailscale, Tailscale Serve through `serve.ts`), runs the server (`src/server/main.ts`) as a child, restarts it on exit code 75 or a crash, and keeps the tunnel up. `term.ts` draws its menu, panel, and QR code in the terminal. The server takes the data folder's lock, opens one `PocketApp`, and serves it with `http.ts`.
+`bin/pi-pocket.js` checks Node, then runs `src/launcher/main.ts`. The launcher reads its options (`options.ts`), asks how devices connect (`access.ts`: this device, LAN, Cloudflare quick tunnel, Tailscale, Tailscale Serve), runs the server (`src/server/main.ts`) as a child, restarts it on exit code 75 or a crash, and keeps the tunnel up. `term.ts` draws its menu, panel, and QR code in the terminal. `serve.ts` drives the Tailscale CLI for Serve mode: every call has a timeout, the mount is checked before it is made, and it is taken down when the launcher quits unless it found the mount already in place (an adopted mount may be the owner's own `tailscale serve`). A receipt in the data folder (`serve-mount.json`) names a mount the launcher made, so the next start clears one a killed run left behind; a start in another mode on that port stops when it cannot, and leaving the mode from the menu keeps the mode when the mount stays. The launcher takes `launcher.lock` for its whole life (`src/server/lock.ts`, the one server module it imports) and the server takes `harness.lock`. The server then opens one `PocketApp` and serves it with `http.ts`.
 
 ## Data (`~/.noid/`, or `NOID_DIR`)
 
 - `pocket.sqlite`: Pi Durable's storage: conversations, entries, tasks, and Pi Pocket's documents.
 - `config.json`: people, roles, hashed tokens, settings. `push.json`: VAPID keys and push subscriptions.
+- `launcher.json`: the launcher's access choice and the port it listened on. `serve-mount.json`: the Tailscale Serve mount the launcher made, named by port, so a later start can clear it.
+- `launcher.lock` and `harness.lock` (each with a `.identity` file): one launcher per data folder, and one server per data folder.
 - `uploads/<conversation>/`, `worktrees/` (sessions' git worktrees), `extensions/` (the owner's drop-ins), `themes/` (the owner's theme folders, and `.removed/` for removed ones), `browser/profile/` (the built-in browser's profile; each session's cookies live in memory only).
 
 ## Server: `src/server/`

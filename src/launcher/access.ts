@@ -84,8 +84,15 @@ export function bindHost(mode: AccessMode): string {
     return "127.0.0.1";
 }
 
-/** Where the server listens: `--host` when it is given, with any mode, as in 0.27; else the mode's own address. */
+/**
+ * Where the server listens: `--host` when it is given, with any mode, as in 0.27; else the mode's own address. The one
+ * exception is `tailscale-serve`, which `--help` says always listens on loopback because tailscaled reaches it there.
+ */
 export function listenHost(mode: AccessMode | "custom", host: string | undefined): string {
+    if (mode === "tailscale-serve") {
+        return "127.0.0.1";
+    }
+
     return host ?? (mode === "custom" ? "127.0.0.1" : bindHost(mode));
 }
 
@@ -216,6 +223,15 @@ export function serveBailOut(request: {
         request.host === undefined &&
         serveWithoutTailscale({ given: request.access, saved: request.saved, ask: request.ask })
     );
+}
+
+/**
+ * The loopback ports that a mount left by an earlier run of this launcher could point at: the port its receipt names.
+ * None without a receipt, and none for `tailscale-serve` itself, whose mount prepareServe() mounted or adopted for this
+ * run's port.
+ */
+export function staleServePorts(mode: AccessMode | "custom", owned: number | undefined): number[] {
+    return mode === "tailscale-serve" || owned === undefined ? [] : [owned];
 }
 
 /** Where to get cloudflared on this platform: a release binary the launcher can download, or how to install it. */

@@ -8,7 +8,7 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 import {
     ACCESS_LABELS,
     type AccessMode,
-    bindHost,
     listenHost,
     chooseAccess,
     CloudflareTunnel,
@@ -27,11 +26,14 @@ import {
     isAccessMode,
     lanAddresses,
     serveBailOut,
+    staleServePorts,
     TAILSCALE_MISSING_MESSAGE,
     tailscaleAddress,
 } from "./access.ts";
 import { fail, parseArgs } from "./options.ts";
 import { removeStaleServe, TailscaleServe } from "./serve.ts";
+// The one server module the launcher runs itself: it imports only Node's own, so an update cannot break the launcher.
+import { takeLock } from "../server/lock.ts";
 import {
     besideLogo,
     bold,
@@ -60,11 +62,50 @@ const options = parseArgs(process.argv.slice(2));
 
 mkdirSync(options.data, { recursive: true, mode: 0o700 });
 const settingsFile = join(options.data, "launcher.json");
+/**
+ * The receipt for a Tailscale Serve mount this launcher made: the port it points at. It is written before the mount
+ * command runs and kept until the mount is gone, so a run killed outright leaves the next start what to take down. A
+ * mount the launcher found and adopted gets none, and neither does the owner's own `tailscale serve` at this port.
+ */
+const serveMountFile = join(options.data, "serve-mount.json");
+
+/** The port of the mount that the receipt names, if there is one. */
+function savedServeMountPort(): number | undefined {
+    try {
+        const { port } = JSON.parse(readFileSync(serveMountFile, "utf8")) as { port?: number };
+
+        return Number.isSafeInteger(port) && port! > 0 && port! < 65_536 ? port : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Write the receipt, all at once, for a mount this run is about to make. A data folder that cannot be written to is
+ * not worth failing the start over: the mount still works for this run, and the next start finds it as an adopted one. */
+function recordServeMount(): void {
+    const temp = `${serveMountFile}.tmp`;
+
+    try {
+        writeFileSync(temp, `${JSON.stringify({ port: options.port })}\n`, { mode: 0o600 });
+        renameSync(temp, serveMountFile);
+    } catch (error) {
+        log(yellow(`  Could not write ${tilde(serveMountFile)}: ${(error as Error).message}`));
+    }
+}
+
+/** Drop the receipt: its mount is gone, or no longer points here. */
+function forgetServeMount(): void {
+    try {
+        rmSync(serveMountFile, { force: true });
+    } catch (error) {
+        log(yellow(`  Could not remove ${tilde(serveMountFile)}: ${(error as Error).message}`));
+    }
+}
 
 function loadSettings(): { access?: AccessMode } {
     try {
         const parsed = JSON.parse(readFileSync(settingsFile, "utf8")) as { access?: string };
-        // What the mode was called while the branch was young: read it, so an early copy keeps its choice.
+        // `serve` is what the mode was called before it took systemd's own name for it, in builds of this branch.
         const saved = parsed.access === "serve" ? "tailscale-serve" : parsed.access;
 
         return isAccessMode(saved) ? { access: saved } : {};
@@ -74,12 +115,32 @@ function loadSettings(): { access?: AccessMode } {
 }
 
 function saveSettings(access: AccessMode): void {
-    writeFileSync(settingsFile, `${JSON.stringify({ access }, null, "\t")}\n`, { mode: 0o600 });
+    try {
+        writeFileSync(settingsFile, `${JSON.stringify({ access }, null, "\t")}\n`, { mode: 0o600 });
+    } catch (error) {
+        // A full disk or a data folder that went read-only must not decide how this run behaves: it works, and the next
+        // start simply asks again.
+        log(yellow(`  Could not save the access choice: ${(error as Error).message}`));
+    }
 }
 
 const home = homedir();
 const tilde = (path: string) =>
     path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+
+/**
+ * One launcher per data folder, because two would share tailscaled's mount for `/`: the second adopts the first's
+ * mount, and its quit takes that mount down, leaving the running launcher's tailnet address pointing at nothing.
+ */
+let releaseLauncherLock: () => void;
+
+try {
+    releaseLauncherLock = takeLock(join(options.data, "launcher.lock"));
+} catch (error) {
+    fail(
+        `Another Pi Pocket launcher is using ${tilde(options.data)}. ${error instanceof Error ? error.message : String(error)}`,
+    );
+}
 
 // ─── Output ─────────────────────────────────────────────────────────────
 
@@ -171,19 +232,25 @@ function accessChoices(): { mode: AccessMode; choice: Choice }[] {
         {
             mode: "tailscale-serve",
             choice:
-                findTailscale() === undefined
+                options.host !== undefined
                     ? {
                           label: ACCESS_LABELS["tailscale-serve"],
-                          detail: "needs tailscale on PATH",
+                          detail: "not with --host: serve listens on 127.0.0.1",
                           disabled: true,
                       }
-                    : {
-                          label: ACCESS_LABELS["tailscale-serve"],
-                          detail:
-                              state.mode === "tailscale-serve" && state.accessUrl !== undefined
-                                  ? `${state.accessUrl} · your tailnet, encrypted`
-                                  : "https on your tailnet · tailscale serve",
-                      },
+                    : findTailscale() === undefined
+                      ? {
+                            label: ACCESS_LABELS["tailscale-serve"],
+                            detail: "needs tailscale on PATH",
+                            disabled: true,
+                        }
+                      : {
+                            label: ACCESS_LABELS["tailscale-serve"],
+                            detail:
+                                state.mode === "tailscale-serve" && state.accessUrl !== undefined
+                                    ? `${state.accessUrl} · your tailnet, encrypted`
+                                    : "https on your tailnet · tailscale serve",
+                        },
         },
     ];
 }
@@ -381,6 +448,12 @@ function modeNote(): string {
 function reachable(): boolean {
     if (served()) {
         return state.accessUrl !== undefined;
+    }
+
+    // A wildcard bind on a machine with no other address has nothing to hand out: 127.0.0.1 is this machine's own, and a
+    // QR code made from it opens the phone's loopback.
+    if (wildcard(state.host)) {
+        return lanAddresses().length > 0;
     }
 
     return !loopback(state.host);
@@ -719,31 +792,63 @@ function prepareServe(): boolean {
         return false;
     }
 
-    const current = new TailscaleServe(binary, options.port, {
-        problem(line) {
-            log(yellow(`  tailscale: ${line}`));
-        },
-    });
+    // A run that was killed leaves its mount on the port it listened on, which `start()` would read as someone else's at
+    // `/`. The receipt names it, so clear that one before mounting for this port: an adoption only counts for our own
+    // port, where the mount still points at this server.
+    const receipted = savedServeMountPort();
 
-    // Recorded before it is up, so a quit during the CLI round-trips below still takes down a mount those made.
+    if (receipted !== undefined && receipted !== options.port) {
+        const events = {
+            problem(line: string) {
+                log(yellow(`  tailscale: ${line}`));
+            },
+        };
+
+        if (removeStaleServe(binary, [receipted], events)) {
+            log(dim("  Removed the Tailscale Serve mount an earlier run left behind."));
+        }
+    }
+
+    const current = new TailscaleServe(
+        binary,
+        options.port,
+        {
+            problem(line) {
+                log(yellow(`  tailscale: ${line}`));
+            },
+            mountAttempt: recordServeMount,
+            mountRemoved: forgetServeMount,
+        },
+        receipted === options.port,
+    );
+
+    // Recorded before it is up, so a quit during the CLI round-trips below still takes down a mount those made. The
+    // receipt (written just before the mount command) is what makes a killed run recoverable, so the saved choice can
+    // wait until the mode actually runs.
     serve = current;
-    // Saved for the same reason from the other side: a launcher killed now leaves a mount tailscaled keeps, and only a
-    // saved serve choice makes the next start clear it instead of publishing the port this run listens on.
-    saveSettings("tailscale-serve");
 
     const result = current.start();
 
     if (!result.ok) {
         log(yellow(`  ${result.message}`));
-        stopServe();
+        // A failed switch must not cost the live tunnel its address: `stopServe()` would forget `state.accessUrl`, which
+        // here still belongs to the Cloudflare tunnel this switch was about to leave.
+        serve = undefined;
+        current.stop();
 
         return false;
     }
 
-    // An existing mount of ours is adopted rather than mounted again, so say it, or the owner wonders why no new mount
-    // appeared.
+    // An existing mount of ours is adopted rather than mounted again. Only a mount this launcher left behind is this
+    // run's to take down; one the owner made stays when this launcher quits, which is what the line says.
     if (result.adopted) {
-        log(dim("  Using the Tailscale Serve mount already in place."));
+        log(
+            dim(
+                savedServeMountPort() === options.port
+                    ? "  Using the Tailscale Serve mount an earlier run left behind."
+                    : "  Using the Tailscale Serve mount already in place; it stays when this launcher quits.",
+            ),
+        );
     }
 
     state.accessUrl = result.url;
@@ -751,12 +856,19 @@ function prepareServe(): boolean {
     return true;
 }
 
-function stopServe(): void {
-    const current = serve;
+/**
+ * Stop the Serve mount. `always` takes down an adopted one too: leaving the mode must stop publishing this server. The
+ * answer: whether the mount is gone; when it is not, the mode keeps it.
+ */
+function stopServe(always = false): boolean {
+    if (serve?.stop(always) === false) {
+        return false;
+    }
 
     serve = undefined;
     state.accessUrl = undefined;
-    current?.stop();
+
+    return true;
 }
 
 /** Switch to `mode`: start or stop the tunnel, and restart the server when it has to listen somewhere else. */
@@ -766,16 +878,22 @@ async function applyAccess(mode: AccessMode, binary: string | undefined): Promis
     // back after.
     const mounted = mode === "tailscale-serve" && serve !== undefined ? state.accessUrl : undefined;
 
-    await stopTunnel();
+    // Leaving the mode must stop publishing this server: an adopted mount still points at this port, and leaving it
+    // would serve the app to the audience the panel no longer promises. A mount that stays keeps the mode.
+    if (mode !== "tailscale-serve" && !stopServe(true)) {
+        log(yellow("  The Tailscale Serve mount is still up, so access stays on Tailscale Serve."));
 
-    if (mode !== "tailscale-serve") {
-        stopServe();
+        return;
     }
+
+    await stopTunnel();
 
     state.mode = mode;
     saveSettings(mode);
     state.accessUrl = mounted;
-    const host = bindHost(mode);
+    // `--host` overrides a mode's own address here too: switching modes in the menu must keep listening where it was
+    // told, except that serve always wants loopback.
+    const host = listenHost(mode, options.host);
 
     state.panelPending = true;
 
@@ -835,11 +953,28 @@ async function changeAccess(): Promise<void> {
             return;
         }
 
+        // `main()` refuses `--access tailscale-serve --host` outright, and the same pair is just as wrong when it comes
+        // from the menu: the mount proxies to 127.0.0.1, so a bind address of its own leaves it pointing at nothing (or
+        // at the LAN, which the panel calls the tailnet).
+        if (next === "tailscale-serve" && options.host !== undefined) {
+            log(
+                yellow(
+                    "  --access tailscale-serve keeps the server on 127.0.0.1 and lets Tailscale reach it; --host cannot be combined with it.",
+                ),
+            );
+
+            return;
+        }
+
         if (next === "tailscale-serve" && !prepareServe()) {
+            // Nothing was saved: a mode that never ran is not the last choice.
             return;
         }
 
         await applyAccess(next, binary);
+    } catch (error) {
+        // Nothing a menu does is worth taking the launcher down with: the server and the tunnel keep running.
+        log(red(`  Could not change access: ${(error as Error).message}`));
     } finally {
         release();
     }
@@ -903,7 +1038,10 @@ if (process.platform !== "win32") {
     process.on("SIGUSR2", () => restartServer());
 }
 
-process.on("exit", () => restoreTerminal());
+process.on("exit", () => {
+    restoreTerminal();
+    releaseLauncherLock();
+});
 
 // ─── Start ──────────────────────────────────────────────────────────────
 
@@ -935,6 +1073,11 @@ async function main(): Promise<void> {
         findTailscale() === undefined
     ) {
         fail(TAILSCALE_MISSING_MESSAGE);
+    }
+
+    // Before any access is set up: fail() exits at once, which would leave a Serve mount (or a tunnel) behind.
+    if (!existsSync(SERVER)) {
+        fail(`Missing ${SERVER}`);
     }
 
     let mode: Mode | undefined = options.access;
@@ -987,28 +1130,38 @@ async function main(): Promise<void> {
             saveSettings(mode);
         }
 
-        // A run that was on `tailscale-serve` and died can leave its mount behind, and tailscaled keeps it: clear it
-        // before this run needs the port. Never for the serve mode itself (prepareServe() mounted or adopted it, and
-        // saved the choice first) and never in the way of the start: removeStaleServe() says a problem through the
-        // events and removes nothing rather than throwing.
-        if (mode !== "tailscale-serve" && settings.access === "tailscale-serve") {
+        // A mount tailscaled makes outlives the launcher that made it, and a run killed outright leaves one behind
+        // answering 502. Clear it before this run needs the port, whichever mode it starts in. Only a mount with a
+        // receipt is ours: a port alone proves nothing, since 0.27's docs had owners point `tailscale serve` at
+        // `--access local` themselves. Never for `tailscale-serve` itself, whose mount prepareServe() made or adopted.
+        const stalePorts = staleServePorts(mode, savedServeMountPort());
+
+        if (stalePorts.length > 0) {
             const tailscale = findTailscale();
 
             if (tailscale !== undefined) {
-                const removed = removeStaleServe(tailscale, options.port, {
+                // Tailscale installed but never used is ordinary, so a failing probe is worth saying only when the last
+                // run was the serve mode. A failure keeps the receipt, so the next start tries again.
+                // The receipt means the mount is ours, so a failure to remove it is always worth saying.
+                const removed = removeStaleServe(tailscale, stalePorts, {
                     problem(line) {
                         log(yellow(`  tailscale: ${line}`));
                     },
+                    mountRemoved: forgetServeMount,
                 });
 
                 if (removed) {
                     log(dim("  Removed the Tailscale Serve mount an earlier run left behind."));
                 }
             }
-        }
 
-        if (!existsSync(SERVER)) {
-            fail(`Missing ${SERVER}`);
+            // The receipt stays until the mount is gone. One for this port would publish this mode's server on the
+            // tailnet, which the mode does not promise.
+            if (savedServeMountPort() === options.port) {
+                fail(
+                    `A Tailscale Serve mount from an earlier run may still publish port ${options.port}. Remove it with "tailscale serve --https=443 --set-path=/ off", start on another --port, or start with --access tailscale-serve. When it is gone already, delete ${serveMountFile}.`,
+                );
+            }
         }
 
         log(dim(`  Starting Pi Pocket (${modeLabel()})…`));
