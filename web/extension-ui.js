@@ -15,6 +15,7 @@ import {
 } from "preact/hooks";
 import { useBack } from "./back.js";
 import { describersChanged, setCallDescriber } from "./calls.js";
+import { markdownChanged, setFences, setMath } from "./markdown-ext.js";
 import { leaveSafeMode, onSafeModeEnd, safeMode } from "./safe-mode.js";
 import { api, closeSheet, navigate, notify, onExtensionEvent, openSheet, store } from "./store.js";
 import { setCallSummary } from "./turns.js";
@@ -28,7 +29,9 @@ import { cutWhole } from "./cut.js";
 export const POCKET_API = 1;
 
 /** What a browser module can add, each kept by its id. */
-const KINDS = ["rail", "menu", "launcher", "page", "sheet"];
+const KINDS = ["rail", "menu", "launcher", "page", "sheet", "fence", "mathInline"];
+const MARKDOWN_KINDS = new Set(["fence", "mathInline"]);
+const FENCE_LANG = /^[\w+#.-]{1,24}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
 const isId = (value) => typeof value === "string" && ID.test(value);
 const LEVELS = new Set(["info", "warning", "error"]);
@@ -45,6 +48,33 @@ let order = [];
 
 const liveRecord = (record) =>
     record !== undefined && !record.gone && !record.dead && modules.get(record.module) === record;
+
+function markdownSpecOf(kind, matches = () => true) {
+    for (const module of order) {
+        const record = modules.get(module);
+
+        if (!liveRecord(record)) {
+            continue;
+        }
+
+        for (const spec of record.adds[kind].values()) {
+            if (matches(spec)) {
+                return spec;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+setFences((lang) => {
+    const spec = markdownSpecOf("fence", (each) =>
+        each.langs.some((one) => one.toLowerCase() === lang),
+    );
+
+    return spec === undefined ? undefined : { ...spec, component: framedFence(spec) };
+});
+setMath(() => markdownSpecOf("mathInline"));
 
 // ─── Drawing again, within bounds ────────────────────────────────────────────
 
@@ -318,7 +348,17 @@ export function onExtensionsGone(listener) {
 
 /** Load what the server lists, and unload what it no longer does or lists at a new address (a new version). */
 function sync(list) {
-    order = list.map((each) => each.module);
+    const nextOrder = list.map((each) => each.module);
+    const orderChanged =
+        order.length !== nextOrder.length ||
+        order.some((module, index) => module !== nextOrder[index]);
+
+    order = nextOrder;
+
+    if (orderChanged) {
+        markdownChanged();
+    }
+
     const wanted = new Map(safeMode() ? [] : list.map((each) => [each.module, each]));
 
     for (const record of [...modules.values()]) {
@@ -473,8 +513,14 @@ function unload(record) {
 
 /** Take away what a browser module added, and run its cleanups, last first. */
 function teardown(record) {
+    const hadMarkdown = record.adds.fence.size > 0 || record.adds.mathInline.size > 0;
+
     for (const kind of KINDS) {
         record.adds[kind].clear();
+    }
+
+    if (hadMarkdown) {
+        markdownChanged();
     }
 
     if (record.calls.size > 0) {
@@ -527,6 +573,32 @@ function check(kind, spec) {
 
     if (!isId(spec.id)) {
         throw new Error(`${name}: an id is up to 64 letters, digits, and . _ : -`);
+    }
+
+    if (kind === "fence") {
+        if (
+            !Array.isArray(spec.langs) ||
+            spec.langs.length === 0 ||
+            !spec.langs.every((lang) => typeof lang === "string" && FENCE_LANG.test(lang))
+        ) {
+            throw new Error(
+                `${name} ${spec.id}: langs is a non-empty list of code fence languages`,
+            );
+        }
+
+        if (typeof spec.component !== "function") {
+            throw new Error(`${name} ${spec.id}: give it a component to show`);
+        }
+
+        return;
+    }
+
+    if (kind === "mathInline") {
+        if (typeof spec.mount !== "function") {
+            throw new Error(`${name} ${spec.id}: give it a mount function`);
+        }
+
+        return;
     }
 
     const text = (field) => {
@@ -657,6 +729,10 @@ function pocketFor(record) {
 
             // The same again (a component that adds as it draws) draws nothing again.
             if (!sameSpec(before, current)) {
+                if (MARKDOWN_KINDS.has(kind)) {
+                    markdownChanged();
+                }
+
                 redraw();
             }
         }
@@ -683,6 +759,11 @@ function pocketFor(record) {
                 check(kind, next);
                 current = next;
                 record.adds[kind].set(current.id, current);
+
+                if (MARKDOWN_KINDS.has(kind)) {
+                    markdownChanged();
+                }
+
                 redraw();
             },
             remove() {
@@ -690,6 +771,11 @@ function pocketFor(record) {
 
                 if (live() && record.adds[kind].get(current.id) === current) {
                     record.adds[kind].delete(current.id);
+
+                    if (MARKDOWN_KINDS.has(kind)) {
+                        markdownChanged();
+                    }
+
                     redraw();
                 }
             },
@@ -790,6 +876,8 @@ function pocketFor(record) {
         launcher: (spec) => add("launcher", spec),
         page: (spec) => add("page", spec),
         sheet: (spec) => add("sheet", spec),
+        fence: (spec) => add("fence", spec),
+        mathInline: (spec) => add("mathInline", spec),
         /** How calls of one of its tools show: in a line in transcripts and peek tiles, and in a group's summary. */
         toolCall(spec) {
             tick(record);
@@ -1347,11 +1435,16 @@ export function extensionLauncherItems() {
  * thrown (an empty string, nothing at all) counts.
  */
 class Guard extends Component {
-    state = { failed: false, message: "" };
+    state = { failed: false, message: "", reset: this.props.reset };
 
     constructor(props) {
         super(props);
         guards++;
+    }
+
+    // A Guard with `reset` tries again when it changes; one with a `fallback` shows it under the failure.
+    static getDerivedStateFromProps({ reset }, state) {
+        return reset === state.reset ? null : { failed: false, message: "", reset };
     }
 
     componentWillUnmount() {
@@ -1363,8 +1456,11 @@ class Guard extends Component {
         this.setState({ failed: true, message: reason(error) });
     }
 
-    render({ children, name }, { failed, message }) {
-        return failed ? html`<div class="error-box">${name} failed: ${message}</div>` : children;
+    render({ children, name, fallback }, { failed, message }) {
+        return failed
+            ? html`<div class="error-box">${name} failed: ${message}</div>
+                  ${fallback}`
+            : children;
     }
 }
 
@@ -1573,6 +1669,26 @@ options[RENDER_HOOK] = (vnode) => {
 /** Between the Guard and an extension's component: what goes wrong in it, however Preact takes it, stays under the Guard. */
 function Drawn({ component, props }) {
     return h(component, props);
+}
+
+/** A fence's component in a Guard that shows its source if it fails, and tries again when the source changes. */
+const framedFences = new WeakMap();
+
+function framedFence(spec) {
+    if (!framedFences.has(spec.component)) {
+        const Framed = (props) =>
+            html`<${Guard}
+                name=${`Fence ${spec.id}`}
+                reset=${props.source}
+                fallback=${html`<pre data-lang=${props.lang}><code>${props.source}</code></pre>`}
+            >
+                <${Drawn} component=${spec.component} props=${props} />
+            <//>`;
+
+        framedFences.set(spec.component, Framed);
+    }
+
+    return framedFences.get(spec.component);
 }
 
 /** Each extension component's number, for its Guard's key: a new component starts with a new Guard. */

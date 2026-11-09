@@ -27,7 +27,14 @@ export const VENDOR: Record<string, string> = {
     "xterm.mjs": join(MODULES, "@xterm", "xterm", "lib", "xterm.mjs"),
     "xterm.css": join(MODULES, "@xterm", "xterm", "css", "xterm.css"),
     "addon-fit.mjs": join(MODULES, "@xterm", "addon-fit", "lib", "addon-fit.mjs"),
+    // Loaded on demand by the diagrams extension (`extensions/diagrams/`), not by the app.
+    "pele.mjs": join(MODULES, "pele", "dist", "pele.js"),
+    "katex.mjs": join(MODULES, "katex", "dist", "katex.mjs"),
+    "katex.css": join(MODULES, "katex", "dist", "katex.min.css"),
 };
+
+/** KaTeX's fonts: its stylesheet names them as `fonts/KaTeX_*.woff2`, which resolves to `/vendor/fonts/`. */
+const KATEX_FONT = /^KaTeX_[A-Za-z0-9-]+\.woff2$/;
 
 export const TYPES: Record<string, string> = {
     ".html": "text/html; charset=utf-8",
@@ -490,6 +497,23 @@ export function serveStatic(
             response,
             VENDOR[parts[1]]!,
             TYPES[extname(parts[1])] ?? "text/javascript; charset=utf-8",
+        ).catch(() => response.destroy());
+
+        return true;
+    }
+
+    // Only the names the stylesheet asks for: nothing else under the package is reachable.
+    if (
+        parts[0] === "vendor" &&
+        parts[1] === "fonts" &&
+        parts.length === 3 &&
+        KATEX_FONT.test(parts[2]!)
+    ) {
+        void serveFile(
+            request,
+            response,
+            join(MODULES, "katex", "dist", "fonts", parts[2]!),
+            "font/woff2",
         ).catch(() => response.destroy());
 
         return true;
