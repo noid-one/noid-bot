@@ -8,6 +8,7 @@ import {
     DESCRIBE_FUNCTION,
     FILE_INPUT_SCRIPT,
     LOCATE_SCRIPT,
+    PURCHASE_SCRIPT,
     KEPT_VALUE_SCRIPT,
     SELECT_ALL_SCRIPT,
     SELECT_OPTION_SCRIPT,
@@ -107,6 +108,19 @@ export type Frame = { seq: number; data: Buffer; width: number; height: number }
 export type Target = { ref?: string; selector?: string; label?: string; x?: number; y?: number };
 
 export type Saved = { url?: string; viewport?: Viewport };
+
+/**
+ * A press that would complete a purchase (`PURCHASE_SCRIPT`): the top page's host, why it counts, and the page's own
+ * words for the control and the amount, as the owner's card shows them. `unreadable`: the page did not answer, so the
+ * press may pay.
+ */
+export type Purchase = {
+    site: string;
+    reason: "card_form" | "final_step" | "payment_page" | "unreadable";
+    label: string;
+    amount: string;
+    amountFrom: "button" | "page";
+};
 
 const MAX_LOGS = 300;
 /** Frame numbers, for every page: a page opened again goes on from where the last one was. */
@@ -1136,6 +1150,43 @@ export class BrowserPage {
         }
 
         return await this.#evaluate(`(${LOCATE_SCRIPT})(${JSON.stringify(target)})`);
+    }
+
+    /**
+     * What a click on `target`, or with `key` that key on `target` or on what has focus, would buy; none when nothing
+     * is there to press or it buys nothing. Nothing is pressed. A page that does not answer may pay, so it counts.
+     */
+    async purchase(
+        target: Target | undefined,
+        key?: "enter" | "space",
+    ): Promise<Purchase | undefined> {
+        let found: Json;
+
+        try {
+            found = await this.#evaluate(
+                `(${PURCHASE_SCRIPT})(${JSON.stringify(target ?? null)}, ${JSON.stringify(key ?? false)})`,
+                5_000,
+            );
+        } catch {
+            return { site: "", reason: "unreadable", label: "", amount: "", amountFrom: "page" };
+        }
+
+        const { site, purchase } = (found ?? {}) as {
+            site?: unknown;
+            purchase?: Partial<Purchase>;
+        };
+
+        if (purchase === null || purchase === undefined || typeof purchase !== "object") {
+            return undefined;
+        }
+
+        return {
+            site: typeof site === "string" ? site : "",
+            reason: purchase.reason ?? "payment_page",
+            label: String(purchase.label ?? ""),
+            amount: String(purchase.amount ?? ""),
+            amountFrom: purchase.amountFrom === "button" ? "button" : "page",
+        };
     }
 
     async click(
