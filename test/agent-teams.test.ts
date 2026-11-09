@@ -39,7 +39,7 @@ after(async () => {
 });
 
 // With no count limit, the words are what keeps two agents from thanking each other without end (the spend limit is the brake).
-test("the team tool and the linked message tell Pi to answer once and stop when the work is done", async () => {
+test("the team tool and the linked message tell Pi that the answer comes by itself, and not to poll or acknowledge", async () => {
     const id = await newSession(app);
 
     await say(app, id, "START_A_TEAM");
@@ -48,8 +48,8 @@ test("the team tool and the linked message tell Pi to answer once and stop when 
     assert.ok(started, "a linked session");
     const source = (await modelTexts(app, id)).join("\n");
 
-    assert.match(source, /ask it to send back what it finds, once/);
-    assert.match(source, /Do not reply to a message that asks for nothing/);
+    assert.match(source, /Its final answer comes to you by itself when its run ends/);
+    assert.match(source, /do not ask for it, and do not poll/);
 
     await until(
         async () =>
@@ -60,9 +60,6 @@ test("the team tool and the linked message tell Pi to answer once and stop when 
     );
     const target = (await modelTexts(app, started.id as never)).join("\n");
 
-    assert.match(
-        target,
-        /do not reply to thanks, acknowledgements, or messages that ask for nothing/,
-    );
-    assert.match(target, /stop when the work is done/);
+    assert.match(target, /your final answer reaches it by itself when your run ends/);
+    assert.match(target, /do not send thanks or acknowledgements/);
 });

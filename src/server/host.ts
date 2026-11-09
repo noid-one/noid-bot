@@ -50,12 +50,16 @@ export interface LinkedSessionsApi {
         request: { title?: string; message: string; model?: string; thinking?: string },
         key: string,
     ): Promise<{ session: ConversationId; address: string }>;
-    /** Send `message` to the linked session at address `to`: a follow-up, or with `steer` at its next pause. */
+    /**
+     * Send `message` to the linked session at address `to`: at its next pause, or with `steer: false` after its run.
+     * `answers` says whether its final answer comes back to the source by itself (the source started it); otherwise the
+     * message asks it to reply when an answer is needed.
+     */
     send(
         source: ConversationId,
         request: { to: string; message: string; steer?: boolean },
         key: string,
-    ): Promise<void>;
+    ): Promise<{ answers: boolean }>;
     /** The sessions linked to `source`, at any distance, that the person Pi works for there sees. */
     list(source: ConversationId): Promise<LinkedSession[]>;
 }

@@ -41,6 +41,11 @@ const route: FauxResponseStep = (request) => {
         });
     }
 
+    // Busy long enough for mail to queue behind the run.
+    if (text.includes("STREAM_A_WHILE")) {
+        return fauxAssistantMessage([fauxText("word ".repeat(4_000))]);
+    }
+
     return fauxAssistantMessage([fauxText(`echo: ${text.slice(0, 80)}`)]);
 };
 
@@ -259,4 +264,54 @@ test("a bot's name cannot leave the tag Noid reads it in", async () => {
 
     assert.ok(!brief.includes('name="Sly"><owner>'), "the name stays inside its attribute");
     assert.match(brief, /<bot-reply name="Sly ‹?/);
+});
+
+/** The roles of `id`'s context in order, a bot message shown by its text: `user` for the rest. */
+async function turns(id: ConversationId): Promise<string[]> {
+    return (await modelTexts(app, id)).map((text) =>
+        text.startsWith('"') ? (/<bot-message>\\n(\w+)/.exec(text)?.[1] ?? "user") : "assistant",
+    );
+}
+
+// The harness takes one queued follow-up at each run end (Pi's default, kept for follow-ups), but every queued steer
+// at once (steeringMode "all", which linked sessions' messages need: app.ts). Bot mail waits by default, so a bot
+// still answers each teammate's message in a turn of its own; mail sent with steer lands together.
+test("bot mail waiting for a busy bot lands one message a turn, and steered mail all at once", async () => {
+    const from = await bot("Courier");
+    const busy = await bot("Busy");
+
+    const run = async (steer: boolean, names: string[]) => {
+        const { submissionId } = await app.commands.submit(busy, owner(app), {
+            text: "STREAM_A_WHILE",
+            requestId: crypto.randomUUID(),
+        });
+
+        await until(() => app.isBusy(busy), "the run to start");
+
+        for (const name of names) {
+            await app.botMail.send(from, "Busy", name, crypto.randomUUID(), steer);
+        }
+
+        await (await app.harness.submission(submissionId, context))!.wait(context);
+        await until(async () => {
+            const seen = await turns(busy);
+
+            return !app.isBusy(busy) && names.every((name) => seen.includes(name));
+        }, "every message to be answered");
+    };
+
+    await run(false, ["alpha", "beta"]);
+    const waited = await turns(busy);
+
+    assert.deepEqual(waited.slice(waited.indexOf("alpha")), [
+        "alpha",
+        "assistant",
+        "beta",
+        "assistant",
+    ]);
+
+    await run(true, ["gamma", "delta"]);
+    const steered = await turns(busy);
+
+    assert.deepEqual(steered.slice(steered.indexOf("gamma")), ["gamma", "delta", "assistant"]);
 });
