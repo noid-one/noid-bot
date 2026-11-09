@@ -211,12 +211,33 @@ export function reviewPrompt(input: {
     ].join("\n");
 }
 
-/** The checker's answer: pass, ask (with why), or an error when it said something else. */
+/**
+ * The checker's answer: pass, ask (with why), or an error when it said something else. A verdict counts only when
+ * the whole reply is one JSON object, in at most one code fence, with no repeated keys: one wrapped in prose or
+ * written twice reads as "ask", so text quoted from the tool's arguments can never pass a call.
+ */
 export function readVerdict(text: string): { decision: "pass" | "ask" | "error"; reason?: string } {
-    const candidate = /\{[\s\S]*\}/.exec(text.trim())?.[0] ?? text.trim();
+    const trimmed = text.trim();
+    const body = /^```(?:json)?[ \t]*\r?\n?([\s\S]*?)```$/i.exec(trimmed)?.[1]?.trim() ?? trimmed;
+    const strict = body.startsWith("{") ? parseVerdict(body) : undefined;
 
+    if (strict !== undefined && !hasRepeatedKey(body)) {
+        return strict;
+    }
+
+    const loose = parseVerdict(/\{[\s\S]*\}/.exec(trimmed)?.[0] ?? trimmed);
+
+    if (loose === undefined) {
+        return { decision: "error" };
+    }
+
+    return loose.decision === "ask" ? loose : { decision: "ask" };
+}
+
+/** `{decision, reason}` from JSON text, or undefined when it is not JSON or decides neither way. */
+function parseVerdict(json: string): { decision: "pass" | "ask"; reason?: string } | undefined {
     try {
-        const parsed = JSON.parse(candidate) as { decision?: unknown; reason?: unknown };
+        const parsed = JSON.parse(json) as { decision?: unknown; reason?: unknown };
 
         if (parsed.decision === "pass" || parsed.decision === "ask") {
             return {
@@ -227,10 +248,49 @@ export function readVerdict(text: string): { decision: "pass" | "ask" | "error";
             };
         }
     } catch {
-        // Not JSON: an error.
+        // Not JSON.
     }
 
-    return { decision: "error" };
+    return undefined;
+}
+
+/** Whether an object JSON.parse accepted repeats a top-level key (JSON.parse keeps the last one). */
+function hasRepeatedKey(json: string): boolean {
+    const keys = new Set<string>();
+    const colon = /\s*:/y;
+    let depth = 0;
+
+    for (let i = 0; i < json.length; i++) {
+        const ch = json[i];
+
+        if (ch === '"') {
+            const start = i;
+
+            for (i++; json[i] !== '"'; i++) {
+                if (json[i] === "\\") {
+                    i++;
+                }
+            }
+
+            colon.lastIndex = i + 1;
+
+            if (depth === 1 && colon.test(json)) {
+                const key = JSON.parse(json.slice(start, i + 1)) as string;
+
+                if (keys.has(key)) {
+                    return true;
+                }
+
+                keys.add(key);
+            }
+        } else if (ch === "{" || ch === "[") {
+            depth++;
+        } else if (ch === "}" || ch === "]") {
+            depth--;
+        }
+    }
+
+    return false;
 }
 
 /**
