@@ -609,10 +609,27 @@ export async function attempt(action) {
     }
 }
 
+/**
+ * The unsent words of whoever was signed in: drafts, pastes, and the request ids kept with them. On a browser people
+ * share, the next one to sign in must not find them (pi-pocket 62d89658).
+ */
+function forgetUnsent() {
+    try {
+        for (const key of Object.keys(localStorage)) {
+            if (/^pocket\.(?:draft|pastes|sendRequest)\./.test(key)) {
+                localStorage.removeItem(key);
+            }
+        }
+    } catch {
+        // Storage this page cannot reach holds nothing to forget.
+    }
+}
+
 /** End this browser's sign-in, and go to the sign-in page. */
 export function signOut() {
     return attempt(async () => {
         await api("logout", {});
+        forgetUnsent();
         location.href = "/";
     });
 }
@@ -1203,12 +1220,13 @@ const current = () => store.state.conversationId;
 
 export const actions = {
     /** `inlineFiles`: the files the message mentions with @ go along with it. */
-    submit: (text, attachments, mode, inlineFiles = false) =>
+    /** `requestId`: the same one again finds the first send of a message whose answer was lost (composer.js). */
+    submit: (text, attachments, mode, inlineFiles = false, requestId = uid()) =>
         api(`c/${current()}/submit`, {
             text,
             attachments,
             mode,
-            requestId: uid(),
+            requestId,
             ...(inlineFiles ? { inlineFiles } : {}),
         }),
     /** Run a command in the session's folder (`!`); `context: false` keeps it from Pi (`!!`). */

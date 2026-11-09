@@ -79,6 +79,99 @@ const MENTIONS_FILE = /(?:^|[\s([{])@(?:"[^"\n]+"|[^\s"]*[./][^\s"]*)/;
 const INLINE_KEY = "pocket.inlineFiles";
 
 const pasteKey = (id) => `pocket.pastes.${id ?? "home"}`;
+const requestKey = (id) => `pocket.sendRequest.${id ?? "home"}`;
+
+/**
+ * Each conversation's message on its way: the box as it went. Kept here, not in the box, which is made anew for each
+ * session: back on one whose message is still going, Send waits for it, and the words that went leave that session's
+ * draft, never another's (pi-pocket f5d693ee).
+ */
+const onTheWay = new Map();
+/** Each conversation's files in its box: one switched away from keeps them, and an upload ends in its own (rakazo c13a8ea50). */
+const unsent = new Map();
+/** The boxes shown, told when a conversation's send or files change. */
+const boxListeners = new Set();
+
+const changed = (id) => {
+    for (const listener of boxListeners) {
+        listener(id);
+    }
+};
+
+function changeFiles(id, change) {
+    const next = change(unsent.get(id) ?? []);
+
+    if (next.length === 0) {
+        unsent.delete(id);
+    } else {
+        unsent.set(id, next);
+    }
+
+    changed(id);
+}
+
+/**
+ * The request id of message `what` (its words and files) from conversation `id`. It is kept until the message is
+ * known sent, or its words change: sent again after a lost answer, also after a reload, it goes with the same id, and
+ * the server gives back the first send instead of making a second (pi-pocket de882e72, f1782983).
+ */
+function requestFor(id, what) {
+    try {
+        const kept = JSON.parse(localStorage.getItem(requestKey(id)) ?? "null");
+
+        if (kept?.what === what && typeof kept.requestId === "string") {
+            return kept.requestId;
+        }
+    } catch {
+        // A damaged value is no request id: a new one replaces it.
+    }
+
+    const requestId = uid();
+
+    try {
+        localStorage.setItem(requestKey(id), JSON.stringify({ what, requestId }));
+    } catch {
+        // No room: this send still goes, only once more if sent again after a lost answer.
+    }
+
+    return requestId;
+}
+
+const dropRequest = (id) => {
+    try {
+        localStorage.removeItem(requestKey(id));
+    } catch {
+        // Nothing kept.
+    }
+};
+
+/**
+ * The end of conversation `id`'s send of the box as it was (`was`). Gone, its words leave the draft: words typed on
+ * since stay without them (an insert meanwhile trims the sent words' end spaces, pi-pocket 6043bfd0). A draft
+ * changed otherwise stays as it is. Returns whether the box is now empty of what went.
+ */
+function endSend(id, was, went) {
+    onTheWay.delete(id);
+    let cleared = false;
+
+    if (went) {
+        dropRequest(id);
+        const now = drafts.get(id);
+        const sentWords = was.trimEnd();
+
+        if (now === was) {
+            drafts.set(id, "");
+            savePastes(id, {});
+            cleared = true;
+        } else if (now.startsWith(sentWords)) {
+            drafts.set(id, now.slice(sentWords.length).trimStart());
+        }
+    }
+
+    changed(id);
+
+    return cleared;
+}
 
 /** Each conversation's pastes by number, kept with its draft so a reload keeps them. */
 function loadPastes(id) {
@@ -321,7 +414,9 @@ export function Composer() {
     const { view, conversationId } = store.state;
     const historyScope = { person: store.state.me?.id, conversation: conversationId };
     const [text, setText] = useState(() => drafts.get(conversationId));
-    const [files, setFiles] = useState([]);
+    const [files, showFiles] = useState(() => unsent.get(conversationId) ?? []);
+    // For this conversation's box, wherever the person is when a change (an upload ending) comes.
+    const setFiles = (change) => changeFiles(conversationId, change);
     // The box as it is now, for a send that ends after the person typed on (rakazo 11aaeeb52).
     const boxNow = useRef(text);
 
@@ -329,7 +424,7 @@ export function Composer() {
     const [steer, setSteer] = useState(true);
     // The queued message tapped open, wrapped: one line each until then. The queue holds only a message's start.
     const [reading, setReading] = useState(null);
-    const [sending, setSending] = useState(false);
+    const [sending, setSending] = useState(() => onTheWay.has(conversationId));
     // Images sent to a model that cannot see them: asked once at Send, for these files and this model (`blindModel`).
     const [blind, setBlind] = useState(null);
     // Slash command suggestions: the highlighted one, and whether Escape hid the list.
@@ -382,6 +477,36 @@ export function Composer() {
     const commandRequest = useRef(null);
     const busy = view.live.busy;
     const agent = view.agent;
+
+    // This conversation's send or files changed, also from a box shown before this one.
+    useEffect(() => {
+        const listener = (id) => {
+            if (id !== conversationId) {
+                return;
+            }
+
+            const draft = drafts.get(id);
+
+            showFiles(unsent.get(id) ?? []);
+            setSending(onTheWay.has(id));
+
+            // A send that ended took its words out of the draft (`endSend`).
+            if (draft !== boxNow.current) {
+                boxNow.current = draft;
+                setText(draft);
+                setCaret(draft.length);
+
+                if (draft === "") {
+                    setPastes(loadPastes(id));
+                    setBrowsing(null);
+                }
+            }
+        };
+
+        boxListeners.add(listener);
+
+        return () => boxListeners.delete(listener);
+    }, [conversationId]);
 
     useEffect(() => {
         const draft = drafts.get(conversationId);
@@ -458,6 +583,11 @@ export function Composer() {
     }, [text]);
 
     const update = (value, at = value.length) => {
+        // Changed words are a new message, also when typed again the same: not one sent again after a lost answer.
+        if (value !== text) {
+            dropRequest(conversationId);
+        }
+
         setText(value);
         setCaret(at);
         drafts.set(conversationId, value);
@@ -628,22 +758,10 @@ export function Composer() {
         !uploading &&
         (text.trim() !== "" || files.some((file) => file.state === "done"));
 
-    /**
-     * What went out stays for ↑; its pastes are done with. Given the box as it was sent, words the person typed
-     * on since stay in the box, without the ones that went. A box edited elsewhere stays as it is, with its pastes: it
-     * is their next draft now, and clearing it would lose what they just did.
-     */
-    const sent = (full, was) => {
+    /** What went out stays for ↑; its pastes are done with. */
+    const sent = (full) => {
         if (full.length <= REMEMBER_CHARS) {
             remember(full, historyScope);
-        }
-
-        if (was !== undefined && boxNow.current !== was) {
-            if (boxNow.current.startsWith(was)) {
-                update(boxNow.current.slice(was.length).trimStart());
-            }
-
-            return;
         }
 
         setPastes({});
@@ -715,28 +833,42 @@ export function Composer() {
         }
 
         setBlind(null);
-        setSending(true);
-        const going = files.filter((file) => file.state === "done");
+        // The send is the conversation's, not this box's: switched away and back, it is still on its way (`endSend`).
+        const id = conversationId;
+        const was = text;
+        const going = new Set(
+            files.filter((file) => file.state === "done").map((file) => file.key),
+        );
+
+        onTheWay.set(id, was);
+        changed(id);
         const ok = await attempt(() =>
             actions.submit(
                 full,
                 attachments,
                 busy && steer ? "steer" : "followUp",
                 inlineFiles && mentionsFiles,
+                requestFor(id, JSON.stringify([full, attachments])),
             ),
         );
 
-        setSending(false);
-
         if (ok) {
-            sent(full, text);
-            // Only what went: a file added while it sent stays for the next message.
-            forget(going);
-            setFiles((current) => current.filter((file) => !going.includes(file)));
-
-            if (!coarse) {
-                box.current?.focus();
+            if (full.length <= REMEMBER_CHARS) {
+                remember(full, historyScope);
             }
+
+            // Only what went: a file added while it sent stays for the next message.
+            changeFiles(id, (current) => {
+                forget(current.filter((file) => going.has(file.key)));
+
+                return current.filter((file) => !going.has(file.key));
+            });
+        }
+
+        endSend(id, was, Boolean(ok));
+
+        if (ok && !coarse) {
+            box.current?.focus();
         }
     };
 
