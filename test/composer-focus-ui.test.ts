@@ -489,6 +489,38 @@ test(
 );
 
 test(
+    "Safari's Enter that picks a composed word (keyCode 229, isComposing false) does not send the message box",
+    real,
+    async () => {
+        await home(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${Number(one)}`);
+        await opened(one);
+        await page.type({ selector: BOX }, "half typed 日本");
+        // Safari ends the composition before its keydown: only keyCode 229 says the Enter was the input method's.
+        await page.evaluate(`
+            const event = new KeyboardEvent("keydown", {
+                key: "Enter",
+                bubbles: true,
+                cancelable: true,
+                isComposing: false,
+            });
+
+            Object.defineProperty(event, "keyCode", { get: () => 229 });
+            document.querySelector(${JSON.stringify(BOX)}).dispatchEvent(event);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        `);
+        const value = () =>
+            inPage<string>(
+                `return JSON.stringify(document.querySelector(${JSON.stringify(BOX)}).value)`,
+            );
+
+        assert.equal(await value(), "half typed 日本", "still choosing the word");
+        await page.press("Enter");
+        await until(async () => (await value()) === "", "sent by the next Enter");
+    },
+);
+
+test(
     "an unsaved notes edit comes back after closing the panel and a reload, until it is saved (pi-pocket 30a8ad8c)",
     real,
     async () => {

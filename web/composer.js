@@ -27,6 +27,7 @@ import { prefs } from "./theme.js";
 import { MicButton, useDictation } from "./voice.js";
 import {
     APPLE,
+    composing,
     contextLevel,
     formatBytes,
     formatTokens,
@@ -948,7 +949,7 @@ export function Composer() {
         }
 
         // While searching, these keys are the search's: with nothing found, Enter must not send the search words.
-        if (searching && !event.isComposing) {
+        if (searching && !composing(event)) {
             const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
 
             if (move !== undefined) {
@@ -985,7 +986,7 @@ export function Composer() {
             }
         }
 
-        if (matches.length > 0 && !event.isComposing) {
+        if (matches.length > 0 && !composing(event)) {
             const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
 
             if (move !== undefined) {
@@ -1018,7 +1019,7 @@ export function Composer() {
             }
         }
 
-        if (suggestions.length > 0 && !event.isComposing) {
+        if (suggestions.length > 0 && !composing(event)) {
             const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
 
             if (move !== undefined) {
@@ -1054,7 +1055,7 @@ export function Composer() {
 
         if (
             (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-            !event.isComposing &&
+            !composing(event) &&
             !event.shiftKey &&
             !event.altKey &&
             !event.ctrlKey &&
@@ -1067,7 +1068,7 @@ export function Composer() {
             return;
         }
 
-        if (event.key === "Enter" && !event.shiftKey && !coarse && !event.isComposing) {
+        if (event.key === "Enter" && !event.shiftKey && !coarse && !composing(event)) {
             event.preventDefault();
             send();
         }
