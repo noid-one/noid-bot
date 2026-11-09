@@ -246,13 +246,24 @@ async function describeTask(
             };
         }
 
+        // noid: a group thread's message, taken to each of its bots in turn.
+        case "x.noid.group-round":
+            return { label: "asking a group thread's bots in turn" };
+
         default:
             return { label: node.kind };
     }
 }
 
-/** The sessions this person can see that have something at work, busiest first. */
-export async function runningNow(app: PocketApp, user: User): Promise<RunningSession[]> {
+/**
+ * The sessions this person can see that have something at work, busiest first; from `nodes`, the live tasks, when the
+ * caller has read them already.
+ */
+export async function runningNow(
+    app: PocketApp,
+    user: User,
+    nodes?: TaskGraphNode[],
+): Promise<RunningSession[]> {
     const sessions = new Map<ConversationId, RunningSession>();
 
     const session = async (conversationId: ConversationId): Promise<RunningSession> => {
@@ -277,10 +288,10 @@ export async function runningNow(app: PocketApp, user: User): Promise<RunningSes
         return entry;
     };
 
-    const nodes = await liveTasks(app);
-    const since = seenSince(nodes, Date.now());
+    const live = nodes ?? (await liveTasks(app));
+    const since = seenSince(live, Date.now());
 
-    for (const node of nodes) {
+    for (const node of live) {
         // A subagent's anchor stays for as long as the subagent does, doing nothing: its work shows on its own.
         if (node.kind === "pocket.subagent-anchor" || !app.canSee(user, node.conversationId)) {
             continue;
@@ -429,8 +440,8 @@ function upcomingOf(id: string, next: number, every: Repeat | undefined, zone: s
  * scheduled message this person may see, soonest first, with its next times and whether it is held.
  */
 export async function runningBoard(app: PocketApp, user: User): Promise<RunningBoard> {
-    const running = await runningNow(app, user);
-    const listed = new Map(app.sessions(user).map((session) => [session.id, session]));
+    const nodes = await liveTasks(app);
+    const running = await runningNow(app, user, nodes);
     const oldest = new Map<number, { tool: string; subject: string; since: number }>();
 
     for (const approval of app.approvals.all()) {
@@ -464,15 +475,16 @@ export async function runningBoard(app: PocketApp, user: User): Promise<RunningB
     );
 
     const sessions: BoardSession[] = running.map((session, index) => {
-        const meta = listed.get(session.id);
         const id = session.id as unknown as ConversationId;
+        const cwd = app.sessionMeta(id)?.cwd;
+        const model = app.modelIdOf(id);
         const approval = oldest.get(session.id);
         const prompt = prompts[index];
 
         return {
             ...session,
-            ...(meta?.cwd === undefined ? {} : { cwd: meta.cwd }),
-            ...(meta?.model === undefined ? {} : { model: meta.model }),
+            ...(cwd === undefined ? {} : { cwd }),
+            ...(model === undefined ? {} : { model }),
             spent: app.spend.sessionSpent(id),
             ...(approval === undefined ? {} : { approval }),
             ...(prompt === undefined ? {} : { prompt }),
@@ -482,7 +494,7 @@ export async function runningBoard(app: PocketApp, user: User): Promise<RunningB
     const schedules: BoardSchedule[] = [];
     // Every schedule is a live `pocket.schedule` task in its session: only those sessions are read.
     const scheduled = new Set(
-        (await liveTasks(app))
+        nodes
             .filter((node) => node.kind === "pocket.schedule")
             .map((node) => String(node.conversationId)),
     );
