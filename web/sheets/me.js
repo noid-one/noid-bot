@@ -3,7 +3,7 @@ import { useContext, useState } from "preact/hooks";
 import { Avatar } from "../avatar.js";
 import { DEFAULT_COLORS, hashOf } from "../faces/params.js";
 import { api, attempt, closeSheet, notify, signOut, store } from "../store.js";
-import { html, Icon, Sheet, SheetEmbed } from "../ui.js";
+import { composing, html, Icon, Sheet, SheetEmbed } from "../ui.js";
 import { FacePicks } from "./bot.js";
 
 /** The color a face has from its id (`paletteOf`'s), for the color input until you pick one. */
@@ -66,7 +66,7 @@ export function MeSheet() {
                 value=${name}
                 maxlength="40"
                 onInput=${(event) => setName(event.currentTarget.value)}
-                onKeyDown=${(event) => event.key === "Enter" && save()}
+                onKeyDown=${(event) => event.key === "Enter" && !composing(event) && save()}
             />
         </div>
         <div class="sheet-actions">

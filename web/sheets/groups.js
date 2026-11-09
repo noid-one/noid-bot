@@ -7,7 +7,7 @@ import { Face } from "../faces/face.js";
 import { usePoll } from "../poll.js";
 import { api, attempt, notify, openSheet, store, uid } from "../store.js";
 import { ToolFrame } from "../tool-page.js";
-import { BOTTOM_SHEETS, formatWhen, html, Icon } from "../ui.js";
+import { BOTTOM_SHEETS, composing, formatWhen, html, Icon } from "../ui.js";
 
 const EVERY_MS = 2000;
 
@@ -272,7 +272,7 @@ function Thread({ id, onBack, onSaid }) {
                 placeholder=${`Write to ${group.name}; @Name for one bot`}
                 value=${text}
                 onInput=${(event) => setText(event.currentTarget.value)}
-                onKeyDown=${(event) => event.key === "Enter" && !event.isComposing && send()}
+                onKeyDown=${(event) => event.key === "Enter" && !composing(event) && send()}
             />
             <button
                 class="button primary"

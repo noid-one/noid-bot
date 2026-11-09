@@ -685,6 +685,8 @@ const entrySizes = new WeakMap();
 let trimming;
 /** Sessions kept in memory since the last `settleKept`, to save on the device too. */
 const unsaved = new Set();
+/** The session whose view the server sent since the tab showed it: not one only kept, which may be old. */
+let synced = null;
 
 /**
  * Whether a view can be kept: one this run of the server sent whole (`build`). A light entry (`partial`) would have to
@@ -829,6 +831,7 @@ function keptView(id) {
     const kept = keptViews.get(id);
 
     keptViews.delete(id);
+    synced = null;
 
     return kept?.view ?? emptyView();
 }
@@ -1171,8 +1174,18 @@ function applyView(data) {
         return;
     }
 
+    if (data.full) {
+        synced = data.conversation.id;
+    }
+
     store.set((state) => ({ view: mergeView(state.view, data), missing: null }));
 }
+
+/**
+ * Whether the session `id` shows with a view the server sent since the tab showed it: not one this tab or the device
+ * kept, which may be old (pi-pocket f8b1fd22).
+ */
+export const viewSynced = (id) => synced === id && store.state.view.conversation?.id === id;
 
 /**
  * A view after an update from the server: the full view, or what changed since the last one. A full view of the same

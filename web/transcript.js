@@ -27,6 +27,7 @@ import {
     store,
     TRANSCRIPT_ROWS,
     sessionBot,
+    viewSynced,
 } from "./store.js";
 import { runLabel, runsOf, stepView } from "./steps.js";
 import { openSubagent, stateOf } from "./subagents.js";
@@ -1643,10 +1644,6 @@ function choiceValue(field, { picked, other }) {
 }
 
 /**
- * Pi's questions (`ask`) for the person Pi works for (the owner when nobody is known): sent only by that person, and
- * declined by anyone who can steer.
- */
-/**
  * A question of Pi's, as its answers are kept: its id and its call (the same call asking again after a restart is the
  * same question), or the time it asked when it has no call (pi-pocket e4f60668, cf44ec00).
  */
@@ -1665,13 +1662,15 @@ function keptAnswers(id) {
 
 /**
  * Keep the answers typed so far to question `key` of conversation `id` (null: none, it was answered), and drop those of
- * questions that no longer wait, as the server's view of that conversation says (pi-pocket b009fe46, f8b1fd22).
+ * questions that no longer wait, as the server's view of that conversation says. Only a view the server sent since the
+ * session showed (`viewSynced`): one this tab or the device kept may be old, and miss a question asked since
+ * (pi-pocket b009fe46, f8b1fd22).
  */
 function keepAnswers(id, key, values) {
     const kept = keptAnswers(id);
     const { view } = store.state;
 
-    if (view.conversation?.id === id) {
+    if (viewSynced(id)) {
         const waiting = new Set((view.approvals ?? []).filter((each) => each.form).map(askKey));
 
         for (const each of Object.keys(kept)) {
@@ -1698,7 +1697,29 @@ function keepAnswers(id, key, values) {
     }
 }
 
-/** Pi's question: its answers so far are kept for it, through a switch to another session or a reload, until it ends. */
+/**
+ * The answers kept for `field`, if they still fit it: picked from its choices (one, unless it takes several), and typed
+ * only where it takes an answer of one's own. Else none.
+ */
+function keptChoice(field, kept) {
+    const picked = Array.isArray(kept?.picked) ? kept.picked : null;
+    const other = typeof kept?.other === "string" ? kept.other : null;
+    const labels = new Set(field.choices.map((choice) => choice.label));
+
+    return picked === null ||
+        other === null ||
+        picked.some((label) => typeof label !== "string" || !labels.has(label)) ||
+        (!field.multiple && picked.length > 1) ||
+        (!field.other && other !== "")
+        ? { picked: [], other: "" }
+        : { picked, other };
+}
+
+/**
+ * Pi's questions (`ask`) for the person Pi works for (the owner when nobody is known): sent only by that person, and
+ * declined by anyone who can steer. Its answers so far are kept for it, through a switch to another session or a
+ * reload, until it ends.
+ */
 function AskCard({ approval }) {
     const { users } = store.state;
     const form = approval.form;
@@ -1708,13 +1729,7 @@ function AskCard({ approval }) {
         const kept = keptAnswers(id)[key] ?? {};
 
         return Object.fromEntries(
-            form.fields.map((field) => [
-                field.name,
-                Array.isArray(kept[field.name]?.picked) &&
-                typeof kept[field.name]?.other === "string"
-                    ? kept[field.name]
-                    : { picked: [], other: "" },
-            ]),
+            form.fields.map((field) => [field.name, keptChoice(field, kept[field.name])]),
         );
     });
 
@@ -1725,8 +1740,14 @@ function AskCard({ approval }) {
 
     const [busy, setBusy] = useState(false);
 
-    // Questions that ended while this session was away leave no answers behind.
-    useEffect(() => keepAnswers(id, key, keptAnswers(id)[key] ?? null), [id, key]);
+    // Questions that ended while this session was away leave no answers behind, once the server's view of it comes.
+    const synced = viewSynced(id);
+
+    useEffect(() => {
+        if (synced) {
+            keepAnswers(id, key, keptAnswers(id)[key] ?? null);
+        }
+    }, [id, key, synced]);
     const mine = mayAllow(approval);
     const who =
         users?.find?.((each) => each.id === approval.requestedBy)?.name ??

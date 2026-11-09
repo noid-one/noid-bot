@@ -2,7 +2,7 @@
 // sign-in uses to ask for a code or a key.
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { api, attempt, closeSheet, closeSignIn, signInAnswered, store } from "../store.js";
-import { html, Icon, Loader, Sheet } from "../ui.js";
+import { composing, html, Icon, Loader, Sheet } from "../ui.js";
 import { RefreshModels } from "../model-refresh.js";
 
 /** Models past this many get a box to find them by. */
@@ -419,7 +419,7 @@ export function AuthDialog({ inline = false }) {
                             placeholder=${prompt.placeholder ?? ""}
                             value=${value}
                             onInput=${(event) => setValue(event.currentTarget.value)}
-                            onKeyDown=${(event) => event.key === "Enter" && answer({ value })}
+                            onKeyDown=${(event) => event.key === "Enter" && !composing(event) && answer({ value })}
                         />
                         <button
                             class="button primary"

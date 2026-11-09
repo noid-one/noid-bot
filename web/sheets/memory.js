@@ -1,7 +1,7 @@
 // Memory: the lessons Pi keeps across sessions, for this session's project and for everywhere.
 import { useEffect, useState } from "preact/hooks";
 import { api, attempt, closeSheet, navigate, notify, store } from "../store.js";
-import { html, Sheet, timeAgo } from "../ui.js";
+import { composing, html, Sheet, timeAgo } from "../ui.js";
 
 /** Memory needs its extension, and a conversation to say which project: `id`, or the one open. */
 export const memoryAvailable = (id) =>
@@ -391,7 +391,7 @@ export function MemorySheet({ draft: initial = "", conversationId, pendingOnly =
                     value=${text}
                     onInput=${(event) => setText(event.currentTarget.value)}
                     onKeyDown=${(event) => {
-                        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+                        if (event.key === "Enter" && !event.shiftKey && !composing(event)) {
                             event.preventDefault();
                             add();
                         }
