@@ -16,6 +16,8 @@ import {
     notify,
     openSheet,
     store,
+    storeJSON,
+    storedJSON,
     typing,
     uid,
     sessionBot,
@@ -118,34 +120,21 @@ function changeFiles(id, change) {
  * the server gives back the first send instead of making a second (pi-pocket de882e72, f1782983).
  */
 function requestFor(id, what) {
-    try {
-        const kept = JSON.parse(localStorage.getItem(requestKey(id)) ?? "null");
+    const kept = storedJSON(requestKey(id));
 
-        if (kept?.what === what && typeof kept.requestId === "string") {
-            return kept.requestId;
-        }
-    } catch {
-        // A damaged value is no request id: a new one replaces it.
+    if (kept?.what === what && typeof kept.requestId === "string") {
+        return kept.requestId;
     }
 
     const requestId = uid();
 
-    try {
-        localStorage.setItem(requestKey(id), JSON.stringify({ what, requestId }));
-    } catch {
-        // No room: this send still goes, only once more if sent again after a lost answer.
-    }
+    // With no room, this send still goes, only once more if sent again after a lost answer.
+    storeJSON(requestKey(id), { what, requestId });
 
     return requestId;
 }
 
-const dropRequest = (id) => {
-    try {
-        localStorage.removeItem(requestKey(id));
-    } catch {
-        // Nothing kept.
-    }
-};
+const dropRequest = (id) => storeJSON(requestKey(id), null);
 
 /**
  * The end of conversation `id`'s send of the box as it was (`was`). Gone, its words leave the draft: words typed on
@@ -192,22 +181,10 @@ async function runAsSend(id, was, run) {
 }
 
 /** Each conversation's pastes by number, kept with its draft so a reload keeps them. */
-function loadPastes(id) {
-    try {
-        return JSON.parse(localStorage.getItem(pasteKey(id)) ?? "{}");
-    } catch {
-        return {};
-    }
-}
+const loadPastes = (id) => storedJSON(pasteKey(id)) ?? {};
 
 function savePastes(id, pastes) {
-    try {
-        if (Object.keys(pastes).length === 0) {
-            localStorage.removeItem(pasteKey(id));
-        } else {
-            localStorage.setItem(pasteKey(id), JSON.stringify(pastes));
-        }
-    } catch {
+    if (!storeJSON(pasteKey(id), Object.keys(pastes).length === 0 ? null : pastes)) {
         notify("warning", "This browser has no room to keep the paste after a reload.");
     }
 }
