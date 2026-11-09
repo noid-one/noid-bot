@@ -244,3 +244,18 @@ test("a stuck batch is stopped once: one notice, and every call left refused", a
     assert.match(notices.at(-1)!, /Jammed kept calling bash/);
     assert.equal(app.isBusy(id), false, "its run stopped");
 });
+
+test("a stopped bot's next run starts over: the stop is that run's alone", async () => {
+    const id = await hostBot("Again");
+
+    await send(id, "loop failing");
+    assert.equal((await results(id)).refused, 1, "the first run was stopped");
+
+    // The model counts every answer in the session, the first run's six too: it gives up at `GIVES_UP` in all.
+    await send(id, "loop poll");
+    const { count, refused, last } = await results(id);
+
+    assert.equal(count, GIVES_UP, "every read of the next run ran");
+    assert.equal(refused, 1, "only the first run's call was refused");
+    assert.doesNotMatch(last, /Stopped/);
+});
