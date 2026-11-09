@@ -638,6 +638,34 @@ test("everyone signed in gets the desktop's theme colors; only the owner gets it
     }
 });
 
+test("a folder the server may not read is a 403, not a 500 with its stack (pi-pocket cd013d55)", async () => {
+    const { chmodSync } = await import("node:fs");
+    const { createServer } = await import("node:http");
+    const { createHandler } = await import("../src/server/http.ts");
+    const server = createServer(
+        createHandler({ app, listen: { host: "127.0.0.1", port: 0 }, restart: () => {} }),
+    );
+    const closed = join(root, "closed-folder");
+
+    mkdirSync(closed, { recursive: true });
+    chmodSync(closed, 0o000);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:${port}/api/fs?path=${encodeURIComponent(closed)}`,
+            { headers: { authorization: `Bearer ${app.config.ownerToken}`, "x-pocket": "1" } },
+        );
+
+        assert.equal(response.status, 403);
+        assert.match(((await response.json()) as { error: string }).error, /cannot read/);
+    } finally {
+        chmodSync(closed, 0o755);
+        server.close();
+    }
+});
+
 test("anyone signed in can list extensions; only the owner can change them", async () => {
     const { createServer } = await import("node:http");
     const { createHandler } = await import("../src/server/http.ts");
