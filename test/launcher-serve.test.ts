@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { test } from "node:test";
 import {
     parseTailscaleVersion,
@@ -574,6 +574,31 @@ test("a mount that leaves no entry under our key is not reported as served", asy
         // main removes the mount after a failed start, and the attempted mount is what makes that an `off` at all.
         serve.stop();
         assert.equal(fake.calls().at(-1), "serve --https=443 --set-path=/ off");
+    } finally {
+        fake.restore();
+    }
+});
+
+test("stop leaves a mount at / that someone pointed at another service", async (t) => {
+    if (process.platform === "win32") {
+        t.skip(SKIP_WINDOWS);
+
+        return;
+    }
+
+    const fake = fakeTailscale();
+    const said = heard();
+
+    try {
+        const serve = new TailscaleServe(fake.binary, LOCAL_PORT, said.events);
+
+        assert.equal(serve.start().ok, true);
+        writeFileSync(
+            join(dirname(fake.binary), "serve.json"),
+            JSON.stringify(mounted("http://127.0.0.1:9999")),
+        );
+        serve.stop();
+        assert.equal(fake.calls().at(-1), "serve status --json");
     } finally {
         fake.restore();
     }

@@ -221,6 +221,8 @@ export class TailscaleServe {
      * attempt counts even when the CLI did not answer: only the scoped `off` can tell.
      */
     #published = false;
+    /** The node's DNS name as `start` found it, where the mount at `/` is looked for. */
+    #dnsName = "";
 
     /**
      * `binary` is the tailscale CLI to run, and `port` the local server it should proxy to: the tailnet port is always
@@ -269,6 +271,8 @@ export class TailscaleServe {
         }
 
         const dnsName = dnsNameOf(status) ?? "";
+
+        this.#dnsName = dnsName;
         // The node's own name is what every message about it should use; a node with none cannot be served by name.
         const servedName = tailnetHost(dnsName) ?? "this node";
         const proxy = loopback(this.#port);
@@ -347,6 +351,14 @@ export class TailscaleServe {
         }
 
         this.#published = false;
+
+        // Someone may have put another service at `/` since: that one is theirs, and stays.
+        const now = this.#serveConfig();
+        const mount = now.ok ? mountAt(now.config, this.#dnsName, SERVE_PORT) : undefined;
+
+        if (mount !== undefined && !sameLocalTarget(mount.Proxy, this.#port)) {
+            return;
+        }
 
         const removed = this.#run(["serve", `--https=${SERVE_PORT}`, "--set-path=/", "off"]);
 
