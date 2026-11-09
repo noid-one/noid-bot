@@ -610,13 +610,13 @@ export async function attempt(action) {
 }
 
 /**
- * The unsent words of whoever was signed in: drafts, pastes, and the request ids kept with them. On a browser people
+ * The unsent words of whoever was signed in: drafts, pastes, the request ids kept with them, and notes edits. On a browser people
  * share, the next one to sign in must not find them (pi-pocket 62d89658).
  */
 function forgetUnsent() {
     try {
         for (const key of Object.keys(localStorage)) {
-            if (/^pocket\.(?:draft|pastes|sendRequest)\./.test(key)) {
+            if (/^pocket\.(?:draft|pastes|sendRequest|notesDraft)\./.test(key)) {
                 localStorage.removeItem(key);
             }
         }

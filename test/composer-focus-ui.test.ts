@@ -484,3 +484,66 @@ test(
         assert.equal(app.sessionMeta(one)?.title, "ime title");
     },
 );
+
+test(
+    "an unsaved notes edit comes back after closing the panel and a reload, until it is saved (pi-pocket 30a8ad8c)",
+    real,
+    async () => {
+        await home(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${Number(one)}`);
+        await opened(one);
+        const NOTES = "textarea.notes";
+
+        const openNotes = async () => {
+            await page.evaluate(`
+            const { closeSheet, openSheet, store } = await import("/store.js");
+
+            store.set((state) => ({ server: { ...state.server, collab: 2 } }));
+            closeSheet();
+            openSheet({ type: "chat", tab: "notes" });
+        `);
+            await until(
+                () =>
+                    inPage<boolean>(
+                        `return JSON.stringify(document.querySelector('${NOTES}') !== null)`,
+                    ),
+                "the notes",
+            );
+        };
+
+        const notesValue = () =>
+            inPage<string>(`return JSON.stringify(document.querySelector('${NOTES}').value)`);
+
+        await openNotes();
+        await page.type({ selector: NOTES }, "plan marker");
+        await page.evaluate(`
+        const { closeSheet } = await import("/store.js");
+
+        closeSheet();
+    `);
+        await openNotes();
+        assert.equal(await notesValue(), "plan marker", "back after closing the panel");
+
+        await page.navigate(`${base}/s/${Number(one)}`);
+        await opened(one);
+        await openNotes();
+        assert.equal(await notesValue(), "plan marker", "back after a reload");
+
+        await page.evaluate(`
+        [...document.querySelectorAll(".people-content button")].find((each) => each.textContent.trim() === "Save").click();
+    `);
+        await until(
+            () =>
+                inPage<boolean>(
+                    `return JSON.stringify(localStorage.getItem("pocket.notesDraft.${Number(one)}") === null)`,
+                ),
+            "the kept edit dropped once saved",
+        );
+        assert.equal(await notesValue(), "plan marker", "the saved notes");
+        await page.evaluate(`
+        const { closeSheet } = await import("/store.js");
+
+        closeSheet();
+    `);
+    },
+);

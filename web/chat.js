@@ -615,29 +615,73 @@ function PinsTab({ onShowChat }) {
     </div>`;
 }
 
+const notesKey = (id) => `pocket.notesDraft.${id}`;
+
+/** A conversation's unsaved notes edit, `{ text, base }` (the version it began from), or null. */
+function keptNotes(id) {
+    try {
+        const kept = JSON.parse(localStorage.getItem(notesKey(id)) ?? "null");
+
+        return typeof kept?.text === "string" && Number.isInteger(kept.base) ? kept : null;
+    } catch {
+        return null;
+    }
+}
+
+function keepNotes(id, kept) {
+    try {
+        if (kept === null) {
+            localStorage.removeItem(notesKey(id));
+        } else {
+            localStorage.setItem(notesKey(id), JSON.stringify(kept));
+        }
+    } catch {
+        // No room: the edit stays while the panel is open.
+    }
+}
+
+/**
+ * The session's notes. An edit not saved yet is kept with the conversation until it is saved or cancelled: switching
+ * tabs, closing the panel, or a reload brings it back (pi-pocket 30a8ad8c).
+ */
 function NotesTab() {
-    const { notes, users } = store.state;
-    const [draft, setDraft] = useState(null);
-    const [base, setBase] = useState(notes?.rev ?? 0);
+    const { notes, users, conversationId } = store.state;
+    const [kept, setKept] = useState(() => keptNotes(conversationId));
     const [saving, setSaving] = useState(false);
+
+    useEffect(() => setKept(keptNotes(conversationId)), [conversationId]);
 
     if (notes === null) {
         return html`<${Loader} label="Loading notes" />`;
     }
+
+    const draft = kept?.text ?? null;
+    const base = kept?.base ?? notes.rev;
+
+    const setDraft = (text, from = base) => {
+        const next = text === null ? null : { text, base: from };
+
+        keepNotes(conversationId, next);
+        setKept(next);
+    };
 
     const editing = draft !== null;
     const changedMeanwhile = editing && notes.rev !== base;
     const by = notes.by ? (users.find((user) => user.id === notes.by)?.name ?? "someone") : null;
 
     const save = async (rev = base) => {
+        // This conversation's edit, even if the panel moves on before the answer.
+        const id = conversationId;
+        const text = draft;
+
         setSaving(true);
-        const saved = await attempt(() => actions.saveNotes(draft, rev));
+        const saved = await attempt(() => actions.saveNotes(text, rev));
 
         setSaving(false);
 
-        if (saved) {
-            setDraft(null);
-            setBase(saved.rev);
+        if (saved && keptNotes(id)?.text === text) {
+            keepNotes(id, null);
+            setKept((now) => (now?.text === text ? null : now));
         }
     };
 
@@ -650,10 +694,7 @@ function NotesTab() {
             ${by ?? "Someone"} saved the notes while you were editing.
             <button
                 class="link small"
-                onClick=${() => {
-                    setDraft(null);
-                    setBase(notes.rev);
-                }}
+                onClick=${() => setDraft(null)}
             >
                 Use theirs
             </button> · <button class="link small" onClick=${() => save(notes.rev)}>Keep mine</button>
@@ -664,13 +705,7 @@ function NotesTab() {
         rows="10"
         value=${editing ? draft : notes.text}
         placeholder="Write the plan here…"
-        onInput=${(event) => {
-            if (!editing) {
-                setBase(notes.rev);
-            }
-
-            setDraft(event.currentTarget.value);
-        }}
+        onInput=${(event) => setDraft(event.currentTarget.value, editing ? base : notes.rev)}
     ></textarea>
     <div class="row">
         <span class="muted small grow">
