@@ -23,6 +23,7 @@ import { findBrowser, profileFolder } from "../src/server/browser/discovery.ts";
 import {
     DOWNLOADS_UNUSABLE,
     downloadLines,
+    MAX_DOWNLOAD_BYTES,
     downloadName,
     nameDownload,
     saveDownloads,
@@ -39,6 +40,11 @@ let base = "";
 let shared = "";
 let bot = "";
 let page = 0;
+/** The first part of the `/slow` file: enough that the browser starts the download rather than waiting to see it. */
+const FIRST = "first ".repeat(1000);
+
+/** Ends the `/slow` file. */
+let finishSlow = () => {};
 
 before(async () => {
     if (chromium === undefined) {
@@ -57,9 +63,34 @@ before(async () => {
             return;
         }
 
+        // A file that says it is larger than a call may save, and sends a little of it.
+        if (request.url === "/huge") {
+            response.writeHead(200, {
+                "content-type": "application/octet-stream",
+                "content-disposition": 'attachment; filename="huge.bin"',
+                "content-length": String(MAX_DOWNLOAD_BYTES + 1),
+            });
+            response.write(Buffer.alloc(1024));
+
+            return;
+        }
+
+        // A file that comes in two parts: the second once the test lets it go.
+        if (request.url === "/slow") {
+            response.writeHead(200, {
+                "content-type": "application/octet-stream",
+                "content-disposition": 'attachment; filename="slow.txt"',
+                "content-length": String(FIRST.length + 5),
+            });
+            response.write(FIRST);
+            finishSlow = () => response.end("-last");
+
+            return;
+        }
+
         response.writeHead(200, { "content-type": "text/html" });
         response.end(
-            `<a id="get" href="/file">Get the statement</a> <a id="other" href="/other">Get the other one</a>`,
+            `<a id="get" href="/file">Get the statement</a> <a id="other" href="/other">Get the other one</a> <a id="huge" href="/huge">Get it all</a> <a id="slow" href="/slow">Get it slowly</a>`,
         );
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -99,13 +130,18 @@ async function until(check: () => boolean, what: string): Promise<void> {
 }
 
 /** Save the page's downloads since `after` into `folder`, as a call of the browser tool does. */
-const save = async (opened: Awaited<ReturnType<Browsers["open"]>>, folder: string, after = 0) =>
+const save = async (
+    opened: Awaited<ReturnType<Browsers["open"]>>,
+    folder: string,
+    after = 0,
+    startedAt = Date.now(),
+) =>
     saveDownloads(opened, {
         env: new NodeExecutionEnv({ cwd: bot }),
         folder,
         source: shared,
         after,
-        startedAt: Date.now(),
+        startedAt,
         context: BACKGROUND_CONTEXT,
     });
 
@@ -280,6 +316,46 @@ test("a download no call moved is deleted when its page closes", real, async () 
     assert.equal(readdirSync(shared).length, before.length + 1, "in the shared folder");
     await browsers.close(id);
     await until(() => readdirSync(shared).length === before.length, "the download deleted");
+});
+
+test(
+    "a download larger than a call may save is stopped, and nothing of it stays",
+    real,
+    async () => {
+        const before = readdirSync(shared);
+        const opened = await browsers.open(++page);
+        const folder = join(bot, "Huge");
+
+        await opened.navigate(base);
+        await opened.click({ selector: "#huge" });
+
+        assert.deepEqual((await save(opened, folder)).saved, [
+            { name: "huge.bin", error: "Not saved: larger than 100 MB." },
+        ]);
+        assert.deepEqual(readdirSync(folder), []);
+        await until(() => readdirSync(shared).length === before.length, "the download deleted");
+    },
+);
+
+test("a download still going when its call ends is moved once it is done", real, async () => {
+    const opened = await browsers.open(++page);
+    const folder = join(bot, "Slow");
+
+    await opened.navigate(base);
+    await opened.click({ selector: "#slow" });
+    await until(() => opened.downloads().length > 0, "the download to begin");
+
+    // A call whose time to wait is up: the file is told of under the name it will get.
+    const { saved } = await save(opened, folder, 0, 0);
+    const path = join(folder, "slow.txt");
+
+    assert.deepEqual(saved, [
+        { name: "slow.txt", path, size: saved[0]?.size, state: "downloading" },
+    ]);
+    assert.match(downloadLines(saved).join("\n"), /still downloading/);
+    finishSlow();
+    await until(() => readdirSync(folder).includes("slow.txt"), "the file moved");
+    assert.equal(readFileSync(path, "utf8"), `${FIRST}-last`);
 });
 
 test("two of the owner's downloads of one name named at once both stay", async () => {
