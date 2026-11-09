@@ -1067,6 +1067,25 @@ export class PocketApp {
         let sessionsChanged = false;
 
         let alreadyPaid = false;
+        // How each run in this commit stopped, read before the live document ends it: both land here, in either order.
+        const endedNow = new Map<ConversationId, { failure?: string } | "aborted">();
+
+        for (const change of publication.changes) {
+            if (change.type !== "submission" || change.value.status !== "unanswered") {
+                continue;
+            }
+
+            if (FAILED_RUN.has(change.value.reason)) {
+                endedNow.set(change.value.conversationId, {
+                    failure: cutWhole(
+                        whyUnanswered(change.value.reason, change.value.detail),
+                        FAILURE_TEXT,
+                    ),
+                });
+            } else if (change.value.reason === "aborted") {
+                endedNow.set(change.value.conversationId, "aborted");
+            }
+        }
 
         // A cache warm pays its captured person in the same commit as its usage, in either document order. A commit
         // with both documents has paid every usage change in it. Normal spend counts never change UsageDoc.
@@ -1110,7 +1129,7 @@ export class PocketApp {
 
         for (const change of publication.changes) {
             if (change.type === "document") {
-                if (this.#documentCommitted(change)) {
+                if (this.#documentCommitted(change, endedNow)) {
                     sessionsChanged = true;
                 }
             } else if (change.type === "submission") {
@@ -1175,7 +1194,10 @@ export class PocketApp {
     }
 
     /** A document changed: the views that show it update. True when the session list changed too. */
-    #documentCommitted(change: Extract<DocumentCommitChange, { type: "document" }>): boolean {
+    #documentCommitted(
+        change: Extract<DocumentCommitChange, { type: "document" }>,
+        endedNow: ReadonlyMap<ConversationId, { failure?: string } | "aborted">,
+    ): boolean {
         const kind = change.record.kind;
         const id = change.conversationId;
         // A retired document reads as none.
@@ -1222,6 +1244,23 @@ export class PocketApp {
                     // Read once this change is committed: inside its listener, the answer is not there yet.
                     if (this.#sessions[String(id)]?.bot !== undefined) {
                         setTimeout(() => void this.#readLastSaid(String(id)), 0);
+                    }
+
+                    // A linked session's lead hears how its run ended. It commits, so after this listener.
+                    if (this.#sessions[String(id)]?.linkedFrom !== undefined) {
+                        const how = endedNow.get(id);
+                        const failure =
+                            how === undefined || how === "aborted"
+                                ? this.#failed.get(id)
+                                : how.failure;
+                        const outcome =
+                            failure !== undefined
+                                ? "failed"
+                                : how === "aborted"
+                                  ? "aborted"
+                                  : "done";
+
+                        setImmediate(() => this.linkedSessions.runEnded(id, outcome, failure));
                     }
                 }
 
@@ -1352,8 +1391,12 @@ export class PocketApp {
             get retry() {
                 return safe(() => settings.getRetrySettings()) ?? {};
             },
+            // Every steer that waits goes in at once, so a queue of agents' messages and reports (linked sessions',
+            // subagents') costs one turn, not one each. Follow-ups keep Pi's one at a time: a bot answers each
+            // teammate's mail, and the owner each queued message, in a turn of its own. Pi's own setting, when the
+            // owner set one, still wins.
             get steeringMode() {
-                return safe(() => settings.getSteeringMode());
+                return safe(() => settings.getSettings().steeringMode) ?? "all";
             },
             get followUpMode() {
                 return safe(() => settings.getFollowUpMode());

@@ -164,6 +164,34 @@ export const SNAPSHOT_SCRIPT = String.raw`(() => {
 	return { lines: lines.join("\n"), truncated: full, controls: count, scrollY: Math.round(scrollY), scrollHeight: Math.round(scrolling.scrollHeight), innerHeight: Math.round(innerHeight) };
 })()`;
 
+/** Finds what Pi points at by ref, selector, or label, or says why nothing matches. Put into scripts. */
+const FIND_TARGET = String.raw`const findTarget = (target) => {
+		const valueOf = (el) => (el.tagName === "INPUT" && el.type === "password" ? "" : el.value);
+		let el = null;
+		if (target.ref) {
+			el = window.__piPocketRefs?.get(target.ref)?.deref() ?? null;
+			if (!el || !el.isConnected) throw new Error("No element " + target.ref + " on the page now: take a new snapshot.");
+		} else if (target.selector) {
+			el = document.querySelector(target.selector);
+			if (!el) throw new Error("Nothing matches the selector " + target.selector + ".");
+		} else if (target.label) {
+			const want = target.label.replace(/\s+/g, " ").trim().toLowerCase();
+			// A code field with no name of its own goes by the name snapshots give it.
+			const text = (each) => (each.getAttribute("aria-label") || each.innerText || valueOf(each) || each.getAttribute("placeholder") || each.getAttribute("title") || (each.tagName === "INPUT" && each.autocomplete === "one-time-code" ? "One-time code" : "")).replace(/\s+/g, " ").trim().toLowerCase();
+			const seen = (each) => each.getClientRects().length > 0 && getComputedStyle(each).visibility !== "hidden";
+			const controls = [...document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, label, [role], [onclick], [tabindex]')].filter(seen);
+			el = controls.find((each) => text(each) === want) ?? controls.find((each) => text(each).includes(want)) ?? null;
+			if (!el) {
+				const all = [...document.body.querySelectorAll("*")].filter((each) => each.children.length === 0 && seen(each) && text(each).includes(want));
+				el = all.find((each) => text(each) === want) ?? all[0] ?? null;
+			}
+			if (!el) throw new Error('Nothing on the page says "' + target.label + '".');
+			// A label stands for its field.
+			if (el.tagName === "LABEL" && el.control) el = el.control;
+		}
+		return el;
+	};`;
+
 /**
  * Finds what Pi points at, scrolls it into view, and returns its middle in screen coordinates (CSS pixels of the
  * visual viewport, which mouse events use), with a short description and what covers it, if anything.
@@ -176,28 +204,8 @@ export const LOCATE_SCRIPT = String.raw`(async (target) => {
 		const name = clip(el.getAttribute("aria-label") || el.innerText || valueOf(el) || el.getAttribute("placeholder") || el.getAttribute("title") || "", 60);
 		return el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (name ? ' "' + name + '"' : "");
 	};
-	let el = null;
-	if (target.ref) {
-		el = window.__piPocketRefs?.get(target.ref)?.deref() ?? null;
-		if (!el || !el.isConnected) throw new Error("No element " + target.ref + " on the page now: take a new snapshot.");
-	} else if (target.selector) {
-		el = document.querySelector(target.selector);
-		if (!el) throw new Error("Nothing matches the selector " + target.selector + ".");
-	} else if (target.label) {
-		const want = target.label.replace(/\s+/g, " ").trim().toLowerCase();
-		// A code field with no name of its own goes by the name snapshots give it.
-		const text = (each) => (each.getAttribute("aria-label") || each.innerText || valueOf(each) || each.getAttribute("placeholder") || each.getAttribute("title") || (each.tagName === "INPUT" && each.autocomplete === "one-time-code" ? "One-time code" : "")).replace(/\s+/g, " ").trim().toLowerCase();
-		const seen = (each) => each.getClientRects().length > 0 && getComputedStyle(each).visibility !== "hidden";
-		const controls = [...document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, label, [role], [onclick], [tabindex]')].filter(seen);
-		el = controls.find((each) => text(each) === want) ?? controls.find((each) => text(each).includes(want)) ?? null;
-		if (!el) {
-			const all = [...document.body.querySelectorAll("*")].filter((each) => each.children.length === 0 && seen(each) && text(each).includes(want));
-			el = all.find((each) => text(each) === want) ?? all[0] ?? null;
-		}
-		if (!el) throw new Error('Nothing on the page says "' + target.label + '".');
-		// A label stands for its field.
-		if (el.tagName === "LABEL" && el.control) el = el.control;
-	}
+	${FIND_TARGET}
+	const el = findTarget(target);
 	el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
 	await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
 	const box = el.getBoundingClientRect();
@@ -517,4 +525,214 @@ export const FILE_INPUT_SCRIPT = String.raw`((target) => {
 	if (!input) throw new Error("That is a " + el.tagName.toLowerCase() + ", not a file upload: use a ref listed under File uploads in the snapshot.");
 	if (input.disabled) throw new Error("That file upload is disabled.");
 	return input;
+})`;
+
+/**
+ * What pressing would buy (rakazo ade7100b2): a click on `target` (a ref, selector, label, or a point in screen
+ * coordinates), or with `key` Enter or Space on `target` or on what has focus. A press buys when it submits a form with
+ * card fields, when the control is worded as an order's last step (in English or Hebrew: "Pay now", "Place order",
+ * "Buy", "שלם"), or when it is a button on a page that shows card fields or a payment provider's card frame. Returns the
+ * top page's host and the purchase (why, the control's words, and the amount the control names or else the page's
+ * total), or `missing` when nothing is there to press. Nothing is pressed or scrolled.
+ */
+export const PURCHASE_SCRIPT = String.raw`((target, key) => {
+	${FIND_TARGET}
+	${DEEP_ACTIVE}
+	const site = location.host;
+	const visible = (el) => {
+		if (!(el instanceof Element)) return false;
+		const style = getComputedStyle(el);
+		if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+		const rect = el.getBoundingClientRect();
+		return rect.width > 0 && rect.height > 0;
+	};
+	const up = (el) => el.parentElement ?? (el.parentNode instanceof ShadowRoot ? el.parentNode.host : null);
+	const clean = (text) => String(text).replace(/\s+/g, " ").trim();
+	// Direction marks and no-break spaces read as spaces; zero-width characters, which split a word without showing, go.
+	const tidy = (text) => clean(String(text ?? "").replace(/[\u200E\u200F\u202A-\u202E\u00A0]/g, " ").replace(/[\u200B-\u200D\u2060-\u2064\uFEFF]/g, ""));
+	const CARD_TOKENS = ["cc-number", "cc-csc", "cc-exp", "cc-exp-month", "cc-exp-year"];
+	const CARD_NAMING = /card[\s_-]*(?:number|no\b|num\b)|cardnumber|cc[\s_-]*(?:num|number)|ccnum|(?<![a-z])(?:cvv2?|cvc2?|csc)(?![a-z])|card[\s_-]*(?:security|verification)|מספר[\s_-]*כרטיס|כרטיס[\s_-]*אשראי/i;
+	// A gift card, voucher, or coupon number is not the card that pays.
+	const NOT_A_CARD = /gift|voucher|coupon|promo|loyalty|rewards?\b|שובר|קופון|מתנה|הטבה/i;
+	const cardLike = (el) => {
+		if (!(el instanceof HTMLInputElement) || !["text", "tel", "number", "password"].includes(el.type) || !visible(el)) return false;
+		const tokens = (el.getAttribute("autocomplete") || "").toLowerCase().split(/\s+/);
+		if (CARD_TOKENS.some((token) => tokens.includes(token))) return true;
+		const naming = [el.name, el.id, el.placeholder, el.getAttribute("aria-label"), ...Array.from(el.labels || [], (label) => label.textContent)].join(" ");
+		return CARD_NAMING.test(naming) && !NOT_A_CARD.test(naming);
+	};
+	// Inputs of the page and of its open shadow trees, where some checkouts draw their card fields.
+	const deepInputs = (root = document, found = []) => {
+		for (const el of root.querySelectorAll("*")) {
+			if (el instanceof HTMLInputElement) found.push(el);
+			if (el.shadowRoot && found.length < 2000) deepInputs(el.shadowRoot, found);
+		}
+		return found;
+	};
+	const pageCards = () => deepInputs().some(cardLike);
+	// Stripe Elements, Braintree Hosted Fields, Shopify's card fields, and Adyen's secured fields: card frames.
+	const PROVIDERS = /^https:\/\/(?:js\.stripe\.com|assets\.braintreegateway\.com|checkout\.pci\.shopifyinc\.com|checkoutshopper-live(?:-(?:us|au|apse|in|nea))?\.adyen\.com)(?:[:/]|$)/;
+	const paymentFrame = () => [...document.querySelectorAll("iframe, frame")].some((el) => visible(el) && PROVIDERS.test(el.src || ""));
+	// What the control says, in each way it can: its text or value, what labels it, its aria label, its title.
+	const wordsOf = (el) => {
+		const root = el.getRootNode();
+		const named = (el.getAttribute("aria-labelledby") || "").trim().split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent || "").join(" ");
+		return [el instanceof HTMLInputElement ? el.value || el.getAttribute("alt") : el.innerText || el.textContent, named, el.getAttribute("aria-label"), el.getAttribute("title")].map(tidy).filter(Boolean);
+	};
+	// A phrase compares without its case, outer punctuation, or icons.
+	const phrase = (text) => text.toLowerCase().replace(/^[^\p{L}\p{N}$€£₪¥]+|[^\p{L}\p{N})]+$/gu, "");
+	const CURRENCY = "[$€£₪¥]|usd|eur|gbp|ils|nis";
+	const SPENDS = CURRENCY + "|\\d";
+	// An order's last step. Each starts the phrase, so "to checkout", "continue to payment", "add to cart", "pay later",
+	// and a lone "confirm" or "continue" are not last steps.
+	const FINAL_STEP = [
+		new RegExp("^(?:pay(?: securely)?(?: now)?|pay now securely|pay (?:with|using|by|via) .+|pay (?:" + SPENDS + ").*)$"),
+		/^make (?:a |the |my )?payment\b/,
+		new RegExp("^send (?:money|payment|funds|(?:" + CURRENCY + ")\\s?\\d.*)"),
+		/^confirm (?:the |your |my )?(?:transfer|payment|bid|purchase)\b/,
+		/^commit to buy\b/,
+		/^request to book\b/,
+		/^place (?:a |the |your |my )?bid\b/,
+		// "Buy", "Buy now", "Buy it", "Buy $5"; not "Buy gift cards".
+		new RegExp("^buy(?: now| it| this| it now)?$|^buy (?:" + SPENDS + ")"),
+		/^purchase\b(?! (?:history|orders?|details|options|agreement|terms))/,
+		/^place (?:your |my |the )?order\b/,
+		/^(?:complete|finish|finalize|confirm|submit|review and place) (?:your |my |the )?(?:order|purchase|booking|reservation|payment|checkout)\b/,
+		/^(?:confirm|agree|accept|authori[sz]e) (?:and|&) (?:pay|book|purchase|order)\b/,
+		/^authori[sz]e payment\b/,
+		/^(?:book|order|reserve) and pay\b/,
+		// "Book now" and "Order now" often only open a checkout: a last step when the words name an amount.
+		new RegExp("^(?:book|order|reserve) now\\b.*(?:" + SPENDS + ")"),
+		new RegExp("^(?:subscribe|donate|upgrade|start (?:my )?(?:free )?(?:trial|subscription)).*(?:" + SPENDS + ")"),
+		/^(?:שלם|שלמו|תשלום עכשיו|אישור (?:והזמנה|הזמנה|תשלום|רכישה|ותשלום)|ביצוע (?:הזמנה|תשלום|רכישה)|קנה|קנו|רכוש|רכשו)(?:\s|$)/,
+		// "הזמן" and "להזמנה" also open a booking page or a meeting: a last step with an amount.
+		new RegExp("^(?:הזמן|הזמינו|להזמנה)(?:\\s|$).*(?:" + SPENDS + ")"),
+	];
+	// "Pay bill", "Pay invoice": a last step only for a control that submits a form or sits in a card form, so a plan
+	// toggle such as "Pay monthly" asks nothing.
+	const PAY_WORD = /^pay (?!later\b|in\b|over\b|with\b)\S+$/;
+	const submittedForm = (el) => {
+		if (el instanceof HTMLButtonElement) return el.type === "submit" ? el.form : null;
+		if (el instanceof HTMLInputElement) return ["submit", "image"].includes(el.type) ? el.form : null;
+		return null;
+	};
+	const inPaymentForm = (el) => {
+		const form = el.form || el.closest("form");
+		return Boolean(form) && (submittedForm(el) !== null || [...form.elements].some(cardLike));
+	};
+	const isFinalStep = (words, el) => words.some((word) => FINAL_STEP.some((pattern) => pattern.test(phrase(word))) || (el && PAY_WORD.test(phrase(word)) && inPaymentForm(el)));
+	// Controls on a payment page that never pay.
+	const NOT_PAYING = /^(?:back|go back|previous|cancel|edit|change|remove|delete|clear|apply|redeem|coupon|promo|discount|gift card|show|hide|help|close|dismiss|terms|privacy|learn more|view|select (?:a )?seat|choose (?:a )?seat|sign in|log in|login|sign up|register|forgot|add (?:a )?(?:promo|coupon|code|gift|note)|add to (?:cart|basket|bag))\b|^(?:חזרה|ביטול|עריכה|שינוי|הסרה|קופון|סגירה|סגור|עזרה|תנאי|פרטיות|התחבר|כניסה|החל|הוסף לסל|הוספה לסל)(?:\s|$)/;
+	// A number may group its thousands with spaces, as in "1 234,56 €".
+	const NUMBER = "\\d(?:[\\d.,]|[ \\u00a0\\u202f](?=\\d{3}))*";
+	const MONEY = new RegExp("(?:[$€£₪¥]\\s?" + NUMBER + "|" + NUMBER + "\\s?(?:[$€£₪¥]|USD|EUR|GBP|ILS|NIS|ש\"ח|ש״ח)|(?:USD|EUR|GBP|ILS|NIS)\\s?" + NUMBER + ")", "gi");
+	const TOTAL = /(?<!sub)total|amount due|balance due|to pay|you pay|סה[״"'׳]?כ|סך[\s-]*הכל|לתשלום/i;
+	const moneyIn = (text, last) => {
+		const found = String(text).match(MONEY);
+		return found ? found[last ? found.length - 1 : 0].replace(/[.,\s]+$/, "").slice(0, 40) : "";
+	};
+	// The amount the page shows by its total, the last one when it shows several.
+	const totalShown = () => {
+		const lines = String(document.body?.innerText || "").split("\n").slice(0, 400);
+		let found = "";
+		lines.forEach((line, i) => {
+			if (!TOTAL.test(line.slice(0, 200))) return;
+			found = moneyIn(line.slice(0, 200), true) || moneyIn(lines[i + 1] || "", false) || found;
+		});
+		return found;
+	};
+	// Cookie notices and site menus come around every page; they are not the checkout.
+	const SURROUNDINGS = "header, nav, footer, aside, [role=banner], [role=navigation], [role=contentinfo], [role=complementary]";
+	const NOTICE = /cookie|consent|gdpr|onetrust/i;
+	const inSurroundings = (el) => {
+		if (el.closest(SURROUNDINGS) && !el.closest("main, [role=main], form")) return true;
+		for (let node = el; node && node !== document.body; node = node.parentElement) {
+			if (NOTICE.test(node.id + " " + (typeof node.className === "string" ? node.className : ""))) return true;
+		}
+		return false;
+	};
+	const isPlainLink = (el) => el.tagName === "A" && el.getAttribute("role") !== "button" && !el.hasAttribute("onclick") && !["", "#"].includes((el.getAttribute("href") || "").trim()) && !/^javascript:/i.test(el.getAttribute("href") || "");
+	const CONTROL_ROLES = ["button", "link", "menuitem", "tab", "option", "switch", "treeitem"];
+	const looksClickable = (el) => el.hasAttribute("onclick") || Number(el.getAttribute("tabindex") ?? NaN) >= 0 || CONTROL_ROLES.includes(el.getAttribute("role")) || (getComputedStyle(el).cursor === "pointer" && (!up(el) || getComputedStyle(up(el)).cursor !== "pointer"));
+	// A control that presses something, as opposed to a field, a choice, or a link to another page.
+	const pressable = (el) => {
+		const tag = el.tagName.toLowerCase();
+		if (tag === "button") return true;
+		if (tag === "input") return ["submit", "button", "image"].includes(el.type);
+		if (["select", "textarea", "summary", "label"].includes(tag) || el.isContentEditable) return false;
+		if (tag === "a") return !isPlainLink(el);
+		const role = el.getAttribute("role");
+		return role === "button" || (!role && looksClickable(el));
+	};
+	const cut = (text, max) => Array.from(text).slice(0, max).join("");
+	// What the card shows: the control's words, and the amount they name or else the page's total.
+	const shownPurchase = (reason, label, words = [label]) => {
+		const named = words.map((word) => moneyIn(word, false)).find(Boolean) || "";
+		return { reason, label: cut(label, 80), amount: named || totalShown(), amountFrom: named ? "button" : "page" };
+	};
+	const frame = paymentFrame();
+	const purchaseOf = (el) => {
+		const words = wordsOf(el);
+		const form = submittedForm(el);
+		let reason = null;
+		if (form && ([...form.elements].some(cardLike) || (frame && form.querySelector("iframe, frame")))) reason = "card_form";
+		else if (pressable(el) && isFinalStep(words, el)) reason = "final_step";
+		else if ((frame || pageCards()) && pressable(el) && !inSurroundings(el) && !words.some((word) => NOT_PAYING.test(phrase(word)))) reason = "payment_page";
+		return reason ? shownPurchase(reason, words[0] || "", words) : null;
+	};
+	const FIELD = "input:not([type=submit]):not([type=button]):not([type=image]):not([type=reset]), textarea, select, [contenteditable]";
+	// The control a press on this element presses, unless it lands on a field or nothing.
+	const pressedControl = (hit) => {
+		for (let node = hit; node && node !== document.documentElement; node = up(node)) {
+			// A click on a label presses its control: a submit button pays, a field or anything else does not.
+			if (node instanceof HTMLLabelElement) return node.control && !node.control.matches(FIELD) && pressable(node.control) ? node.control : null;
+			if (node.matches?.(FIELD)) return null;
+			if (pressable(node) || node.matches?.("a, button, input, [role=button]")) return node;
+		}
+		return null;
+	};
+	const FRAMES = ["IFRAME", "FRAME", "OBJECT", "EMBED"];
+	// A press inside a frame, whose page this one cannot read: it buys whenever this page shows a payment.
+	const anyPayment = () => {
+		const final = [...document.querySelectorAll("button, input, a, [role=button]")].find((el) => pressable(el) && visible(el) && !el.matches(":disabled") && isFinalStep(wordsOf(el), el));
+		return frame || pageCards() || final ? shownPurchase("payment_page", final ? wordsOf(final)[0] || "" : "") : null;
+	};
+	const at = (el) => {
+		if (FRAMES.includes(el.tagName)) return anyPayment();
+		const control = pressedControl(el);
+		return control && !control.matches(":disabled") ? purchaseOf(control) : null;
+	};
+	if (!key) {
+		let el = null;
+		if (typeof target.x === "number" && typeof target.y === "number") {
+			const view = window.visualViewport;
+			const scale = view?.scale ?? 1;
+			const x = target.x / scale + (view?.offsetLeft ?? 0);
+			const y = target.y / scale + (view?.offsetTop ?? 0);
+			el = document.elementFromPoint(x, y);
+			while (el?.shadowRoot?.elementFromPoint) {
+				const inner = el.shadowRoot.elementFromPoint(x, y);
+				if (!inner || inner === el) break;
+				el = inner;
+			}
+		} else {
+			try { el = findTarget(target); } catch { return { site, missing: true }; }
+		}
+		return el ? { site, purchase: at(el) } : { site, missing: true };
+	}
+	let active = deepActive();
+	if (target && (target.ref || target.selector || target.label)) {
+		try { active = findTarget(target); } catch { return { site, missing: true }; }
+	}
+	if (!active || active === document.body || active === document.documentElement) return { site, purchase: null };
+	if (FRAMES.includes(active.tagName)) return { site, purchase: anyPayment() };
+	// A key in a field submits only that field's form: one with card fields pays; Space in a field is only a space.
+	if (active.matches(FIELD)) {
+		if (key === "space") return { site, purchase: null };
+		const form = active.form;
+		const submit = form ? [...form.elements].find((el) => submittedForm(el) === form) : null;
+		if (form && [...form.elements].some(cardLike)) return { site, purchase: shownPurchase("card_form", submit ? wordsOf(submit)[0] || "" : "") };
+		return { site, purchase: submit ? purchaseOf(submit) : null };
+	}
+	return { site, purchase: at(active) };
 })`;
