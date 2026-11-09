@@ -6,6 +6,7 @@
  * What people ask of Pi lives in `commands.ts`, the people's side of a session in `collab.ts`, push notifications in
  * `alerts.ts`, provider sign-ins in `providers.ts`, and each conversation's shared live view in `room.ts`.
  */
+import { randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -359,6 +360,13 @@ export class PocketApp {
     readonly defaultCwd: string;
     readonly supervised: boolean;
     readonly startedAt = Date.now();
+    /**
+     * This run of the server, which sessions tabs keep (in memory or on the device) name (`have` in `web/store.js`):
+     * what one kept is good for this run only. Not a hash of the code, as Pi Pocket's is: entry ids start again in
+     * another data folder (a throwaway copy on the same address, a restored backup), so after a restart the same ids
+     * may be other entries. Sixteen hex digits.
+     */
+    readonly build = randomBytes(8).toString("hex");
     /** Set by the launcher over IPC; undefined when the server runs on its own. */
     access: AccessInfo | undefined;
     harness!: Harness;
@@ -1515,6 +1523,19 @@ export class PocketApp {
                 return;
             }
 
+            // The person's access can change while the room opens (`setAccess` evicts only tabs already there): asked
+            // again now, as nothing of the session has gone yet (pi-pocket 9e7e5439).
+            if (!this.canSee(client.user, id)) {
+                this.releaseRoom(room);
+                client.conversationId = undefined;
+                client.send("missing", {
+                    conversationId: id,
+                    message: "This session is no longer shared with you.",
+                });
+
+                return;
+            }
+
             room.keepOpen();
             room.clients.add(client);
             room.push(client, true);
@@ -2117,6 +2138,12 @@ export class PocketApp {
                 refreshModels: user.role === "owner",
                 // Tells the web app this server sends peek tiles (`POST /api/peeks`, `peek` events).
                 peeks: true,
+                // Sessions tabs keep are good for this run of the server (`have`).
+                build: this.build,
+                // Whether a browser may keep sessions on the device (IndexedDB), for every tab and across reloads:
+                // `PI_POCKET_SESSION_CACHE=off` keeps them in each tab's memory only, and has browsers drop what they
+                // kept on the device.
+                deviceCache: process.env.PI_POCKET_SESSION_CACHE !== "off",
                 // This server's clock: peek tiles compare the browser's looks with when runs ended here.
                 now: Date.now(),
                 // Collaboration features: 2 adds roles, take turns, reactions, pins, notes, mentions, and push.

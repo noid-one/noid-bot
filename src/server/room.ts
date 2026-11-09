@@ -64,6 +64,7 @@ import {
     turnStart,
 } from "./projection.ts";
 import { describeRepeat } from "./when.ts";
+import { fingerprint } from "../../web/text-hash.js";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -138,17 +139,27 @@ export interface Client {
     /** Entries this client has, so updates carry only new ones. */
     readonly sentEntries: Set<number>;
     orderKey: string;
+    /** How many ids the order this tab has holds (`orderKey`), for an update that sends only the ones after them. */
+    orderCount?: number;
     /** The JSON of each slow-changing view field this client last got, so updates repeat only those that changed. */
     sentFields?: Map<string, string>;
     /**
      * What the tab's code understands of updates (`PROTOCOL` in `web/store.js`): 2 keeps the queue an update leaves out;
      * 3 also takes the live message as what changed (`liveMessageDelta`); 4 also takes a full view with only the newest
-     * entries (`firstEntries`); 5 also takes them light at first (`lightEntry`), whole in the update after. A tab below
-     * 3 gets the whole live message with each update; older code, which names none, also gets the queue.
+     * entries (`firstEntries`); 5 also takes them light at first (`lightEntry`), whole in the update after; 6 names what
+     * it kept of the session (`have`) and takes the order as what comes after it (`orderFrom`). A tab below 3 gets the
+     * whole live message with each update; older code, which names none, also gets the queue.
      */
     readonly protocol?: number;
     /** The blocks of the live message this tab has, for protocol 3: undefined when it has none. */
     liveBlocks?: ClientBlock[];
+    /**
+     * What a tab of protocol 6 kept of the session it opens, from an earlier visit or before a reconnect (`have` in
+     * `web/store.js`): the first `count` ids of the order, which join to `key` (`fingerprint`), and the entries from
+     * `from` to `count` whole, as this run of the server (`PocketApp.build`) sent them. Its first full view
+     * (`Room.push`) then leaves those out, with that part of the order. Used once, then cleared.
+     */
+    have?: { from: number; count: number; key: string; build: string };
     /**
      * This connection, apart from others of the same tab id: a duplicated browser tab keeps the id, and a reconnect
      * briefly overlaps the old connection. Sent in `hello`; peek lists name it.
@@ -603,6 +614,8 @@ export class Room {
 
         const projected = this.#projectedEntries(view.entries);
         const order = projected.map((entry) => entry.id);
+        // What the tab kept from before, when it is what this server would send it: those entries count as sent.
+        const kept = full ? this.#kept(client, order) : 0;
         const from = full && (client.protocol ?? 1) >= 4 ? firstEntries(projected) : 0;
         const light = full && (client.protocol ?? 1) >= 5;
         const entries: ClientEntry[] = [];
@@ -643,8 +656,23 @@ export class Room {
 
         const orderKey = order.join(",");
         const orderChanged = orderKey !== client.orderKey;
+        // A tab of protocol 6 that has the start of the order gets the rest of it, with `orderFrom` where it goes on:
+        // what it kept (`have`), or, in an update, the order it had when entries were only added. A long session's order
+        // has thousands of ids, and every entry added sent them all again.
+        const goesOn =
+            kept > 0
+                ? kept
+                : !full &&
+                    (client.protocol ?? 1) >= 6 &&
+                    client.orderKey !== "" &&
+                    orderKey.startsWith(`${client.orderKey},`)
+                  ? (client.orderCount ?? 0)
+                  : 0;
+        const orderPart =
+            goesOn > 0 ? { order: order.slice(goesOn), orderFrom: goesOn } : { order };
 
         client.orderKey = orderKey;
+        client.orderCount = order.length;
         const agentState = (view.docs["pi.agent"] ?? {}) as AgentState;
         const inbox = (view.docs["pi.inbox"] ?? { items: [] }) as unknown as InboxState;
         // These grow with the session (authors has one item per message) but rarely change: streaming sends an update
@@ -741,7 +769,7 @@ export class Room {
             full,
             conversation: this.#app.conversationInfo(this),
             entries,
-            ...(orderChanged || full ? { order } : {}),
+            ...(orderChanged || full ? orderPart : {}),
             // Last, so that nothing that throws before the send leaves the server thinking the tab has these blocks.
             live: this.#liveFor(client, view.docs["pi.live"] as LiveState | undefined),
             agent: agentInfo(
@@ -754,6 +782,38 @@ export class Room {
             approvals: this.#app.approvals.forConversation(this.id),
             ...fields,
         });
+    }
+
+    /**
+     * How much of the order's start a tab kept (`Client.have`), with its entries from `have.from` on, which then count as
+     * sent: 0 when it kept nothing this server would send it now. Only entries this run of the server sent count (an
+     * entry's projection is this code's, and entry ids start again in another data folder), with an order that still
+     * starts with them (no compaction, rewind, or edit before their end since). An entry never changes once written, so
+     * the same id in the same run is the same entry. The rest goes as for any first view: the newest rows' entries the
+     * tab lacks, and what is new.
+     */
+    #kept(client: Client, order: readonly number[]): number {
+        const have = client.have;
+
+        client.have = undefined;
+
+        if (
+            have === undefined ||
+            (client.protocol ?? 1) < 6 ||
+            have.build !== this.#app.build ||
+            have.count <= 0 ||
+            have.count > order.length ||
+            have.from > have.count ||
+            fingerprint(order.slice(0, have.count).join(",")) !== have.key
+        ) {
+            return 0;
+        }
+
+        for (const id of order.slice(have.from, have.count)) {
+            client.sentEntries.add(id);
+        }
+
+        return have.count;
     }
 
     /** The active context's entries as tabs get them, oldest first; the ones tabs do not show are left out. */
