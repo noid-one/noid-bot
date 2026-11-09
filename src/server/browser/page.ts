@@ -174,6 +174,17 @@ function formatArg(arg: Json): string {
 
 export const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
+/** What a click or typing found, unless it is a disabled control: Pi hears that, not that it worked (rakazo b2983880a). */
+function enabled<T extends { label: string; disabled?: boolean }>(found: T): T {
+    if (found.disabled === true) {
+        throw new BrowserError(
+            `${found.label} is disabled, so nothing happened. Pick another control from a new snapshot.`,
+        );
+    }
+
+    return found;
+}
+
 function aborted(signal: AbortSignal | undefined): void {
     if (signal?.aborted) {
         throw new BrowserError("Stopped.");
@@ -1098,9 +1109,14 @@ export class BrowserPage {
     }
 
     /** Where a target is on screen, scrolled into view. */
-    async locate(
-        target: Target,
-    ): Promise<{ x: number; y: number; label: string; covered?: string; editable?: boolean }> {
+    async locate(target: Target): Promise<{
+        x: number;
+        y: number;
+        label: string;
+        covered?: string;
+        editable?: boolean;
+        disabled?: boolean;
+    }> {
         if (typeof target.x === "number" && typeof target.y === "number") {
             return {
                 x: target.x,
@@ -1127,7 +1143,7 @@ export class BrowserPage {
         options: { count?: number; signal?: AbortSignal } = {},
     ): Promise<{ label: string; covered?: string; navigated: boolean }> {
         this.usedAt = Date.now();
-        const found = await this.locate(target);
+        const found = enabled(await this.locate(target));
         const url = this.#url;
         const mark = this.#mark();
 
@@ -1175,7 +1191,7 @@ export class BrowserPage {
             target !== undefined &&
             (target.ref ?? target.selector ?? target.label ?? target.x) !== undefined
         ) {
-            const found = await this.locate(target);
+            const found = enabled(await this.locate(target));
 
             await this.#click({ x: found.x, y: found.y }, "left", 1);
             label = found.label;

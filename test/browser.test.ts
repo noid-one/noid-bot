@@ -214,6 +214,33 @@ test(
     },
 );
 
+test(
+    "a disabled control says so: a click, typing, or choice there did nothing (rakazo b2983880a)",
+    real,
+    async () => {
+        const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "disabled-")) });
+
+        try {
+            const page = await browsers.open(1);
+
+            await page.navigate(`${base}/`);
+            await page.evaluate(
+                `document.body.innerHTML = '<button id="off" disabled onclick="window.hit = 1">Pay</button><div role="button" id="aria" aria-disabled="true">Next</div><fieldset disabled><input id="inside"></fieldset><select id="pick" disabled><option>a</option><option>b</option></select><button id="on" onclick="window.hit = 2">Go</button>'; 1`,
+            );
+            await assert.rejects(page.click({ selector: "#off" }), /button#off "Pay" is disabled/);
+            await assert.rejects(page.click({ selector: "#aria" }), /is disabled/);
+            await assert.rejects(page.type({ selector: "#inside" }, "words"), /is disabled/);
+            await assert.rejects(page.select({ selector: "#pick" }, "b"), /select is disabled/);
+            assert.equal(await page.evaluate("String(window.hit)"), "undefined");
+            // One that is not still works.
+            await page.click({ selector: "#on" });
+            assert.equal(await page.evaluate("String(window.hit)"), "2");
+        } finally {
+            await browsers.closeAll({ final: true });
+        }
+    },
+);
+
 test("a password field's value is never part of what describes or finds it", real, async () => {
     const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "password-")) });
 

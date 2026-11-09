@@ -208,7 +208,9 @@ export const LOCATE_SCRIPT = String.raw`(async (target) => {
 	const covered = hit && hit !== el && !el.contains(hit) && !hit.contains(el) ? describe(hit) : undefined;
 	const view = window.visualViewport;
 	const scale = view?.scale ?? 1;
-	return { x: (x - (view?.offsetLeft ?? 0)) * scale, y: (y - (view?.offsetTop ?? 0)) * scale, label: describe(el), covered, editable: el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) };
+	// A disabled control takes no click or typing: the page would do nothing, while Pi heard it worked (rakazo b2983880a).
+	const disabled = el.matches(":disabled") || el.closest('[aria-disabled="true"]') !== null;
+	return { x: (x - (view?.offsetLeft ?? 0)) * scale, y: (y - (view?.offsetTop ?? 0)) * scale, label: describe(el), covered, editable: el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName), disabled };
 })`;
 
 /** The focused element, inside web components too (their shadow roots keep their own focus). Put into scripts. */
@@ -470,6 +472,7 @@ export const SELECT_OPTION_SCRIPT = String.raw`((target, wanted) => {
 	const el = target.ref ? window.__piPocketRefs?.get(target.ref)?.deref() : target.selector ? document.querySelector(target.selector) : document.activeElement;
 	if (!el) throw new Error("No such element: take a new snapshot.");
 	if (el.tagName !== "SELECT") throw new Error("That is a " + el.tagName.toLowerCase() + ", not a select element: click it instead.");
+	if (el.matches(":disabled") || el.closest('[aria-disabled="true"]') !== null) throw new Error("That select is disabled, so nothing changed. Pick another control from a new snapshot.");
 	const want = String(wanted).trim().toLowerCase();
 	const option = [...el.options].find((each) => each.value === wanted) ?? [...el.options].find((each) => each.text.trim().toLowerCase() === want) ?? [...el.options].find((each) => each.text.toLowerCase().includes(want));
 	if (!option) throw new Error('No option "' + wanted + '". Options: ' + [...el.options].map((each) => each.text.trim()).join(" | "));
