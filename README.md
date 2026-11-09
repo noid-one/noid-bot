@@ -97,14 +97,17 @@ The full tour is in [docs/features.md](docs/features.md). [FORK.md](FORK.md) lis
 
 Choose a mode in the launcher, or pass `--access`:
 
-| Mode         | Who can connect      | Notes                                                                                               |
-| ------------ | -------------------- | --------------------------------------------------------------------------------------------------- |
-| `local`      | This machine         | Listens on `127.0.0.1`                                                                              |
-| `lan`        | Your local network   | All addresses, plain http                                                                           |
-| `cloudflare` | Anyone with the link | Free quick tunnel with https, no account needed. The address changes each time the launcher starts. |
-| `tailscale`  | Your tailnet         | Tailscale address only, encrypted by the tailnet                                                    |
+| Mode              | Who can connect      | Notes                                                                                               |
+| ----------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
+| `local`           | This machine         | Listens on `127.0.0.1`                                                                              |
+| `lan`             | Your local network   | All addresses, plain http                                                                           |
+| `cloudflare`      | Anyone with the link | Free quick tunnel with https, no account needed. The address changes each time the launcher starts. |
+| `tailscale`       | Your tailnet         | Plain http on the tailnet address, encrypted by the tailnet                                         |
+| `tailscale-serve` | Your tailnet         | https at the machine's tailnet name, through `tailscale serve`; needs `tailscale` 1.52 or newer     |
 
-Cloudflare mode needs `cloudflared`; on Linux the launcher can download the official release into `~/.noid/bin`. To use another tunnel (ngrok, `tailscale serve`), choose `local` and point the tunnel at port 8787.
+Cloudflare mode needs `cloudflared`; on Linux the launcher can download the official release into `~/.noid/bin`. To use another tunnel (ngrok), choose `local` and point the tunnel at port 8787.
+
+`tailscale-serve` needs the `tailscale` command on your `PATH`, signed in, with MagicDNS and HTTPS certificates enabled in the tailnet. The server stays on `127.0.0.1`, and the launcher mounts it at `/` on port 443 of the machine's tailnet name (`https://<machine>.<tailnet>.ts.net`). Notifications, dictation, and the home-screen app need https, so this is the Tailscale mode to pick for them. A mount of noid's already there is reused, and a server restart keeps it; quitting the launcher takes it down. It never replaces another mount on 443, and it refuses while Funnel is on there. On Linux, a user who is not root runs `sudo tailscale set --operator=$USER` once. Without the command the launcher stops with an install hint instead of falling back to this device only. `--host` cannot go with it.
 
 > [!WARNING]
 > Bots and anyone with steering rights can make the agent run commands on this machine, as you. That reaches everything you can: your files, noid's own settings and sign-in tokens, and its code. The shared computer's browser holds every bot's logins. Invite only people you would trust at your keyboard. View-only users cannot make Pi act. See [SECURITY.md](SECURITY.md).
@@ -138,7 +141,7 @@ Environment variables:
 | Path                     | Role                                                                                                                 |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `bin/pi-pocket.js`       | Entry point: checks the Node version, starts the launcher                                                            |
-| `src/launcher/`          | Access menu, server supervisor, Cloudflare tunnel, keys, QR code                                                     |
+| `src/launcher/`          | Access menu, server supervisor, Cloudflare tunnel, Tailscale Serve, keys, QR code                                    |
 | `src/server/app.ts`      | The core: the durable harness over `pocket.sqlite`, the coordinator every commit goes through, access, sessions      |
 | `src/server/noid/`       | noid's own parts: bots, the shared computer, approvals and auto review, bot mail, groups, desktop, terminal, teach   |
 | `src/server/extensions/` | Live-reloaded extensions: system prompt, artifacts, browser, subagents, schedules, session tools, codemode, and more |

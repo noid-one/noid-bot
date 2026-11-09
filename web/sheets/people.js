@@ -226,7 +226,7 @@ export function InviteSheet({ session = null }) {
                     ${
                         invite.local &&
                         html`<div class="muted small invite-note">
-                            This link only works on this device. To let other devices in, press <span class="mono">a</span> in the noid terminal (or start it with <span class="mono">--access</span>) and pick Local network, Cloudflare Tunnel, or Tailscale. Then make a new invite.
+                            This link only works on this device. To let other devices in, press <span class="mono">a</span> in the noid terminal (or start it with <span class="mono">--access</span>) and pick Local network, Cloudflare Tunnel, Tailscale, or Tailscale Serve. Then make a new invite.
                         </div>`
                     }
                     <div class="invite-details">

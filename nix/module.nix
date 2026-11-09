@@ -68,11 +68,15 @@ in
         "lan"
         "cloudflare"
         "tailscale"
+        "tailscale-serve"
       ];
       default = "local";
       description = ''
-        Access mode: loopback only, LAN, a Cloudflare quick tunnel, or Tailscale.
+        Access mode: loopback only, LAN, a Cloudflare quick tunnel, Tailscale, or Tailscale Serve.
         Tailscale mode requires Tailscale to be connected separately.
+        Tailscale Serve needs pkgs.tailscale in extraPackages (the module does not add it), HTTPS
+        certificates enabled in the tailnet, and either root or
+        `sudo tailscale set --operator=<service user>`.
       '';
     };
 
@@ -177,6 +181,12 @@ in
       {
         assertion = lib.length (lib.unique extensionNames) == lib.length extensionNames;
         message = "services.pi-pocket.extensions must have distinct filenames.";
+      }
+      {
+        # The launcher refuses `--access tailscale-serve --host`: tailscaled proxies to loopback, so an address of its
+        # own would contradict the mode the panel shows. Catch that at evaluation, not on the next start.
+        assertion = !(cfg.access == "tailscale-serve" && cfg.host != null);
+        message = "services.pi-pocket.host must be null when access is \"tailscale-serve\".";
       }
     ];
 
