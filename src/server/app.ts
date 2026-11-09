@@ -565,6 +565,7 @@ export class PocketApp {
                               ),
                           hold: () => this.computer.hold(),
                           downloadPath: `${COMPUTER_HOME}/shared/downloads`,
+                          downloadFiles: () => this.computer.env(COMPUTER_HOME),
                           tabs: true,
                       }
                     : {

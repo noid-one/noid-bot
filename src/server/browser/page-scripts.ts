@@ -528,12 +528,12 @@ export const FILE_INPUT_SCRIPT = String.raw`((target) => {
 })`;
 
 /**
- * What pressing would buy (rakazo ade7100b2): a click on `target` (a ref, selector, label, or a point in screen
- * coordinates), or with `key` Enter or Space on `target` or on what has focus. A press buys when it submits a form with
+ * What pressing would buy (rakazo ade7100b2): a click at `target`, a point in screen coordinates (whatever is drawn
+ * there gets the click), or with `key` Enter or Space on `target` (a ref, selector, or label) or on what has focus. A press buys when it submits a form with
  * card fields, when the control is worded as an order's last step (in English or Hebrew: "Pay now", "Place order",
  * "Buy", "שלם"), or when it is a button on a page that shows card fields or a payment provider's card frame. Returns the
  * top page's host and the purchase (why, the control's words, and the amount the control names or else the page's
- * total), or `missing` when nothing is there to press. Nothing is pressed or scrolled.
+ * total), or none when nothing there buys. Nothing is pressed or scrolled.
  */
 export const PURCHASE_SCRIPT = String.raw`((target, key) => {
 	${FIND_TARGET}
@@ -703,26 +703,21 @@ export const PURCHASE_SCRIPT = String.raw`((target, key) => {
 		return control && !control.matches(":disabled") ? purchaseOf(control) : null;
 	};
 	if (!key) {
-		let el = null;
-		if (typeof target.x === "number" && typeof target.y === "number") {
-			const view = window.visualViewport;
-			const scale = view?.scale ?? 1;
-			const x = target.x / scale + (view?.offsetLeft ?? 0);
-			const y = target.y / scale + (view?.offsetTop ?? 0);
-			el = document.elementFromPoint(x, y);
-			while (el?.shadowRoot?.elementFromPoint) {
-				const inner = el.shadowRoot.elementFromPoint(x, y);
-				if (!inner || inner === el) break;
-				el = inner;
-			}
-		} else {
-			try { el = findTarget(target); } catch { return { site, missing: true }; }
+		const view = window.visualViewport;
+		const scale = view?.scale ?? 1;
+		const x = target.x / scale + (view?.offsetLeft ?? 0);
+		const y = target.y / scale + (view?.offsetTop ?? 0);
+		let el = document.elementFromPoint(x, y);
+		while (el?.shadowRoot?.elementFromPoint) {
+			const inner = el.shadowRoot.elementFromPoint(x, y);
+			if (!inner || inner === el) break;
+			el = inner;
 		}
-		return el ? { site, purchase: at(el) } : { site, missing: true };
+		return { site, purchase: el ? at(el) : null };
 	}
 	let active = deepActive();
 	if (target && (target.ref || target.selector || target.label)) {
-		try { active = findTarget(target); } catch { return { site, missing: true }; }
+		try { active = findTarget(target); } catch { return { site, purchase: null }; }
 	}
 	if (!active || active === document.body || active === document.documentElement) return { site, purchase: null };
 	if (FRAMES.includes(active.tagName)) return { site, purchase: anyPayment() };

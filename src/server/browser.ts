@@ -9,7 +9,10 @@
  * conversations. Pages are memory only: a restart closes them, and each conversation's last address and size come back
  * from its saved state when its page is next opened.
  */
+import { posix } from "node:path";
+import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { BrowserError, Chromium } from "./browser/cdp.ts";
+import { discardDownload, nameDownload } from "./browser/downloads.ts";
 import { findBrowser, profileFolder } from "./browser/discovery.ts";
 import { BrowserPage, type BrowserState, type Saved, wait } from "./browser/page.ts";
 import { type Viewport, VIEWPORTS, viewportFrom } from "./browser/viewport.ts";
@@ -47,7 +50,13 @@ export interface BrowsersOptions {
         claims(conversationId: number): boolean;
         launch(): Promise<Chromium>;
         hold?(): () => void;
+        /** Where the browser saves downloads, each under its guid; none: it saves none. */
         downloadPath?: string;
+        /**
+         * The files where `downloadPath` is: a download no page here began (the owner's own) is renamed there to the
+         * name its site gave it, and a page's download whose page is gone is deleted.
+         */
+        downloadFiles?(): ExecutionEnv;
         /**
          * Pages as background tabs of a browser people use too (the computer's desktop browser, the owner's own
          * Chrome), not windows of their own: a window would pop up over theirs. Such a page is the window's own size.
@@ -72,6 +81,11 @@ export class Browsers {
      * they are closed then, or they would pile up there.
      */
     readonly #remoteTabs = new Set<string>();
+    /**
+     * noid: the shared browser's downloads still going, by guid: the name the site gave, and whether a page here
+     * (a bot's) began it, as its own events say.
+     */
+    readonly #downloading = new Map<string, { name: string; page: boolean }>();
     #remoteIdleSince = Date.now();
     readonly #pages = new Map<number, BrowserPage>();
     readonly #opening = new Map<number, Promise<BrowserPage>>();
@@ -175,13 +189,27 @@ export class Browsers {
     /** Route the browser's target events to its own pages: windows of the shared browser, or pages here. */
     #routeTargets(chromium: Chromium, shared: boolean): void {
         chromium.connection.onEvent = (method, params) => {
+            // noid: every download of the shared browser, a page's or not.
+            if (method === "Browser.downloadWillBegin") {
+                this.#downloading.set(String(params.guid), {
+                    name: String(params.suggestedFilename ?? ""),
+                    page: false,
+                });
+
+                return;
+            }
+
             // noid: where a page's download went, which only the browser says.
             if (method === "Browser.downloadProgress") {
+                let paged = false;
+
                 for (const page of this.#pages.values()) {
-                    if (page.shared === shared) {
-                        page.downloadEvent(params);
+                    if (page.shared === shared && page.downloadEvent(params)) {
+                        paged = true;
                     }
                 }
+
+                this.#downloadDone(params, paged);
 
                 return;
             }
@@ -211,6 +239,43 @@ export class Browsers {
                 }
             }
         };
+    }
+
+    /**
+     * noid: the shared browser saves each download under its guid, so two of the same name never meet. A page's (a
+     * bot's) is its calls' to move into the bot's folder, or to delete; one whose page is gone is deleted here, and one
+     * no page began (the owner's own) gets the name its site gave it.
+     */
+    #downloadDone(params: Record<string, unknown>, paged: boolean): void {
+        const guid = String(params.guid);
+        const download = this.#downloading.get(guid);
+
+        if (download === undefined) {
+            return;
+        }
+
+        download.page ||= paged;
+
+        if (params.state !== "completed" && params.state !== "canceled") {
+            return;
+        }
+
+        this.#downloading.delete(guid);
+        const folder = this.#options.remote?.downloadPath;
+        const files = this.#options.remote?.downloadFiles?.();
+
+        if (params.state === "canceled" || paged || folder === undefined || files === undefined) {
+            return;
+        }
+
+        const path =
+            typeof params.filePath === "string" && params.filePath !== ""
+                ? params.filePath
+                : posix.join(folder, guid);
+
+        void (download.page
+            ? discardDownload(files, path)
+            : nameDownload(files, path, download.name));
     }
 
     /** noid: the shared computer's browser, started (with its computer) if it is not running. */
@@ -249,6 +314,8 @@ export class Browsers {
                     this.#remote = undefined;
                 }
 
+                this.#downloading.clear();
+
                 release();
 
                 for (const page of this.#pages.values()) {
@@ -279,7 +346,8 @@ export class Browsers {
                     remote.downloadPath === undefined
                         ? { behavior: "deny" }
                         : {
-                              behavior: "allow",
+                              // Each download under its guid: one never writes over another of the same name.
+                              behavior: "allowAndName",
                               downloadPath: remote.downloadPath,
                               // A bot's page says what it downloaded, for its call to move it to the bot's folder.
                               eventsEnabled: true,
@@ -544,6 +612,7 @@ export class Browsers {
 
         // A window of the shared browser closes alone: its context holds every bot's logins.
         if (page.shared) {
+            this.#dropDownloads(page);
             this.#remoteIdleSince = Date.now();
             const remote = await this.#remote?.catch(() => undefined);
 
@@ -559,6 +628,30 @@ export class Browsers {
         await chromium?.connection
             .send("Target.disposeBrowserContext", { browserContextId: page.contextId })
             .catch(() => {});
+    }
+
+    /**
+     * noid: a closed page's downloads no call will move: the finished ones its calls did not tell of are deleted, and
+     * those still going are deleted once they finish (`#downloadDone`).
+     */
+    #dropDownloads(page: BrowserPage): void {
+        const folder = this.#options.remote?.downloadPath;
+        const files = this.#options.remote?.downloadFiles?.();
+
+        for (const download of page.downloads()) {
+            const going = this.#downloading.get(download.guid);
+
+            if (going !== undefined) {
+                going.page = true;
+            } else if (
+                download.state === "completed" &&
+                download.seq > page.downloadsTold &&
+                folder !== undefined &&
+                files !== undefined
+            ) {
+                void discardDownload(files, download.path ?? posix.join(folder, download.guid));
+            }
+        }
     }
 
     #reap(): void {

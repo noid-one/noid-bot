@@ -1,7 +1,8 @@
 /**
  * noid: the files a bot's page downloads, moved from the shared browser's downloads folder into the bot's own
  * Downloads folder, so the call that downloaded them can say where each one is (after rakazo 5c99a28d4). The shared
- * browser saves every download in one folder, people's own too; a bot's page tells its downloads apart by their page.
+ * browser saves every download in one folder, people's own too, each under its guid so none writes over another; a
+ * bot's page tells its downloads apart by their page. One a bot's call does not place is deleted, not left there.
  */
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -127,8 +128,39 @@ async function place(
     return { name: chosen, size: info.value.size };
 }
 
+/** Where the browser saved a download: under its guid (`allowAndName`), so no two downloads share a file. */
 const sourceOf = (download: PageDownload, source: string) =>
-    download.path ?? posix.join(source, download.name);
+    download.path ?? posix.join(source, download.guid);
+
+/** Delete a bot's download that is not placed from the shared folder, where every bot could read it. */
+export async function discardDownload(
+    env: ExecutionEnv,
+    path: string,
+    context: Context = BACKGROUND_CONTEXT,
+): Promise<void> {
+    await env.remove(path, { force: true }, context).catch(() => {});
+}
+
+/**
+ * noid: a download that is no page's of Pi's (the owner's own, on the computer's desktop) under the name the site gave
+ * it, made safe as a bot's is (bots read the shared folder): the browser saved it under its guid. A name taken gets
+ * ` (1)` and so on. One that cannot be renamed stays as it is.
+ */
+export async function nameDownload(
+    env: ExecutionEnv,
+    from: string,
+    name: string,
+    context: Context = BACKGROUND_CONTEXT,
+): Promise<void> {
+    const folder = posix.dirname(from);
+    const chosen = await freeName(env, folder, downloadName(name), new Set(), context).catch(
+        () => undefined,
+    );
+
+    if (chosen !== undefined) {
+        await env.renameFile(from, posix.join(folder, chosen), context).catch(() => {});
+    }
+}
 
 /** Why a download is to be stopped: past the call's count, or too large. */
 function overLimit(download: PageDownload, index: number): string | undefined {
@@ -203,15 +235,27 @@ export async function saveDownloads(
     const saved: SavedDownload[] = [];
     const later: { download: PageDownload; name: string }[] = [];
 
+    // Every download this call does not place or leave to `finishLater` is deleted from the shared folder: one stopped
+    // may have finished before the browser was told to stop it. A canceled one the browser deleted itself.
+    const drop = async (download: PageDownload) => {
+        if (download.state === "inProgress") {
+            await page.cancelDownload(download.guid);
+        } else if (download.state === "completed") {
+            await discardDownload(env, sourceOf(download, source), context);
+        }
+    };
+
     for (const download of downloads.slice(0, MAX_DOWNLOADS)) {
         const name = downloadName(download.name);
 
         if (!ready) {
+            await drop(download);
             saved.push({ name, error: DOWNLOADS_UNUSABLE });
             continue;
         }
 
         if (stopped.has(download.guid) || download.state === "canceled") {
+            await drop(download);
             saved.push({ name, error: stopped.get(download.guid) ?? DOWNLOAD_FAILED });
             continue;
         }
@@ -247,8 +291,13 @@ export async function saveDownloads(
                 size: placed.size,
             });
         } catch {
+            await drop(download);
             saved.push({ name, error: DOWNLOAD_FAILED });
         }
+    }
+
+    for (const download of downloads.slice(MAX_DOWNLOADS)) {
+        await drop(download);
     }
 
     if (downloads.length > MAX_DOWNLOADS) {
@@ -265,7 +314,10 @@ export async function saveDownloads(
     return { saved, seq };
 }
 
-/** Move the downloads still going when their call ended once the browser finishes them; one too large is stopped. */
+/**
+ * Move the downloads still going when their call ended once the browser finishes them; one too large is stopped. One
+ * not placed (it failed, or this gave up on it) is stopped or deleted: it is not left in the shared folder.
+ */
 async function finishLater(
     page: BrowserPage,
     pending: { download: PageDownload; name: string }[],
@@ -273,31 +325,53 @@ async function finishLater(
 ): Promise<void> {
     const until = Date.now() + FINISH_LATER_MS;
     const left = [...pending];
+    const current = (item: { download: PageDownload }) =>
+        page.downloads(item.download.seq - 1).find((each) => each.guid === item.download.guid);
 
     while (left.length > 0 && Date.now() < until && !page.closed) {
         await page.downloadChange(5000);
 
         for (const item of [...left]) {
-            const now = page
-                .downloads(item.download.seq - 1)
-                .find((each) => each.guid === item.download.guid);
+            const now = current(item);
 
             if (now === undefined || now.state === "canceled") {
                 left.splice(left.indexOf(item), 1);
             } else if (overLimit(now, 0) !== undefined) {
                 left.splice(left.indexOf(item), 1);
-                void page.cancelDownload(now.guid);
+                await page.cancelDownload(now.guid);
+
+                // Finished before it was stopped: the browser deletes only what is still downloading.
+                if (now.state === "completed") {
+                    await discardDownload(
+                        options.env,
+                        sourceOf(now, options.source),
+                        BACKGROUND_CONTEXT,
+                    );
+                }
             } else if (now.state === "completed") {
                 left.splice(left.indexOf(item), 1);
+                const from = sourceOf(now, options.source);
+
                 await place(
                     options.env,
-                    sourceOf(now, options.source),
+                    from,
                     options.folder,
                     item.name,
                     new Set(),
                     BACKGROUND_CONTEXT,
-                ).catch(() => {});
+                ).catch(() => discardDownload(options.env, from, BACKGROUND_CONTEXT));
             }
+        }
+    }
+
+    // Given up on: out of time, or the page closed (the shared browser deletes one that finishes after that).
+    for (const item of left) {
+        const now = current(item) ?? item.download;
+
+        if (now.state === "inProgress") {
+            await page.cancelDownload(now.guid);
+        } else if (now.state === "completed") {
+            await discardDownload(options.env, sourceOf(now, options.source), BACKGROUND_CONTEXT);
         }
     }
 }
