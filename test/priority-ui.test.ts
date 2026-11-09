@@ -387,3 +387,38 @@ test("an open session that gets a call and has it answered leaves Needs you", re
     await answer;
     await gone(rowIn("needs", id), "the row, out of Needs you");
 });
+
+test(
+    "a session whose linked sessions work is in Working, and its square says so (pi-pocket 71416647)",
+    real,
+    async () => {
+        const lead = await newSession(app);
+        const member = await newSession(app);
+        const deeper = await newSession(app);
+
+        await click('.sidebar .session-tabs [data-tab="priority"]');
+        await present(`.sidebar .session-row[data-id="${lead}"]`, "the lead's row");
+        // The list as the server sends it while a teammate two links down works: the lead waits for their reports.
+        await page.evaluate(`
+        const { store } = await import("/store.js");
+
+        store.set((state) => ({
+            sessions: state.sessions.map((session) =>
+                session.id === ${Number(member)}
+                    ? { ...session, linkedFrom: { id: ${Number(lead)} } }
+                    : session.id === ${Number(deeper)}
+                      ? { ...session, linkedFrom: { id: ${Number(member)} }, busy: true }
+                      : session,
+            ),
+        }));
+    `);
+        await present(rowIn("working", lead), "the lead in Working");
+        assert.equal(
+            await inPage<string | null>(
+                `return JSON.stringify(document.querySelector('${rowIn("working", lead)} [data-part="session-mark"]')?.getAttribute("aria-label") ?? null)`,
+            ),
+            "Its linked sessions are working",
+        );
+        assert.ok(await exists(rowIn("working", member)), "the one between too");
+    },
+);

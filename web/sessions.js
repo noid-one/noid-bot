@@ -331,6 +331,48 @@ function needsYouCount(sessions = store.state.sessions, state = store.state) {
     );
 }
 
+/** Whether Pi works in a session itself: a run, or its subagents. */
+function atWork(session) {
+    const counts = session.subagents ?? {};
+
+    return session.busy || (counts.working ?? 0) + (counts.waiting ?? 0) > 0;
+}
+
+const teams = new WeakMap();
+
+/**
+ * The sessions whose linked sessions, at any depth, are at work: one that started them waits for their reports, so it
+ * is at work too, though nothing runs in it until they answer (pi-pocket 71416647). Once per list of sessions.
+ */
+function linkedAtWork(sessions = store.state.sessions) {
+    let team = teams.get(sessions);
+
+    if (team !== undefined) {
+        return team;
+    }
+
+    const byId = new Map(sessions.map((session) => [session.id, session]));
+
+    team = new Set();
+
+    for (const session of sessions) {
+        if (session.archived || !atWork(session)) {
+            continue;
+        }
+
+        let parent = session.linkedFrom?.id;
+
+        while (parent !== undefined && !team.has(parent)) {
+            team.add(parent);
+            parent = byId.get(parent)?.linkedFrom?.id;
+        }
+    }
+
+    teams.set(sessions, team);
+
+    return team;
+}
+
 /** Where a session goes in Priority: `needs`, `ready` (to read), `working`, or `quiet`. The first that holds wins. */
 function slotOf(session, { state, collabs, answered }) {
     const need = needOf(session, state);
@@ -351,9 +393,7 @@ function slotOf(session, { state, collabs, answered }) {
         return "ready";
     }
 
-    const counts = session.subagents ?? {};
-
-    return session.busy || (counts.working ?? 0) + (counts.waiting ?? 0) > 0 ? "working" : "quiet";
+    return atWork(session) || linkedAtWork(state.sessions).has(session.id) ? "working" : "quiet";
 }
 
 /** The order of Needs you: calls waiting longest first, then failed runs, then failed subagents, newest first. */
@@ -573,7 +613,7 @@ export function selectFromList(id) {
 
 /**
  * The square at the start of a session's row: its folder's color, in the shape of where the session is. The first that
- * holds wins: a call waiting for you, Pi or its subagents at work, a failed run (solid while new, drawn once seen),
+ * holds wins: a call waiting for you, Pi or its subagents at work, or its linked sessions, a failed run (solid while new, drawn once seen),
  * finished since this browser last looked or marked unread (solid), and read or never run (hollow).
  */
 function stateMark(session, working, marked) {
@@ -585,6 +625,10 @@ function stateMark(session, working, marked) {
 
     if (session.busy || working) {
         return { shape: "working", label: "Working" };
+    }
+
+    if (linkedAtWork().has(session.id)) {
+        return { shape: "working", label: "Its linked sessions are working" };
     }
 
     if (session.failed) {
