@@ -432,6 +432,8 @@ function loopback(port: number): string {
 function runTailscale(binary: string, args: string[], timeout = TIMEOUT_MS): Run {
     const result = spawnSync(binary, args, {
         timeout,
+        // `status --json` lists every peer: a large tailnet passes the 1 MiB default.
+        maxBuffer: 64 * 1024 * 1024,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
     });

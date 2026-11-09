@@ -836,6 +836,11 @@ async function changeAccess(): Promise<void> {
         }
 
         if (next === "tailscale-serve" && !prepareServe()) {
+            // prepareServe() saved the serve choice before it tried; the mode that still runs is the one to keep.
+            if (state.mode !== "custom") {
+                saveSettings(state.mode);
+            }
+
             return;
         }
 
