@@ -177,17 +177,21 @@ function endSend(id, was, went) {
 
 /**
  * Run `run`, a slash command or `!` command of conversation `id`, as a message on its way: Send waits for it, also
- * when that conversation's box changes meanwhile (an upload ending) or is shown again after a switch.
+ * when that conversation's box changes meanwhile (an upload ending) or is shown again after a switch. Once it went,
+ * its words leave the draft as a sent message's do (`endSend`), in whichever box shows that conversation now: one
+ * shown after a switch would keep them, and Enter would run them again. One that failed stays in the box.
  */
 async function runAsSend(id, was, run) {
     onTheWay.set(id, was);
     changed(id);
+    let result;
 
     try {
-        return await run();
+        result = await run();
+
+        return result;
     } finally {
-        onTheWay.delete(id);
-        changed(id);
+        endSend(id, was, Boolean(result));
     }
 }
 
@@ -722,7 +726,6 @@ export function Composer() {
 
         if (ok) {
             commandRequest.current = null;
-            update("");
         }
     };
 
@@ -775,18 +778,6 @@ export function Composer() {
         !uploading &&
         (text.trim() !== "" || files.some((file) => file.state === "done"));
 
-    /** What went out stays for ↑; its pastes are done with. */
-    const sent = (full) => {
-        if (full.length <= REMEMBER_CHARS) {
-            remember(full, historyScope);
-        }
-
-        setPastes({});
-        savePastes(conversationId, {});
-        setBrowsing(null);
-        update("");
-    };
-
     /** Run `!command` in the session's folder. Its entry shows once it is done; until then, a row says it runs. */
     const runShell = async (full) => {
         const command = full.replace(/^!!?/, "").trim();
@@ -810,7 +801,11 @@ export function Composer() {
             ],
         }));
         requestId.current = uid();
-        sent(full);
+
+        // What went out stays for ↑. Its words and pastes left the draft as it went (`runAsSend`).
+        if (full.length <= REMEMBER_CHARS) {
+            remember(full, historyScope);
+        }
     };
 
     const send = async ({ asFiles = false } = {}) => {

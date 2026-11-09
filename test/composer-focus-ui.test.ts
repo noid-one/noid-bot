@@ -520,6 +520,90 @@ test(
     },
 );
 
+/**
+ * Hold the answer to the next `!` command until `window.__release()`, counting every one asked in `window.__shells`;
+ * `fail`: the server refuses it.
+ */
+async function holdShell(fail = false): Promise<void> {
+    await page.evaluate(`
+        const real = window.__realFetch ?? window.fetch;
+
+        window.__realFetch = real;
+        window.__shells = 0;
+        window.__done = false;
+        window.fetch = (url, init) => {
+            if (!String(url).includes("/shell") || ++window.__shells > 1) {
+                return real(url, init);
+            }
+
+            return new Promise((resolve) => {
+                window.__release = () => {
+                    window.__done = true;
+                    resolve(${fail} ? new Response("Refused.", { status: 500 }) : real(url, init));
+                };
+            });
+        };
+    `);
+}
+
+/** A `!` command typed and sent in session `one`, then that session left for `two` and come back to while it starts. */
+async function shellAcrossSwitch(command: string, fail = false): Promise<void> {
+    await home(VIEWPORTS.desktop);
+    await page.navigate(`${base}/s/${Number(one)}`);
+    await opened(one);
+    await holdShell(fail);
+    await page.type({ selector: BOX }, command);
+    await page.press("Enter");
+    await until(
+        () => inPage<boolean>(`return JSON.stringify(typeof window.__release === "function")`),
+        "the command asked",
+    );
+
+    for (const id of [two, one]) {
+        await page.evaluate(`
+            const { navigate } = await import("/store.js");
+
+            navigate(${Number(id)});
+        `);
+        await opened(id);
+    }
+
+    await page.evaluate(`window.__release()`);
+    await until(() => inPage<boolean>(`return JSON.stringify(window.__done)`), "its answer");
+    await frames();
+}
+
+test(
+    "a ! command that went while its session was left and come back to leaves the box, and Enter does not run it again",
+    real,
+    async () => {
+        await shellAcrossSwitch("!echo switched marker");
+        await until(async () => (await boxValue()) === "", "the box empties");
+        assert.equal(
+            await inPage<string | null>(
+                `return JSON.stringify(localStorage.getItem("pocket.draft.${Number(one)}"))`,
+            ),
+            null,
+            "the draft is gone too",
+        );
+        await page.click({ selector: BOX });
+        await page.press("Enter");
+        await frames();
+        assert.equal(await inPage<number>(`return JSON.stringify(window.__shells)`), 1, "run once");
+        await page.evaluate(`window.fetch = window.__realFetch`);
+    },
+);
+
+test(
+    "a ! command that failed while its session was left and come back to stays in the box",
+    real,
+    async () => {
+        await shellAcrossSwitch("!echo refused marker", true);
+        assert.equal(await boxValue(), "!echo refused marker");
+        await page.evaluate(`window.fetch = window.__realFetch`);
+    },
+);
+
 test(
     "an unsaved notes edit comes back after closing the panel and a reload, until it is saved (pi-pocket 30a8ad8c)",
     real,
