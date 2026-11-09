@@ -97,6 +97,7 @@ import {
     NOT_SHOWN,
 } from "./noid/approvals.ts";
 import { BotMail } from "./noid/botmail.ts";
+import { createRepeatGuard } from "./noid/repeat-guard.ts";
 import { BotSettings } from "./noid/bot-settings.ts";
 import { ChatSearch } from "./noid/chat-search.ts";
 import { Bots, type PersonFace } from "./noid/bots.ts";
@@ -727,6 +728,9 @@ export class PocketApp {
         const registry = createRegistry();
 
         registry.install(CodingTools);
+        // noid: a bot going round the same call with nobody watching is stopped (`repeat-guard.ts`): before approvals,
+        // so a stuck call is refused rather than asked about.
+        registry.install(createRepeatGuard(this));
         // noid: approvals are a guard, so they are part of the app, not a module someone can turn off.
         registry.install(createApprovals(this));
         // noid: bots' own tools, which bots select (`Bots.create`) and other conversations do not.
