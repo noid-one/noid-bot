@@ -9,23 +9,17 @@ import { extensionMenuItems, safeMode } from "../extension-ui.js";
 import { modelRefreshAvailable, refreshModels } from "../model-refresh.js";
 import { sheetBody } from "../sheets.js";
 import { api, attempt, closeSettings, collab, notify, openRunning, store } from "../store.js";
-import { Boundary, BOTTOM_SHEETS, html, Icon, scrimPress, SheetEmbed, SheetInfo } from "../ui.js";
+import {
+    Boundary,
+    BOTTOM_SHEETS,
+    html,
+    Icon,
+    scrimPress,
+    SheetEmbed,
+    SheetInfo,
+    useMatches,
+} from "../ui.js";
 import { defaultsKept } from "./model.js";
-
-/** Whether a media query matches, kept up to date. */
-function useMatches(query) {
-    const [matches, setMatches] = useState(query.matches);
-
-    useEffect(() => {
-        const change = () => setMatches(query.matches);
-
-        query.addEventListener("change", change);
-
-        return () => query.removeEventListener("change", change);
-    }, []);
-
-    return matches;
-}
 
 /** The Extensions page's badge: that this tab loads none of their browser parts (safe mode). */
 const extensionsBadge = () => (safeMode() ? "off here" : "");

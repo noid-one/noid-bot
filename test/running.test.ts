@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
+import type { TaskGraphNode } from "@earendil-works/pi-durable";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { runningBoard, runningNow } from "../src/server/running.ts";
 
@@ -72,6 +73,8 @@ test("running now lists a session's run and its tool call, scheduled messages, a
     const later = running.find((each) => each.id === Number(quiet))!;
 
     assert.equal(later.tasks[0]?.scheduleId, scheduled.id);
+    // It only sleeps until its time: the board counts nothing at work, or running, for it.
+    assert.equal(later.tasks[0]?.status, "sleeping");
 
     const scoped = app.config.addUser("Sam", "guest", [String(quiet)]).user;
 
@@ -174,5 +177,85 @@ test("noid: a bot's schedules are on the board under its name, as a bot's", asyn
     assert.equal(shown.bot, true);
     assert.equal(shown.repeat, "every day at 09:00");
 
+    await app.commands.cancelSchedule(id, owner(app), reminder.id);
+});
+
+test("the board reads the task graph once, and takes each session's folder and model from where the list does", async () => {
+    const busy = await newSession(app);
+    const { submissionId } = await app.commands.submit(busy, owner(app), {
+        text: "wait a bit",
+        requestId: "r3",
+    });
+
+    await until(
+        async () =>
+            (await runningBoard(app, owner(app))).sessions.some((each) => each.id === Number(busy)),
+        "the run on the board",
+    );
+
+    const watch = app.harness.watchTaskGraph;
+    const list = app.sessions;
+    let graphs = 0;
+    let lists = 0;
+
+    app.harness.watchTaskGraph = ((...args: Parameters<typeof watch>) => {
+        graphs++;
+
+        return watch.apply(app.harness, args);
+    }) as typeof watch;
+    app.sessions = ((...args: Parameters<typeof list>) => {
+        lists++;
+
+        return list.apply(app, args);
+    }) as typeof list;
+
+    try {
+        const board = await runningBoard(app, owner(app));
+        const shown = board.sessions.find((each) => each.id === Number(busy))!;
+        const listed = list.call(app, owner(app)).find((each) => each.id === Number(busy))!;
+
+        assert.equal(graphs, 1, "one read of the task graph");
+        assert.equal(lists, 0, "no session list");
+        assert.ok(shown.model, "its model");
+        assert.deepEqual([shown.cwd, shown.model], [listed.cwd, listed.model]);
+    } finally {
+        app.harness.watchTaskGraph = watch;
+        app.sessions = list;
+    }
+
+    await (await app.harness.submission(submissionId, context))!.wait(context);
+});
+
+test("noid: a group thread's round says what it does", async () => {
+    const id = await newSession(app);
+    const round = {
+        id: 1_000_001,
+        kind: "x.noid.group-round",
+        conversationId: id,
+        state: { status: "waiting" },
+    } as unknown as TaskGraphNode;
+    const [session] = await runningNow(app, owner(app), [round]);
+
+    assert.equal(session?.tasks[0]?.label, "asking a group thread's bots in turn");
+});
+
+test("noid: a guest sees none of the owner's bots' schedules", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "running-bot-"));
+    const { id } = await app.bots.create(owner(app), {
+        name: "Secret",
+        role: "The owner's own",
+        kind: "host",
+        folder,
+    });
+    const reminder = await app.commands.schedule(id, owner(app), {
+        when: "every day 09:00 read the owner's mail",
+        zone: "UTC",
+    });
+    const guest = app.config.addUser("Gus", "guest").user;
+
+    assert.equal(
+        (await runningBoard(app, guest)).schedules.some((each) => each.session === Number(id)),
+        false,
+    );
     await app.commands.cancelSchedule(id, owner(app), reminder.id);
 });

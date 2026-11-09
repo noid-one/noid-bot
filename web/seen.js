@@ -17,7 +17,9 @@ const hidden = () => document.visibilityState === "hidden";
 
 /** How far the server's clock is ahead of this browser's, from its last hello: runs end by the server's clock. */
 let clockOffset = 0;
-const serverNow = () => Date.now() + clockOffset;
+
+/** Now, by the server's clock. */
+export const serverNow = () => Date.now() + clockOffset;
 
 /** A time the server took (its clock), on this device's clock: a phone set a few minutes off still counts right. */
 export const fromServer = (ms) => ms - clockOffset;

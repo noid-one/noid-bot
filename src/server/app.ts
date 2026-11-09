@@ -2384,7 +2384,7 @@ export class PocketApp {
                     this.canSee(user, Number(id) as unknown as ConversationId),
             )
             .map(([id, meta]) => {
-                const model = this.#agents.get(Number(id) as unknown as ConversationId)?.model;
+                const model = this.modelIdOf(Number(id) as unknown as ConversationId);
                 const busy = this.#busy.has(Number(id) as unknown as ConversationId);
                 const here = [...(people.get(id) ?? new Map<string, string>())].map(
                     ([userId, name]) => ({ id: userId, name }),
@@ -2434,7 +2434,7 @@ export class PocketApp {
                     ...(failure === undefined ? {} : { failed: true, failure }),
                     ...(failedAgents.length === 0 ? {} : { failedAgents }),
                     ...(ask === undefined ? {} : { approval: ask }),
-                    ...(model === undefined ? {} : { model: model.modelId }),
+                    ...(model === undefined ? {} : { model }),
                     ...(here.length === 0 ? {} : { people: here }),
                     ...(chat === undefined ? {} : { chatAt: chat.at, chatBy: chat.userId }),
                     ...(counts === undefined ? {} : { subagents: counts }),
@@ -2467,6 +2467,11 @@ export class PocketApp {
                 ? { other: true as const }
                 : {}),
         };
+    }
+
+    /** The id of the model a conversation runs on, as the session list gives it. */
+    modelIdOf(id: ConversationId): string | undefined {
+        return this.#agents.get(id)?.model?.modelId;
     }
 
     isBusy(id: ConversationId): boolean {
