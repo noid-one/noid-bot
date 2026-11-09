@@ -23,6 +23,8 @@ import {
     peopleDocked,
     revealEntry,
     store,
+    storeJSON,
+    storedJSON,
     typing,
 } from "./store.js";
 import { composing, copyText, html, Icon, Loader, Sheet, Spinner, timeAgo } from "./ui.js";
@@ -620,26 +622,13 @@ const notesKey = (id) => `pocket.notesDraft.${id}`;
 
 /** A conversation's unsaved notes edit, `{ text, base }` (the version it began from), or null. */
 function keptNotes(id) {
-    try {
-        const kept = JSON.parse(localStorage.getItem(notesKey(id)) ?? "null");
+    const kept = storedJSON(notesKey(id));
 
-        return typeof kept?.text === "string" && Number.isInteger(kept.base) ? kept : null;
-    } catch {
-        return null;
-    }
+    return typeof kept?.text === "string" && Number.isInteger(kept.base) ? kept : null;
 }
 
-function keepNotes(id, kept) {
-    try {
-        if (kept === null) {
-            localStorage.removeItem(notesKey(id));
-        } else {
-            localStorage.setItem(notesKey(id), JSON.stringify(kept));
-        }
-    } catch {
-        // No room: the edit stays while the panel is open.
-    }
-}
+// With no room, the edit stays while the panel is open.
+const keepNotes = (id, kept) => storeJSON(notesKey(id), kept);
 
 /**
  * The session's notes. An edit not saved yet is kept with the conversation until it is saved or cancelled: switching

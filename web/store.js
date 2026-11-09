@@ -2413,6 +2413,30 @@ export function openRunning() {
     });
 }
 
+/** What this browser keeps under `key`, parsed: null for nothing, a damaged value, or storage it cannot reach. */
+export function storedJSON(key) {
+    try {
+        return JSON.parse(localStorage.getItem(key) ?? "null");
+    } catch {
+        return null;
+    }
+}
+
+/** Keep `value` under `key` as JSON, or nothing for null. False when storage is full or refused: nothing changed. */
+export function storeJSON(key, value) {
+    try {
+        if (value === null) {
+            localStorage.removeItem(key);
+        } else {
+            localStorage.setItem(key, JSON.stringify(value));
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 // Per-conversation composer drafts survive reloads, including the automatic ones after a live edit.
 export const drafts = {
     get: (id) => localStorage.getItem(`pocket.draft.${id ?? "home"}`) ?? "",

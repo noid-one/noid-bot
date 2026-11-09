@@ -25,6 +25,8 @@ import {
     notify,
     openSheet,
     store,
+    storeJSON,
+    storedJSON,
     TRANSCRIPT_ROWS,
     sessionBot,
     viewSynced,
@@ -1651,13 +1653,9 @@ const askKey = (approval) => `${approval.id}|${approval.callId ?? approval.creat
 const answersKey = (id) => `pocket.askAnswers.${id}`;
 
 function keptAnswers(id) {
-    try {
-        const kept = JSON.parse(localStorage.getItem(answersKey(id)) ?? "{}");
+    const kept = storedJSON(answersKey(id));
 
-        return kept !== null && typeof kept === "object" ? kept : {};
-    } catch {
-        return {};
-    }
+    return kept !== null && typeof kept === "object" ? kept : {};
 }
 
 /**
@@ -1686,15 +1684,8 @@ function keepAnswers(id, key, values) {
         kept[key] = values;
     }
 
-    try {
-        if (Object.keys(kept).length === 0) {
-            localStorage.removeItem(answersKey(id));
-        } else {
-            localStorage.setItem(answersKey(id), JSON.stringify(kept));
-        }
-    } catch {
-        // No room: the answers stay while the card shows.
-    }
+    // With no room, the answers stay while the card shows.
+    storeJSON(answersKey(id), Object.keys(kept).length === 0 ? null : kept);
 }
 
 /**
