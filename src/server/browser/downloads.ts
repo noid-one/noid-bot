@@ -141,25 +141,33 @@ export async function discardDownload(
     await env.remove(path, { force: true }, context).catch(() => {});
 }
 
+/** The owner's downloads being named, one after another. */
+let naming: Promise<void> = Promise.resolve();
+
 /**
  * noid: a download that is no page's of Pi's (the owner's own, on the computer's desktop) under the name the site gave
  * it, made safe as a bot's is (bots read the shared folder): the browser saved it under its guid. A name taken gets
  * ` (1)` and so on. One that cannot be renamed stays as it is.
  */
-export async function nameDownload(
+export function nameDownload(
     env: ExecutionEnv,
     from: string,
     name: string,
     context: Context = BACKGROUND_CONTEXT,
 ): Promise<void> {
-    const folder = posix.dirname(from);
-    const chosen = await freeName(env, folder, downloadName(name), new Set(), context).catch(
-        () => undefined,
-    );
+    // One after another: two of the same name at once would pick the same free name, and one would write over the other.
+    naming = naming.then(async () => {
+        const folder = posix.dirname(from);
+        const chosen = await freeName(env, folder, downloadName(name), new Set(), context).catch(
+            () => undefined,
+        );
 
-    if (chosen !== undefined) {
-        await env.renameFile(from, posix.join(folder, chosen), context).catch(() => {});
-    }
+        if (chosen !== undefined) {
+            await env.renameFile(from, posix.join(folder, chosen), context).catch(() => {});
+        }
+    });
+
+    return naming;
 }
 
 /** Why a download is to be stopped: past the call's count, or too large. */

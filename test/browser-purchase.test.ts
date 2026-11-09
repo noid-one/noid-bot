@@ -122,6 +122,18 @@ test("the page tells a press that pays from one that does not", real, async () =
         await page.evaluate("document.getElementById('order').focus(); 1");
         assert.equal((await page.purchase(undefined, "enter"))?.reason, "final_step");
         assert.equal(await page.evaluate("String(window.ordered)"), "undefined", "nothing pressed");
+        // Where the click lands cannot be read (a page too busy to answer in time): the target itself is judged, so
+        // the order button still asks.
+        const locate = page.locate;
+
+        page.locate = () => Promise.reject(new Error("The browser did not answer in time."));
+
+        try {
+            assert.equal((await page.purchase({ selector: "#order" }))?.reason, "final_step");
+            assert.equal(await page.purchase({ selector: "#plain" }), undefined);
+        } finally {
+            page.locate = locate;
+        }
 
         // A click lands on what is drawn over its target: the order button over "Continue" and a field.
         await page.navigate(`${base}/covered`);

@@ -24,6 +24,7 @@ import {
     DOWNLOADS_UNUSABLE,
     downloadLines,
     downloadName,
+    nameDownload,
     saveDownloads,
 } from "../src/server/browser/downloads.ts";
 
@@ -234,17 +235,34 @@ test("a download that is no bot's gets the name its site gave it", real, async (
     const opened = await browsers.open(++page);
 
     await opened.navigate(base);
-    // A tab of its own, as the owner's on the computer's desktop: no page of Pi's began the download.
-    await opened.evaluate(`window.open(${JSON.stringify(`${base}/other`)}); 1`);
+    // Tabs of their own, as the owner's on the computer's desktop: no page of Pi's began the downloads. Two of the
+    // same name at once are named one after the other, so neither writes over the other.
+    const other = JSON.stringify(`${base}/other`);
+
+    await opened.evaluate(`window.open(${other}); 1`);
+    await opened.evaluate(`window.open(${other}); 1`);
     await until(
-        () => readdirSync(shared).some((name) => !before.has(name) && name.endsWith(".pdf")),
-        "the owner's download",
+        () =>
+            readdirSync(shared).filter((name) => !before.has(name) && name.endsWith(".pdf"))
+                .length === 2,
+        "the owner's downloads",
     );
 
-    const added = readdirSync(shared).filter((name) => !before.has(name));
+    const added = readdirSync(shared)
+        .filter((name) => !before.has(name))
+        .sort();
 
-    assert.deepEqual(added, ["state_ment_ (1).pdf"], "a free name beside the one there");
-    assert.equal(readFileSync(join(shared, added[0]!), "utf8"), "%PDF-1.4 the other one");
+    // Both kept, each under a name of its own beside what was there.
+    assert.equal(added.length, 2, `two files: ${added.join(", ")}`);
+    assert.ok(
+        added.every((name) => /^state_ment_( \(\d+\))?\.pdf$/.test(name)),
+        `the site's name: ${added.join(", ")}`,
+    );
+
+    for (const name of added) {
+        assert.equal(readFileSync(join(shared, name), "utf8"), "%PDF-1.4 the other one");
+    }
+
     assert.deepEqual((await save(opened, join(bot, "Owner's"))).saved, [], "not the bot's");
 });
 
@@ -262,6 +280,25 @@ test("a download no call moved is deleted when its page closes", real, async () 
     assert.equal(readdirSync(shared).length, before.length + 1, "in the shared folder");
     await browsers.close(id);
     await until(() => readdirSync(shared).length === before.length, "the download deleted");
+});
+
+test("two of the owner's downloads of one name named at once both stay", async () => {
+    const folder = mkdtempSync(join(root, "browser-naming-"));
+    const env = new NodeExecutionEnv({ cwd: folder });
+
+    writeFileSync(join(folder, "guid-a"), "A");
+    writeFileSync(join(folder, "guid-b"), "B");
+    await Promise.all([
+        nameDownload(env, join(folder, "guid-a"), "report.pdf"),
+        nameDownload(env, join(folder, "guid-b"), "report.pdf"),
+    ]);
+
+    assert.deepEqual(
+        readdirSync(folder)
+            .sort()
+            .map((name) => `${name}=${readFileSync(join(folder, name), "utf8")}`),
+        ["report (1).pdf=B", "report.pdf=A"],
+    );
 });
 
 test("a site's name for a file becomes one plain segment", () => {

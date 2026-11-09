@@ -1227,8 +1227,8 @@ export class BrowserPage {
 
                 at = { x, y };
             } catch {
-                // Nothing there to click: the click fails the same way.
-                return undefined;
+                // Not found, or the page did not answer: the target itself is judged. The script finds nothing there
+                // to buy, or does not answer either and counts as one that may pay.
             }
         }
 

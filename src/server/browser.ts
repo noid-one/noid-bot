@@ -273,9 +273,13 @@ export class Browsers {
                 ? params.filePath
                 : posix.join(folder, guid);
 
-        void (download.page
-            ? discardDownload(files, path)
-            : nameDownload(files, path, download.name));
+        if (download.page) {
+            void discardDownload(files, path);
+
+            return;
+        }
+
+        void nameDownload(files, path, download.name);
     }
 
     /** noid: the shared computer's browser, started (with its computer) if it is not running. */

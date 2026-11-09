@@ -702,6 +702,12 @@ export const PURCHASE_SCRIPT = String.raw`((target, key) => {
 		const control = pressedControl(el);
 		return control && !control.matches(":disabled") ? purchaseOf(control) : null;
 	};
+	// A click on a target whose point could not be read: the target itself is judged.
+	if (!key && target && typeof target.x !== "number") {
+		let el;
+		try { el = findTarget(target); } catch { return { site, purchase: null }; }
+		return { site, purchase: el ? at(el) : null };
+	}
 	if (!key) {
 		const view = window.visualViewport;
 		const scale = view?.scale ?? 1;
