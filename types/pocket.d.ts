@@ -806,6 +806,32 @@ export interface CallSummary {
 }
 
 /**
+ * A code fence renderer for one or more languages.
+ * @since 0.28.0
+ * @experimental
+ */
+export interface FenceSpec {
+    /** The registration's id in the module. */
+    id: string;
+    /** Code fence languages that this component draws. Matching ignores case. */
+    langs: string[];
+    /** What the app renders for matching code fences. */
+    component: ComponentType<FenceProps>;
+}
+
+/**
+ * Sets an inline or display math renderer.
+ * @since 0.28.0
+ * @experimental
+ */
+export interface MathInlineSpec {
+    /** The registration's id in the module. */
+    id: string;
+    /** Mounts math into a code element, with its source and whether it is display math. */
+    mount(element: HTMLElement, source: string, display: boolean): void;
+}
+
+/**
  * How the calls of one of the module's tools show in transcripts and peek tiles. Each function gets a copy of the
  * call's arguments.
  * @since 0.14.0
@@ -844,7 +870,7 @@ export interface ToolCallSpec<A = Record<string, unknown>> {
 }
 
 /**
- * What `rail`, `menu`, `launcher`, `page`, and `sheet` return.
+ * What `rail`, `menu`, `launcher`, `page`, `sheet`, `fence`, and `mathInline` return.
  * @since 0.14.0
  */
 export interface Added<S> {
@@ -904,6 +930,20 @@ export interface MarkdownProps {
      * @since 0.14.0
      */
     text: string;
+}
+
+/**
+ * The props of a `pocket.fence` component.
+ * @since 0.28.0
+ * @experimental
+ */
+export interface FenceProps {
+    /** The code text from the fence. */
+    source: string;
+    /** The language label from the fence. */
+    lang: string;
+    /** Whether the Markdown is still streaming. */
+    streaming: boolean;
 }
 
 /**
@@ -1092,6 +1132,18 @@ export interface Pocket {
      * @since 0.14.0
      */
     sheet<P extends object = object>(spec: SheetSpec<P>): Added<SheetSpec<P>>;
+    /**
+     * Draws matching code fences with a Preact component.
+     * @since 0.28.0
+     * @experimental
+     */
+    fence(spec: FenceSpec): Added<FenceSpec>;
+    /**
+     * Sets the inline and display math renderer.
+     * @since 0.28.0
+     * @experimental
+     */
+    mathInline(spec: MathInlineSpec): Added<MathInlineSpec>;
     /**
      * Sets how the calls of one of the module's tools show.
      * @since 0.14.0

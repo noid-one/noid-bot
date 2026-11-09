@@ -8,6 +8,7 @@ import { describersRevision } from "./calls.js";
 import { DiffBlock } from "./diff.js";
 import { Face } from "./faces/face.js";
 import { LinkedSessions } from "./linked-sessions.js";
+import { markdownRevision } from "./markdown-ext.js";
 import { fromServer } from "./seen.js";
 import { Highlighted } from "./rich.js";
 import {
@@ -2289,7 +2290,15 @@ const agentsKey = (view) =>
  */
 function rowDeps(entry) {
     const { view, users, me, server } = store.state;
-    const deps = [entry, users, me, server, view.conversation?.id, view.conversation?.kind];
+    const deps = [
+        entry,
+        users,
+        me,
+        server,
+        view.conversation?.id,
+        view.conversation?.kind,
+        markdownRevision(),
+    ];
 
     if (entry.kind === "user") {
         deps.push(view.authors?.[entry.id]);
@@ -2365,6 +2374,7 @@ function replyDeps(item) {
         view.conversation?.id,
         reactions === undefined ? "" : JSON.stringify(reactions),
         (view.pins ?? []).some((pin) => pin.entryId === entry.id),
+        markdownRevision(),
     ];
 }
 
