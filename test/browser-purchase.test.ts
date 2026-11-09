@@ -55,6 +55,10 @@ const COVERED = `<!doctype html><title>Shop</title><body><main>
  onclick="window.ordered = (window.ordered || 0) + 1">Place order · €40</button>
 </main></body>`;
 
+// A login's redirect: the page replaces its document again and again while checks run.
+const BOUNCING = (to: string, ms: number) =>
+    `<!doctype html><button id="go">Continue</button><script>setTimeout(() => location.replace("${to}"), ${ms})</script>`;
+
 let site: Server;
 let base = "";
 
@@ -62,7 +66,15 @@ before(async () => {
     site = createServer((request, response) => {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         response.end(
-            request.url === "/shop" ? SHOP : request.url === "/covered" ? COVERED : CHECKOUT,
+            request.url === "/shop"
+                ? SHOP
+                : request.url === "/covered"
+                  ? COVERED
+                  : request.url === "/bounce-a"
+                    ? BOUNCING("/bounce-b", 0)
+                    : request.url === "/bounce-b"
+                      ? BOUNCING("/bounce-a", 5)
+                      : CHECKOUT,
         );
     });
     await new Promise<void>((done) => site.listen(0, "127.0.0.1", done));
@@ -73,6 +85,33 @@ after(() => {
     site.close();
     cleanUp();
 });
+
+test(
+    "a check while the page replaces its document reads the new one, and asks for nothing",
+    real,
+    async () => {
+        const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "purchase-")) });
+
+        try {
+            const page = await browsers.open(1);
+            const asked: string[] = [];
+
+            await page.navigate(`${base}/bounce-a`);
+
+            for (let i = 0; i < 400; i++) {
+                const found = await page.purchase({ selector: "#go" });
+
+                if (found !== undefined) {
+                    asked.push(found.reason);
+                }
+            }
+
+            assert.deepEqual(asked, [], "no card for a payment that is not there");
+        } finally {
+            await browsers.closeAll({ final: true });
+        }
+    },
+);
 
 test("the page tells a press that pays from one that does not", real, async () => {
     const browsers = new Browsers({ dataDir: mkdtempSync(join(root, "purchase-")) });

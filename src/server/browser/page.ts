@@ -201,6 +201,11 @@ function formatArg(arg: Json): string {
 
 export const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 
+/** What the browser says when the document being read was replaced, and how often and how long a purchase check reads the new one. */
+const DOCUMENT_GONE = /navigated or closed|context was destroyed|Cannot find context/;
+const DOCUMENT_GONE_TRIES = 5;
+const DOCUMENT_GONE_WAIT_MS = 200;
+
 /** What a click or typing found, unless it is a disabled control: Pi hears that, not that it worked (rakazo b2983880a). */
 function enabled<T extends { label: string; disabled?: boolean }>(found: T): T {
     if (found.disabled === true) {
@@ -1232,13 +1237,28 @@ export class BrowserPage {
             }
         }
 
-        try {
-            found = await this.#evaluate(
-                `(${PURCHASE_SCRIPT})(${JSON.stringify(at ?? null)}, ${JSON.stringify(key ?? false)})`,
-                5_000,
-            );
-        } catch {
-            return { site: "", reason: "unreadable", label: "", amount: "", amountFrom: "page" };
+        for (let tries = DOCUMENT_GONE_TRIES; ; tries--) {
+            try {
+                found = await this.#evaluate(
+                    `(${PURCHASE_SCRIPT})(${JSON.stringify(at ?? null)}, ${JSON.stringify(key ?? false)})`,
+                    5_000,
+                );
+                break;
+            } catch (error) {
+                // The page replaced its document while it was read, as a login's redirect does: read the new one
+                // (rakazo 800a8e0f3). One that keeps doing it, or does not answer, may pay, so it counts.
+                if (tries <= 1 || !DOCUMENT_GONE.test(String(error))) {
+                    return {
+                        site: "",
+                        reason: "unreadable",
+                        label: "",
+                        amount: "",
+                        amountFrom: "page",
+                    };
+                }
+
+                await wait(DOCUMENT_GONE_WAIT_MS);
+            }
         }
 
         const { site, purchase } = (found ?? {}) as {
