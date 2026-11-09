@@ -417,3 +417,29 @@ test("signing out forgets the unsent words (pi-pocket 62d89658)", real, async ()
     );
     await page.navigate(`${base}/login?token=${encodeURIComponent(app.config.ownerToken)}`);
 });
+
+test(
+    "a resize drag let go outside the page ends at the next move (pi-pocket 71f52db6)",
+    real,
+    async () => {
+        await home(VIEWPORTS.desktop);
+        const at = await inPage<{ x: number; y: number }>(`
+        const box = document.querySelector(".splitter").getBoundingClientRect();
+
+        return JSON.stringify({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+    `);
+        const resizing = () =>
+            inPage<boolean>(
+                `return JSON.stringify(document.documentElement.classList.contains("resizing"))`,
+            );
+
+        await page.input([
+            { type: "mouse", action: "down", ...at },
+            { type: "mouse", action: "move", x: at.x + 30, y: at.y, pressed: true },
+        ]);
+        assert.equal(await resizing(), true, "dragging");
+        // No button down on this move: it was let go where the page did not hear it.
+        await page.input([{ type: "mouse", action: "move", x: at.x + 40, y: at.y }]);
+        assert.equal(await resizing(), false, "the drag ended");
+    },
+);

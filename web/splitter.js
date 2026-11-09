@@ -59,7 +59,20 @@ export function Splitter({
 
         root.classList.add("resizing");
 
+        const { pointerId } = event;
+
         const move = (each) => {
+            if (each.pointerId !== pointerId) {
+                return;
+            }
+
+            // Let go where the page did not hear it (another window, outside the page): the drag ends (pi-pocket 71f52db6).
+            if (each.buttons === 0) {
+                stop();
+
+                return;
+            }
+
             value = set(handle, reach(edge, box, each.clientX));
         };
 
@@ -68,6 +81,7 @@ export function Splitter({
             removeEventListener("pointermove", move);
             removeEventListener("pointerup", stop);
             removeEventListener("pointercancel", stop);
+            removeEventListener("blur", stop);
 
             if (value > 0) {
                 commit(value);
@@ -77,6 +91,7 @@ export function Splitter({
         addEventListener("pointermove", move);
         addEventListener("pointerup", stop);
         addEventListener("pointercancel", stop);
+        addEventListener("blur", stop);
     };
 
     // Back to the usual size: the next step measures it, as the handle no longer knows it.
