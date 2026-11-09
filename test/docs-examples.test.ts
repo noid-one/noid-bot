@@ -145,7 +145,11 @@ test("the example extensions load as drop-ins, off until the owner turns them on
     const reading = (await status.route.handle({} as never)) as { cpus: number; load: number[] };
 
     assert.ok(reading.cpus > 0 && reading.load.length === 3);
-    const [client] = app.webs.clients(owner(app));
+    // The built-in diagrams module loads for everyone too: find the drop-in's among them.
+    const modules = app.webs.clients(owner(app)).map((each) => each.module);
 
-    assert.equal(client?.module, "server-status");
+    assert.ok(
+        modules.includes("server-status"),
+        `its browser module is there: ${modules.join(", ")}`,
+    );
 });
