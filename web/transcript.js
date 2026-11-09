@@ -1604,13 +1604,87 @@ function choiceValue(field, { picked, other }) {
  * Pi's questions (`ask`) for the person Pi works for (the owner when nobody is known): sent only by that person, and
  * declined by anyone who can steer.
  */
+/**
+ * A question of Pi's, as its answers are kept: its id and its call (the same call asking again after a restart is the
+ * same question), or the time it asked when it has no call (pi-pocket e4f60668, cf44ec00).
+ */
+const askKey = (approval) => `${approval.id}|${approval.callId ?? approval.createdAt}`;
+const answersKey = (id) => `pocket.askAnswers.${id}`;
+
+function keptAnswers(id) {
+    try {
+        const kept = JSON.parse(localStorage.getItem(answersKey(id)) ?? "{}");
+
+        return kept !== null && typeof kept === "object" ? kept : {};
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Keep the answers typed so far to question `key` of conversation `id` (null: none, it was answered), and drop those of
+ * questions that no longer wait, as the server's view of that conversation says (pi-pocket b009fe46, f8b1fd22).
+ */
+function keepAnswers(id, key, values) {
+    const kept = keptAnswers(id);
+    const { view } = store.state;
+
+    if (view.conversation?.id === id) {
+        const waiting = new Set((view.approvals ?? []).filter((each) => each.form).map(askKey));
+
+        for (const each of Object.keys(kept)) {
+            if (each !== key && !waiting.has(each)) {
+                delete kept[each];
+            }
+        }
+    }
+
+    if (values === null) {
+        delete kept[key];
+    } else {
+        kept[key] = values;
+    }
+
+    try {
+        if (Object.keys(kept).length === 0) {
+            localStorage.removeItem(answersKey(id));
+        } else {
+            localStorage.setItem(answersKey(id), JSON.stringify(kept));
+        }
+    } catch {
+        // No room: the answers stay while the card shows.
+    }
+}
+
+/** Pi's question: its answers so far are kept for it, through a switch to another session or a reload, until it ends. */
 function AskCard({ approval }) {
     const { users } = store.state;
     const form = approval.form;
-    const [values, setValues] = useState(() =>
-        Object.fromEntries(form.fields.map((field) => [field.name, { picked: [], other: "" }])),
-    );
+    const id = approval.conversationId;
+    const key = askKey(approval);
+    const [values, setAnswers] = useState(() => {
+        const kept = keptAnswers(id)[key] ?? {};
+
+        return Object.fromEntries(
+            form.fields.map((field) => [
+                field.name,
+                Array.isArray(kept[field.name]?.picked) &&
+                typeof kept[field.name]?.other === "string"
+                    ? kept[field.name]
+                    : { picked: [], other: "" },
+            ]),
+        );
+    });
+
+    const setValues = (next) => {
+        keepAnswers(id, key, next);
+        setAnswers(next);
+    };
+
     const [busy, setBusy] = useState(false);
+
+    // Questions that ended while this session was away leave no answers behind.
+    useEffect(() => keepAnswers(id, key, keptAnswers(id)[key] ?? null), [id, key]);
     const mine = mayAllow(approval);
     const who =
         users?.find?.((each) => each.id === approval.requestedBy)?.name ??
@@ -1622,9 +1696,10 @@ function AskCard({ approval }) {
 
     const answer = (allow) => {
         setBusy(true);
-        attempt(() =>
-            actions.approve(approval.id, allow, false, allow ? typed : undefined),
-        ).finally(() => setBusy(false));
+        attempt(async () => {
+            await actions.approve(approval.id, allow, false, allow ? typed : undefined);
+            keepAnswers(id, key, null);
+        }).finally(() => setBusy(false));
     };
 
     return html`<form

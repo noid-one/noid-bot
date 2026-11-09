@@ -622,3 +622,44 @@ test("Pi's question shows its answers as buttons a thumb can tap", real, async (
         "the answer",
     );
 });
+
+test(
+    "an answer half-typed to Pi's question stays through a switch and a reload, and goes once sent (pi-pocket b009fe46)",
+    real,
+    async () => {
+        const id = await newSession(app);
+        const other = await newSession(app);
+        const OWN = ".approval.ask input.ask-other";
+        const typed = () =>
+            inPage<string | null>(
+                `return JSON.stringify(document.querySelector(${JSON.stringify(OWN)})?.value ?? null)`,
+            );
+
+        await fresh();
+        await goTo(id);
+        await app.commands.submit(id, owner(app), { text: "ask me", requestId: "ask-kept-ui" });
+        await until(async () => (await typed()) !== null, "the question", 20_000);
+        await page.type({ selector: OWN }, "DuckDB, for now");
+
+        // Away and back, then a reload: the words are still there.
+        await goTo(other);
+        await until(async () => (await typed()) === null, "the other session");
+        await goTo(id);
+        await until(async () => (await typed()) === "DuckDB, for now", "back with the answer");
+        await page.navigate(`${base}/s/${Number(id)}`);
+        await until(async () => (await typed()) === "DuckDB, for now", "after a reload", 20_000);
+
+        await page.evaluate(`document.querySelector(".approval.ask button[type=submit]").click()`);
+        await until(
+            async () => (await modelTexts(app, id)).join().includes("DuckDB, for now"),
+            "the answer",
+        );
+        await until(
+            () =>
+                inPage<boolean>(
+                    `return JSON.stringify(localStorage.getItem("pocket.askAnswers.${Number(id)}") === null)`,
+                ),
+            "nothing kept once sent",
+        );
+    },
+);
