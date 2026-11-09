@@ -107,7 +107,7 @@ Choose a mode in the launcher, or pass `--access`:
 
 Cloudflare mode needs `cloudflared`; on Linux the launcher can download the official release into `~/.noid/bin`. To use another tunnel (ngrok), choose `local` and point the tunnel at port 8787.
 
-`tailscale-serve` needs the `tailscale` command on your `PATH`, signed in, with MagicDNS and HTTPS certificates enabled in the tailnet. The server stays on `127.0.0.1`, and the launcher mounts it at `/` on port 443 of the machine's tailnet name (`https://<machine>.<tailnet>.ts.net`). Notifications, dictation, and the home-screen app need https, so this is the Tailscale mode to pick for them. A mount of noid's already there is reused, and a server restart keeps it; quitting the launcher takes it down. It never replaces another mount on 443, and it refuses while Funnel is on there. On Linux, a user who is not root runs `sudo tailscale set --operator=$USER` once. Without the command the launcher stops with an install hint instead of falling back to this device only. `--host` cannot go with it.
+`tailscale-serve` needs the `tailscale` command on your `PATH`, signed in, with MagicDNS and HTTPS certificates enabled in the tailnet. The server stays on `127.0.0.1`, and the launcher mounts it at `/` on port 443 of the machine's tailnet name (`https://<machine>.<tailnet>.ts.net`). Notifications, dictation, and the home-screen app need https, so this is the Tailscale mode to pick for them. A server restart keeps the mount. When the launcher quits it takes down the mount it made; a mount of noid's it found already in place is reused and left where it is. A receipt in the data folder (`serve-mount.json`) names the mount the launcher made, so the next start takes down one that a killed run left behind; when it cannot, a start in another mode on that port stops and says how to free it, and leaving the mode from the menu keeps Tailscale Serve until the mount is gone. It never replaces another mount on 443, and it refuses while Funnel is on there. On Linux, a user who is not root runs `sudo tailscale set --operator=$USER` once. Without the command the launcher says so and stops rather than falling back to this device only when nobody is there to pick another mode. `--host` cannot go with it: serve always listens on `127.0.0.1` and lets tailscaled reach it.
 
 > [!WARNING]
 > Bots and anyone with steering rights can make the agent run commands on this machine, as you. That reaches everything you can: your files, noid's own settings and sign-in tokens, and its code. The shared computer's browser holds every bot's logins. Invite only people you would trust at your keyboard. View-only users cannot make Pi act. See [SECURITY.md](SECURITY.md).
@@ -127,6 +127,8 @@ The flake builds the app (`nix run github:noid-one/noid-bot`) and has a NixOS mo
 | `--data`          | `~/.noid`      | Database, settings, uploads, and push keys                        |
 | `--host`          |                | Listen on a specific address instead of choosing access           |
 | `--rotate-token`  |                | Issue a new owner link and sign out devices that used the old one |
+
+`--host` overrides the address a named mode would listen on, except with `tailscale-serve`. One launcher runs per data folder: a second one says which pid holds it.
 
 Environment variables:
 
