@@ -1191,6 +1191,40 @@ export function Spinner({ label = "Working", hidden = false }) {
         : html`<span class="spinner" role="img" aria-label=${label}></span>`;
 }
 
+/** Whether a media query matches, rendering again when it starts or stops matching. */
+export function useMatches(query) {
+    const [matches, setMatches] = useState(query.matches);
+
+    useEffect(() => {
+        const change = () => setMatches(query.matches);
+
+        query.addEventListener("change", change);
+
+        return () => query.removeEventListener("change", change);
+    }, []);
+
+    return matches;
+}
+
+/** A board's search field: Esc in it clears it first. */
+export function BoardSearch({ query, setQuery, placeholder }) {
+    return html`<label class=${`board-search ${query ? "filled" : ""}`}>
+        <${Icon} name="search" size=${14} />
+        <input
+            placeholder=${placeholder}
+            value=${query}
+            onInput=${(event) => setQuery(event.currentTarget.value)}
+            onKeyDown=${(event) => {
+                if (event.key === "Escape" && query !== "") {
+                    // Taken: this Esc clears the search, not the board.
+                    event.preventDefault();
+                    setQuery("");
+                }
+            }}
+        />
+    </label>`;
+}
+
 /** A spinner with a short line about what is loading, for sheets and panels. */
 export function Loader({ label = "Loading" }) {
     return html`<div class="loader" role="status">

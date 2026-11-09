@@ -8,7 +8,7 @@ import { folderColor } from "./avatar.js";
 import { useBack } from "./back.js";
 import { serverNow } from "./seen.js";
 import { api, attempt, canSteer, navigate, notify, store } from "./store.js";
-import { html, Icon, Spinner } from "./ui.js";
+import { BoardSearch, html, Icon, Spinner, useMatches } from "./ui.js";
 
 /** How often the board asks again while it shows. */
 const EVERY_MS = 2000;
@@ -160,20 +160,6 @@ function setBy(schedule) {
     const pi = schedule.bot ? schedule.sessionTitle : "Pi";
 
     return schedule.requestedBy === undefined ? pi : `${pi}, for ${name(schedule.requestedBy)}`;
-}
-
-function useMatches(query) {
-    const [matches, setMatches] = useState(query.matches);
-
-    useEffect(() => {
-        const change = () => setMatches(query.matches);
-
-        query.addEventListener("change", change);
-
-        return () => query.removeEventListener("change", change);
-    }, []);
-
-    return matches;
 }
 
 /**
@@ -471,7 +457,14 @@ export function RunningBoard() {
                     }
                 </div>
             </div>
-            ${!phone && html`<${Search} query=${query} setQuery=${setQuery} />`}
+            ${
+                !phone &&
+                html`<${BoardSearch}
+                    query=${query}
+                    setQuery=${setQuery}
+                    placeholder="Find a session, task, or schedule"
+                />`
+            }
             <button
                 class="icon-button"
                 title="Back to the conversation (Esc)"
@@ -484,7 +477,11 @@ export function RunningBoard() {
         ${
             phone &&
             html`<div class="board-search-row">
-                <${Search} query=${query} setQuery=${setQuery} />
+                <${BoardSearch}
+                    query=${query}
+                    setQuery=${setQuery}
+                    placeholder="Find a session, task, or schedule"
+                />
             </div>`
         }
         <div class=${`rb-scroll ${chosen && phone ? "with-bar" : ""}`}>
@@ -628,23 +625,6 @@ export function RunningBoard() {
             </div>`
         }
     </section>`;
-}
-
-function Search({ query, setQuery }) {
-    return html`<label class=${`board-search ${query ? "filled" : ""}`}>
-        <${Icon} name="search" size=${14} />
-        <input
-            placeholder="Find a session, task, or schedule"
-            value=${query}
-            onInput=${(event) => setQuery(event.currentTarget.value)}
-            onKeyDown=${(event) => {
-                if (event.key === "Escape" && query !== "") {
-                    event.preventDefault();
-                    setQuery("");
-                }
-            }}
-        />
-    </label>`;
 }
 
 /**

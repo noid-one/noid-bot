@@ -20,7 +20,7 @@ import {
     stateOf,
     unresolved,
 } from "./subagents.js";
-import { html, Icon, timeAgo } from "./ui.js";
+import { BoardSearch, html, Icon, timeAgo, useMatches } from "./ui.js";
 
 /** The states, most urgent first: the order of the bar, the legend, the squares, and the sessions' summaries. */
 const STATES = ["waiting", "failed", "working", "stopped", "done"];
@@ -403,40 +403,6 @@ function DetailBar({ agent, title, onClose }) {
     </div>`;
 }
 
-/** The search field: finds subagents by name, what they were asked, what they do now, and why they failed. */
-function Search({ query, setQuery }) {
-    return html`<label class=${`board-search ${query ? "filled" : ""}`}>
-        <${Icon} name="search" size=${14} />
-        <input
-            placeholder="Find a subagent or task"
-            value=${query}
-            onInput=${(event) => setQuery(event.currentTarget.value)}
-            onKeyDown=${(event) => {
-                if (event.key === "Escape" && query !== "") {
-                    // Taken: this Esc clears the search, not the board.
-                    event.preventDefault();
-                    setQuery("");
-                }
-            }}
-        />
-    </label>`;
-}
-
-/** Re-render when a media query starts or stops matching. */
-function useMatches(query) {
-    const [matches, setMatches] = useState(query.matches);
-
-    useEffect(() => {
-        const change = () => setMatches(query.matches);
-
-        query.addEventListener("change", change);
-
-        return () => query.removeEventListener("change", change);
-    }, []);
-
-    return matches;
-}
-
 export function SubagentsBoard() {
     const { boardAgents, sessions } = store.state;
     const phone = useMatches(PHONE);
@@ -790,7 +756,14 @@ export function SubagentsBoard() {
                     ${total} in ${sessionCount} session${sessionCount === 1 ? "" : "s"}
                 </div>
             </div>
-            ${!phone && html`<${Search} query=${query} setQuery=${setQuery} />`}
+            ${
+                !phone &&
+                html`<${BoardSearch}
+                    query=${query}
+                    setQuery=${setQuery}
+                    placeholder="Find a subagent or task"
+                />`
+            }
             <button
                 class="icon-button"
                 title="Back to the conversation (Esc)"
@@ -803,7 +776,11 @@ export function SubagentsBoard() {
         ${
             phone &&
             html`<div class="board-search-row">
-                <${Search} query=${query} setQuery=${setQuery} />
+                <${BoardSearch}
+                    query=${query}
+                    setQuery=${setQuery}
+                    placeholder="Find a subagent or task"
+                />
             </div>`
         }
         ${
