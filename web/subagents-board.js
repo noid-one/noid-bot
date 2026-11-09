@@ -56,7 +56,7 @@ let seq = 0;
 
 /** Tell the server whether this tab's connection wants every subagent, when that changed. */
 function sync(state) {
-    const wanted = state.board && state.streamId ? state.streamId : null;
+    const wanted = state.board === "subagents" && state.streamId ? state.streamId : null;
 
     if (wanted === told) {
         return;

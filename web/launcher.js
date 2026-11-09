@@ -10,7 +10,7 @@ import { filesAvailable, toggleFiles } from "./files-panel.js";
 import { togglePeeks } from "./peeks.js";
 import { modelRefreshAvailable, refreshModels } from "./model-refresh.js";
 import { mainBot, toNoid } from "./noid.js";
-import { setArchived } from "./sessions.js";
+import { setArchived, toggleBoard } from "./sessions.js";
 import { branchAvailable, headLabel } from "./sheets/branch.js";
 import { recentLabels } from "./sheets/folder.js";
 import { galleryAvailable } from "./sheets/gallery.js";
@@ -288,7 +288,7 @@ function actionItems() {
             label: "Running now",
             detail: "everything Pi is doing",
             icon: "pulse",
-            run: () => openSheet({ type: "running" }),
+            run: () => toggleBoard("running"),
         },
         me?.role === "owner" && {
             label: "Providers",

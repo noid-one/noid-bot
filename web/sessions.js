@@ -2348,12 +2348,12 @@ export function subagentTotals(sessions = store.state.sessions) {
     return totals;
 }
 
-/** Open the subagents board in the conversation's place, or close it. */
-export const toggleBoard = () =>
+/** Open a board in the conversation's place (`"subagents"` or `"running"`), or close it when it already shows. */
+export const toggleBoard = (which = "subagents") =>
     store.set((state) =>
-        state.board
+        state.board === which
             ? { board: false, boardAgents: null }
-            : { board: true, drawer: false, page: null },
+            : { board: which, boardAgents: null, drawer: false, page: null, sheet: null },
     );
 
 /**
@@ -2458,7 +2458,8 @@ function RailTiles() {
  * in the launcher, peek tiles in the top bar, and Noid heads the bot list.
  */
 function Rail({ foldable = false, folded = false }) {
-    const { sessions, board, me } = store.state;
+    const { sessions, me } = store.state;
+    const board = store.state.board === "subagents";
     const canStart = canSteer() && !scoped();
     const agents = subagentTotals(sessions);
     const live = agents.working + agents.waiting;
@@ -2542,7 +2543,7 @@ function Rail({ foldable = false, folded = false }) {
                 .filter(Boolean)
                 .join(", ")}
             aria-pressed=${board}
-            onClick=${toggleBoard}
+            onClick=${() => toggleBoard("subagents")}
         >
             <${Icon} name="fork" size=${19} />
             ${live > 0 && html`<span class="rail-count">${live}</span>`}
