@@ -346,18 +346,32 @@ export function onExtensionsGone(listener) {
     return () => goneListeners.delete(listener);
 }
 
+/**
+ * The order of the modules that add to Markdown (fences, inline math): the first that takes a fence or math sets it,
+ * so only a change in this order changes what Markdown shows. A module that comes or goes changes it as it adds or
+ * takes away (`add`, `teardown`).
+ */
+const markdownOrder = (list) =>
+    list
+        .filter((module) => {
+            const record = modules.get(module);
+
+            return (
+                liveRecord(record) && [...MARKDOWN_KINDS].some((kind) => record.adds[kind].size > 0)
+            );
+        })
+        .join("\n");
+
 /** Load what the server lists, and unload what it no longer does or lists at a new address (a new version). */
 function sync(list) {
     const nextOrder = list.map((each) => each.module);
-    const orderChanged =
-        order.length !== nextOrder.length ||
-        order.some((module, index) => module !== nextOrder[index]);
 
-    order = nextOrder;
-
-    if (orderChanged) {
+    // Turning on or off a module that adds nothing to Markdown leaves every reply as it is (and its diagrams drawn).
+    if (markdownOrder(nextOrder) !== markdownOrder(order)) {
         markdownChanged();
     }
+
+    order = nextOrder;
 
     const wanted = new Map(safeMode() ? [] : list.map((each) => [each.module, each]));
 

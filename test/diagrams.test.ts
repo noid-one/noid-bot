@@ -399,3 +399,71 @@ test("a reply drawn before the module registers math draws again", browserAvaila
         { tex: "x^2", text: true, br: false },
     );
 });
+
+test(
+    "turning on a module that adds nothing to Markdown leaves the replies and their diagrams as they are",
+    browserAvailable,
+    async (t) => {
+        const route = () =>
+            fauxAssistantMessage([
+                fauxText("Here:\n\n```mermaid\nflowchart LR\n  A[Start] --> B[End]\n```\n"),
+            ]);
+        const app = await openApp(scriptedModel(route), join(root, "diagrams-remount"));
+        const session = await newSession(app);
+        const listen = { host: "127.0.0.1", port: 0 };
+        const server = createServer(createHandler({ app, listen, restart: () => {} }));
+        const dataDir = mkdtempSync(join(root, "diagrams-remount-"));
+        const browsers = new Browsers({ dataDir, load: async () => undefined, save: () => {} });
+
+        t.after(async () => {
+            await browsers.closeAll({ final: true });
+            server.closeAllConnections();
+            server.close();
+            await app.close();
+        });
+        await say(app, session, "hi");
+        await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+
+        const page = await browsers.open(1);
+        const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+        const DIAGRAM = '[data-part="reply"] .pocket-diagrams-output svg';
+
+        await page.navigate(`${base}/login?token=${encodeURIComponent(app.config.ownerToken)}`);
+        await page.navigate(`${base}/s/${session}`);
+        await until(
+            () =>
+                inPage<boolean>(
+                    page,
+                    `return JSON.stringify(document.querySelector('${DIAGRAM}') !== null);`,
+                ),
+            "the reply's diagram",
+        );
+        await page.evaluate(`
+            window.shownReply = document.querySelector('[data-part="reply"] .md');
+            window.shownDiagram = document.querySelector('${DIAGRAM}');
+        `);
+        await app.setExtensionEnabled(owner(app), "agent-teams.ts", true);
+        await until(
+            () =>
+                inPage<boolean>(
+                    page,
+                    `return JSON.stringify(
+                        performance.getEntriesByType("resource").some((each) => each.name.includes("agent-teams")),
+                    );`,
+                ),
+            "the other module loaded",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        // The same elements: the reply was not made again, nor its diagram drawn again.
+        assert.deepEqual(
+            await inPage<{ reply: boolean; diagram: boolean }>(
+                page,
+                `return JSON.stringify({
+                     reply: document.querySelector('[data-part="reply"] .md') === window.shownReply,
+                     diagram: document.querySelector('${DIAGRAM}') === window.shownDiagram,
+                 });`,
+            ),
+            { reply: true, diagram: true },
+        );
+    },
+);
