@@ -31,11 +31,13 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ToolExecutionApi } from "@earendil-works/pi-durable";
 import type { PocketApp } from "../app.ts";
+import type { User } from "../config.ts";
+import { HttpError } from "../errors.ts";
 import { BUILT_IN_TOOLS } from "../reload.ts";
 import type { ApprovalAnswer } from "../host.ts";
 import { AutoReviewDoc, consequential, review, taskOf } from "./auto-review.ts";
 import { AuthorsDoc, rebased } from "../docs.ts";
-import { ownerOf } from "./owner.ts";
+import { ownerOf, requireOwner } from "./owner.ts";
 import { sitesInText, urlSite } from "./sites.ts";
 import { onlyReads } from "./read-only.ts";
 import type { BotProfile } from "./bots.ts";
@@ -58,6 +60,61 @@ export const ApprovalRulesDoc = defineDoc<{
     scope: "session",
     initial: () => ({ rules: [] }),
 });
+
+/** One of a bot's "Always allow" rules, as its settings list it. */
+export type AllowedTool = { tool: string; at: number; by: string };
+
+/** The bot of session `id`, for its rules: the owner's alone, as they make them. */
+function ruledBot(app: PocketApp, user: User, id: ConversationId): BotProfile {
+    requireOwner(user, "Only the owner sees what a bot may do without asking.");
+    app.requireSee(user, id);
+    const bot = app.bots.of(id);
+
+    if (bot === undefined) {
+        throw new HttpError(404, "That session is not a bot's.");
+    }
+
+    return bot;
+}
+
+/** The tools a bot calls without asking, by the owner's "Always allow", oldest first (rakazo d335a0584). */
+export async function allowedTools(
+    app: PocketApp,
+    user: User,
+    id: ConversationId,
+): Promise<AllowedTool[]> {
+    const bot = ruledBot(app, user, id);
+    const rules = (await app.harness.snapshot(ApprovalRulesDoc, BACKGROUND_CONTEXT))?.rules ?? [];
+
+    return rules
+        .filter((rule) => rule.bot === bot.id)
+        .map((rule) => ({
+            tool: rule.tool,
+            at: rule.at,
+            by: app.config.users.find((each) => each.id === rule.by)?.name ?? "someone",
+        }));
+}
+
+/** Take back an "Always allow": the bot's calls of `tool` ask again. Returns what it may still do without asking. */
+export async function disallowTool(
+    app: PocketApp,
+    user: User,
+    id: ConversationId,
+    tool: string,
+): Promise<AllowedTool[]> {
+    const bot = ruledBot(app, user, id);
+
+    await app.harness.commit(async (tx) => {
+        const doc = await tx.doc(ApprovalRulesDoc);
+        const kept = doc.rules.filter((rule) => !(rule.bot === bot.id && rule.tool === tool));
+
+        if (kept.length !== doc.rules.length) {
+            doc.rules = kept;
+        }
+    }, BACKGROUND_CONTEXT);
+
+    return await allowedTools(app, user, id);
+}
 
 export type Verdict =
     | { ask: false }

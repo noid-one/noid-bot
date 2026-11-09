@@ -4,10 +4,12 @@ import {
     context,
     newSession,
     openApp,
+    owner,
     root,
     scriptedModel,
     showSessions,
     until,
+    work,
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -20,6 +22,7 @@ import { findBrowser } from "../src/server/browser/discovery.ts";
 import type { BrowserPage } from "../src/server/browser/page.ts";
 import { type Viewport, VIEWPORTS } from "../src/server/browser/viewport.ts";
 import { createHandler } from "../src/server/http.ts";
+import { ApprovalRulesDoc } from "../src/server/noid/approvals.ts";
 
 const chromium = findBrowser();
 const real = {
@@ -540,6 +543,59 @@ test(
             "the kept edit dropped once saved",
         );
         assert.equal(await notesValue(), "plan marker", "the saved notes");
+        await page.evaluate(`
+        const { closeSheet } = await import("/store.js");
+
+        closeSheet();
+    `);
+    },
+);
+
+test(
+    "a bot's sheet lists what it runs without asking, and Ask again takes it back (rakazo d335a0584)",
+    real,
+    async () => {
+        const made = await app.bots.create(owner(app), {
+            name: "Trusted",
+            role: "Builds",
+            kind: "host",
+            folder: work,
+        });
+        const bot = app.bots.of(made.id)!;
+        const rules = async () =>
+            ((await app.harness.snapshot(ApprovalRulesDoc, context))?.rules ?? []).filter(
+                (rule) => rule.bot === bot.id,
+            );
+
+        await app.harness.commit(async (tx) => {
+            (await tx.doc(ApprovalRulesDoc)).rules.push(
+                { bot: bot.id, tool: "write", at: Date.now(), by: owner(app).id },
+                { bot: bot.id, tool: "bash", at: Date.now(), by: owner(app).id },
+            );
+        }, context);
+        await home(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${Number(made.id)}`);
+        await opened(made.id);
+        await page.evaluate(`
+        const { openSheet } = await import("/store.js");
+
+        openSheet({ type: "bot", id: ${Number(made.id)} });
+    `);
+        const listed = () =>
+            inPage<string[]>(
+                `return JSON.stringify([...document.querySelectorAll('[data-part="allowed-tools"] code')].map((each) => each.textContent))`,
+            );
+
+        await until(async () => (await listed()).length === 2, "the rules");
+        assert.deepEqual(await listed(), ["write", "bash"]);
+        await page.evaluate(`
+        document.querySelector('[aria-label="Ask again before write"]').click();
+    `);
+        await until(async () => (await listed()).length === 1, "write taken back");
+        assert.deepEqual(
+            (await rules()).map((rule) => rule.tool),
+            ["bash"],
+        );
         await page.evaluate(`
         const { closeSheet } = await import("/store.js");
 

@@ -1,9 +1,9 @@
 // A bot: make one, or change one's name, role, face, and instructions. The face shows as it will look, as you pick.
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Face } from "../faces/face.js";
 import { EYES, SHAPES, SKINS } from "../faces/params.js";
-import { actions, api, attempt, closeSheet, navigate, store, uid } from "../store.js";
-import { html, Sheet } from "../ui.js";
+import { actions, api, attempt, closeSheet, navigate, notify, store, uid } from "../store.js";
+import { formatWhen, html, Sheet } from "../ui.js";
 
 const COLORS = [
     "#7aa2f7",
@@ -218,6 +218,7 @@ export function BotSheet({ id }) {
                     )
                 }`
         }
+        ${bot !== undefined && store.state.me?.role === "owner" && html`<${AllowedTools} id=${id} />`}
         <div class="sheet-actions">
             ${
                 bot !== undefined &&
@@ -238,6 +239,52 @@ export function BotSheet({ id }) {
             </button>
         </div>
     <//>`;
+}
+
+/**
+ * What a bot does without asking, by "Always allow" on its cards: each one taken back here, so the bot asks again
+ * (rakazo d335a0584). The owner's alone. Nothing shows while there is none.
+ */
+function AllowedTools({ id }) {
+    const [rules, setRules] = useState([]);
+    const [busy, setBusy] = useState(null);
+
+    useEffect(() => {
+        attempt(async () => setRules((await api(`bots/${id}/rules`)).rules));
+    }, [id]);
+
+    if (rules.length === 0) {
+        return null;
+    }
+
+    const remove = (tool) => {
+        setBusy(tool);
+        attempt(async () => {
+            setRules((await api(`bots/${id}/rules/remove`, { tool })).rules);
+            notify("info", `It asks again before ${tool}.`);
+        }).finally(() => setBusy(null));
+    };
+
+    return html`<div class="field allowed-tools" data-part="allowed-tools">
+        <div class="label">Runs without asking</div>
+        <ul>
+            ${rules.map(
+                (rule) =>
+                    html`<li class="row" key=${rule.tool}>
+                        <code class="grow">${rule.tool}</code>
+                        <span class="muted small">${rule.by}, ${formatWhen(rule.at)}</span>
+                        <button
+                            class="button small ghost"
+                            aria-label=${`Ask again before ${rule.tool}`}
+                            disabled=${busy !== null}
+                            onClick=${() => remove(rule.tool)}
+                        >
+                            Ask again
+                        </button>
+                    </li>`,
+            )}
+        </ul>
+    </div>`;
 }
 
 /**

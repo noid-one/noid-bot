@@ -22,7 +22,14 @@ import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { SessionsDoc } from "../src/server/docs.ts";
-import { alwaysAsks, ApprovalRulesDoc, classify, NOT_SHOWN } from "../src/server/noid/approvals.ts";
+import {
+    allowedTools,
+    alwaysAsks,
+    ApprovalRulesDoc,
+    classify,
+    disallowTool,
+    NOT_SHOWN,
+} from "../src/server/noid/approvals.ts";
 import type { BotProfile } from "../src/server/noid/bots.ts";
 import { slugOf } from "../src/server/noid/bots.ts";
 
@@ -272,6 +279,40 @@ test("a host bot asks before it changes this machine: allow, deny, and always al
 
     // Only for that bot.
     assert.deepEqual(classify(bot, "host", "write", { path: "x" }).ask, true);
+});
+
+test("the owner sees what a bot may do without asking, and takes it back (rakazo d335a0584)", async () => {
+    const { id } = await hostBot("Granted");
+    const file = join(work, "granted.txt");
+
+    const always = await sendAndWaitForQuestion(id, "write granted.txt one");
+
+    assert.ok(await app.answerApproval(always.question.id, true, owner(app), true));
+    await always.done();
+    const rules = await allowedTools(app, owner(app), id);
+
+    assert.deepEqual(
+        rules.map((rule) => [rule.tool, rule.by]),
+        [["write", owner(app).name]],
+    );
+    // Taken back: the next write asks again, and another bot's rules stay.
+    assert.deepEqual(await disallowTool(app, owner(app), id, "write"), []);
+    const again = await sendAndWaitForQuestion(id, "write granted.txt two");
+
+    assert.equal(again.question.tool, "write");
+    assert.ok(await app.answerApproval(again.question.id, false, owner(app)));
+    await again.done();
+    assert.equal(readFileSync(file, "utf8"), "one");
+
+    // The owner's alone. Last: another person in the server puts names before messages (`[from: …]`).
+    const { user: guest } = app.config.addUser("Rules guest", "guest");
+
+    try {
+        await assert.rejects(allowedTools(app, guest, id), { status: 403 });
+        await assert.rejects(disallowTool(app, guest, id, "write"), { status: 403 });
+    } finally {
+        app.config.removeUser(guest.id);
+    }
 });
 
 test("the rules: where a bot runs decides; on this machine, anything that is not read-only asks", () => {

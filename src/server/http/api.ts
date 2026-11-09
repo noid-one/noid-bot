@@ -3,6 +3,7 @@
  * which a form on another site cannot send. A conversation's routes are in `conversation-routes.ts`.
  */
 import { autoReviewSettings, reviewModelOf } from "../noid/auto-review.ts";
+import { allowedTools, disallowTool } from "../noid/approvals.ts";
 import { type BotRequest, personFace } from "../noid/bots.ts";
 import { readdirSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -645,6 +646,29 @@ export function createApi(options: HttpOptions, auth: Auth) {
         // noid: a model's name for a bot, from what it does.
         if (first === "bots" && second !== undefined && third === "name" && method === "POST") {
             return json(response, 200, await app.bots.suggestName(user, conversationId(second)));
+        }
+
+        // noid: what a bot may do without asking (the owner's "Always allow"), and taking one back.
+        if (first === "bots" && second !== undefined && third === "rules") {
+            if (method === "GET" && fourth === undefined) {
+                return json(response, 200, {
+                    rules: await allowedTools(app, user, conversationId(second)),
+                });
+            }
+
+            if (method === "POST" && fourth === "remove") {
+                const { tool } = await readJson<{ tool?: unknown }>(request);
+
+                if (typeof tool !== "string" || tool === "") {
+                    throw new HttpError(400, "Say which tool.");
+                }
+
+                return json(response, 200, {
+                    rules: await disallowTool(app, user, conversationId(second), tool),
+                });
+            }
+
+            throw new HttpError(404, "Unknown API route");
         }
 
         // noid: the changes a bot made to its own settings, and the owner's Undo of one.

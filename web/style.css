@@ -15979,6 +15979,14 @@ pre.gallery-code {
     gap: 8px;
 }
 
+.allowed-tools ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
 .schedule-run {
     margin-top: 3px;
     color: var(--muted);
