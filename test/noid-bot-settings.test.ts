@@ -258,15 +258,39 @@ test("an owner's run that read what someone else wrote asks before its instructi
 test("name and model change only in the owner's own words: mail cannot change them", async () => {
     const target = await bot("Steady");
     const sender = await bot("Pusher");
+    // A fresh provider check can renew a sign-in and warn the owner: a bot's mail must not set one off.
+    const problem = app.providers.problem.bind(app.providers);
+    const checked: string[] = [];
 
-    await app.botMail.send(sender, "Steady", call({ model: "faux/faux-2" }), "mail-model");
-    await until(
-        async () => /change only when the owner asks/.test((await lastResult(target)).text),
-        "the refusal",
-    );
-    await app.harness.waitForIdle(context);
-    assert.equal((await app.agentState(target))?.model?.modelId, "faux-1");
-    assert.equal(app.approvals.forConversation(target).length, 0, "refused, not asked");
+    app.providers.problem = (ref, fresh) => {
+        checked.push(`${ref.provider}/${ref.modelId}`);
+
+        return problem(ref, fresh);
+    };
+
+    try {
+        await app.botMail.send(sender, "Steady", call({ model: "faux/faux-2" }), "mail-model");
+        await until(
+            async () => /change only when the owner asks/.test((await lastResult(target)).text),
+            "the refusal",
+        );
+        await app.harness.waitForIdle(context);
+        assert.equal((await app.agentState(target))?.model?.modelId, "faux-1");
+        assert.equal(app.approvals.forConversation(target).length, 0, "refused, not asked");
+        assert.deepEqual(checked, [], "refused before the provider is checked");
+
+        // The owner asking for the model it has is no change: nothing to check either.
+        await send(target, call({ model: "faux/faux-1" }));
+        assert.deepEqual(checked, []);
+        assert.match((await lastResult(target)).text, /Nothing changed/);
+
+        // A new model, asked by the owner, is checked once.
+        await send(target, call({ model: "faux/faux-2" }));
+        assert.deepEqual(checked, ["faux/faux-2"]);
+        assert.equal((await app.agentState(target))?.model?.modelId, "faux-2");
+    } finally {
+        app.providers.problem = problem;
+    }
 });
 
 test("values a bot already has are no change: padded calls neither ask nor get refused for them", async () => {
