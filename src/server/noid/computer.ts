@@ -83,7 +83,22 @@ const WORKING_TICKS = 100;
 /** Runs a docker command, resolving with its output; a failure rejects with what docker said. */
 export type Docker = (args: readonly string[], input?: NodeJS.ReadableStream) => Promise<string>;
 
-export function dockerCommand(binary: string): Docker {
+/**
+ * How long a docker command may take before it counts as hung, in ms: a stuck Docker Desktop or an `ssh://` host that
+ * does not answer would otherwise hold the computer's one start, and every tool call behind it (rakazo 88737d37e).
+ * Starting and stopping get longer; a build, none.
+ */
+export function dockerLimit(args: readonly string[]): number | undefined {
+    const [verb] = args;
+
+    if (verb === "build") {
+        return undefined;
+    }
+
+    return verb === "run" || verb === "start" || verb === "stop" ? 120_000 : 60_000;
+}
+
+export function dockerCommand(binary: string, limitOf = dockerLimit): Docker {
     return (args, input) =>
         new Promise((resolve, reject) => {
             const child = spawn(binary, args, {
@@ -91,15 +106,29 @@ export function dockerCommand(binary: string): Docker {
             });
             let output = "";
             let errors = "";
+            const limit = limitOf(args);
+            const timer =
+                limit === undefined
+                    ? undefined
+                    : setTimeout(() => {
+                          child.kill("SIGKILL");
+                          reject(
+                              new Error(
+                                  `${binary} ${args[0]} did not answer in ${Math.round(limit / 1000)} s: is Docker running?`,
+                              ),
+                          );
+                      }, limit);
 
             child.stdout!.setEncoding("utf8");
             child.stdout!.on("data", (chunk: string) => (output += chunk));
             child.stderr!.setEncoding("utf8");
             child.stderr!.on("data", (chunk: string) => (errors = (errors + chunk).slice(-4000)));
-            child.on("error", (error) =>
-                reject(new Error(`Could not run ${binary}: ${error.message}`)),
-            );
+            child.on("error", (error) => {
+                clearTimeout(timer);
+                reject(new Error(`Could not run ${binary}: ${error.message}`));
+            });
             child.on("close", (code) => {
+                clearTimeout(timer);
                 // Docker Desktop's Windows binary writes CRLF; nothing here wants the CR.
                 const clean = (text: string) => text.replace(/\r/g, "").trim();
 
@@ -414,6 +443,15 @@ export class Computer {
                 "noid.computer=1",
                 "--shm-size",
                 "1g",
+                // Nothing in it needs more than its user's own rights (it runs as uid 1000, with no sudo): no Linux
+                // capabilities, no gaining any through a setuid program, and a bound on processes (rakazo 023d408b4).
+                // Threads count: Chromium alone uses about 150.
+                "--cap-drop",
+                "ALL",
+                "--security-opt",
+                "no-new-privileges",
+                "--pids-limit",
+                "4096",
                 // The owner's time zone, not UTC: the desktop's clock, and what sites see in its browser.
                 "--env",
                 `TZ=${Intl.DateTimeFormat().resolvedOptions().timeZone}`,

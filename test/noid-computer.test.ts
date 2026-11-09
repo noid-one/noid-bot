@@ -18,7 +18,15 @@ import {
 } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+    chmodSync,
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    symlinkSync,
+    writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { FauxResponseStep } from "@earendil-works/pi-ai";
@@ -26,7 +34,14 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { Connection, LocalExecutionEnv, localDaemon } from "@earendil-works/pi-env";
-import { Computer, type Docker, normalFolder, onComputer } from "../src/server/noid/computer.ts";
+import {
+    Computer,
+    type Docker,
+    dockerCommand,
+    dockerLimit,
+    normalFolder,
+    onComputer,
+} from "../src/server/noid/computer.ts";
 
 const VIRTUAL = "/remote";
 const real = join(root, "remote-backing");
@@ -491,6 +506,45 @@ test("a computer made from an older image is made again when it next starts, nev
 
     await new Computer({}, busy.docker).start();
     assert.deepEqual(busy.calls, ["inspect --type"], "a running one is left alone");
+});
+
+test("a computer is made with no capabilities, no new privileges, and a bound on processes (rakazo 023d408b4)", async () => {
+    let made: readonly string[] = [];
+    const fake = fakeDocker({ state: "missing", image: true });
+
+    const docker: Docker = (args, input) => {
+        if (args[0] === "run") {
+            made = args;
+        }
+
+        return fake.docker(args, input);
+    };
+
+    await new Computer({}, docker).start();
+    const flag = (name: string) => made[made.indexOf(name) + 1];
+
+    assert.equal(flag("--cap-drop"), "ALL");
+    assert.equal(flag("--security-opt"), "no-new-privileges");
+    assert.equal(flag("--pids-limit"), "4096");
+});
+
+test("a docker command that does not answer fails in time, so the computer's start is not held for good (rakazo 88737d37e)", async () => {
+    // A docker that hangs, as a stuck Docker Desktop or an ssh:// host does.
+    const folder = mkdtempSync(join(root, "hung-docker-"));
+    const hung = join(folder, "docker");
+
+    writeFileSync(hung, "#!/bin/sh\nsleep 30\n");
+    chmodSync(hung, 0o755);
+    const docker = dockerCommand(hung, () => 300);
+    const started = Date.now();
+
+    await assert.rejects(docker(["inspect", "noid-computer"]), /did not answer in 0 s/);
+    assert.ok(Date.now() - started < 5_000, "failed in time, not after the sleep");
+
+    // A build may take as long as it takes; starting and stopping get longer than a look.
+    assert.equal(dockerLimit(["build", "--quiet"]), undefined);
+    assert.equal(dockerLimit(["start", "noid-computer"]), 120_000);
+    assert.equal(dockerLimit(["inspect", "noid-computer"]), 60_000);
 });
 
 test("a computer on another machine: every docker command names its engine", async () => {
