@@ -147,6 +147,28 @@ export async function setArchived(ids, archived, { undo = true } = {}) {
             }
         },
     );
+
+    // Archiving leaves repeating schedules running, with their reports in a session nobody looks at: say so, in one
+    // notice for them all, so a bulk archive does not push the undo out of the notices.
+    const kept = archived
+        ? done
+              .map((id) => ({ id, repeating: results[ids.indexOf(id)].value?.repeating ?? 0 }))
+              .filter((each) => each.repeating > 0)
+        : [];
+    const total = kept.reduce((sum, each) => sum + each.repeating, 0);
+
+    if (kept.length > 0) {
+        const first = `“${truncate(titles.get(kept[0].id) ?? "", 48)}”`;
+        const schedules = `${total} repeating schedule${total === 1 ? "" : "s"}`;
+
+        notify(
+            "info",
+            kept.length === 1
+                ? `${first} keeps ${schedules} running. ${undoWord()} to see ${total === 1 ? "it" : "them"}.`
+                : `${kept.length} archived sessions keep ${schedules} running. ${undoWord()} to see those of ${first}.`,
+            () => navigate(kept[0].id, { sheet: { type: "schedules" } }),
+        );
+    }
 }
 
 /**

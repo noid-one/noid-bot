@@ -474,9 +474,13 @@ export function createApi(options: HttpOptions, auth: Auth) {
         if (first === "sessions" && second !== undefined && method === "POST") {
             const body = await readJson<{ title?: string; archived?: boolean }>(request);
 
-            await app.commands.updateSession(conversationId(second), user, body);
+            const { repeating } = await app.commands.updateSession(
+                conversationId(second),
+                user,
+                body,
+            );
 
-            return json(response, 200, { ok: true });
+            return json(response, 200, { ok: true, repeating });
         }
 
         // noid: auto review of bots' calls, which the owner turns on and off.

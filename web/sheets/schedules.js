@@ -22,7 +22,9 @@ export function SchedulesSheet() {
     // What came of each schedule's latest runs, newest first, by schedule id.
     const [runs, setRuns] = useState({});
     const steer = canSteer();
-    const bot = sessions.find((session) => session.id === view.conversation?.id)?.bot;
+    const session = sessions.find((each) => each.id === view.conversation?.id);
+    const bot = session?.bot;
+    const archived = session?.archived === true;
     const setBy = (id) =>
         id === undefined
             ? "Pi"
@@ -100,7 +102,7 @@ export function SchedulesSheet() {
                         <div class="grow">
                             <div>${schedule.text}</div>
                             <div class="muted small">
-                                ${schedule.repeat ? `${schedule.repeat} · next ${formatWhen(schedule.next)}` : formatWhen(schedule.next)} · set by ${setBy(schedule.by)}
+                                ${schedule.repeat ? `${schedule.repeat} · next ${formatWhen(schedule.next)}` : formatWhen(schedule.next)} · set by ${setBy(schedule.by)}${archived ? " · session archived" : ""}
                             </div>
                             ${
                                 last !== undefined &&

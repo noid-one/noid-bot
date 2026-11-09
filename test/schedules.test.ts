@@ -401,3 +401,14 @@ test("a schedule is cancelled once its person may not steer anymore or a limit i
         "neither went out",
     );
 });
+
+test("archiving a session says how many repeating schedules keep running there", async () => {
+    const id = await newSession(app);
+
+    await app.commands.schedule(id, owner(app), { when: "in 10m once", zone: "UTC" });
+    await app.commands.schedule(id, owner(app), { when: "every 20m ping", zone: "UTC" });
+    assert.deepEqual(await app.commands.updateSession(id, owner(app), { archived: true }), {
+        repeating: 1,
+    });
+    assert.equal((await items(id)).length, 2, "archiving cancels nothing");
+});
