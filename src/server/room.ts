@@ -336,6 +336,18 @@ export class Room {
     }
 
     async open(conversation: Conversation): Promise<void> {
+        try {
+            await this.#open(conversation);
+        } catch (error) {
+            // A room that failed to open follows nothing: a retry subscribes its own (pi-pocket ca9fe5ac).
+            this.#unsubscribe?.();
+            this.#unsubscribe = undefined;
+
+            throw error;
+        }
+    }
+
+    async #open(conversation: Conversation): Promise<void> {
         this.#view = await conversation.viewState(context);
         this.#unsubscribe = this.#view.subscribe(() => this.schedule());
         const harness = this.#app.harness;
