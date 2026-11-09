@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { Avatar } from "../avatar.js";
 import { Face } from "../faces/face.js";
 import { usePoll } from "../poll.js";
-import { api, attempt, notify, openSheet, store } from "../store.js";
+import { api, attempt, notify, openSheet, store, uid } from "../store.js";
 import { ToolFrame } from "../tool-page.js";
 import { BOTTOM_SHEETS, formatWhen, html, Icon } from "../ui.js";
 
@@ -129,7 +129,7 @@ function Thread({ id, onBack, onSaid }) {
     const [text, setText] = useState("");
     const [sending, setSending] = useState(false);
     // One key per draft: a send retried after a lost answer finds the message, rather than post it again.
-    const [draftKey, setDraftKey] = useState(() => crypto.randomUUID());
+    const [draftKey, setDraftKey] = useState(() => uid());
     const list = useRef(null);
     const bots = botsById();
 
@@ -183,7 +183,7 @@ function Thread({ id, onBack, onSaid }) {
             });
 
             setText("");
-            setDraftKey(crypto.randomUUID());
+            setDraftKey(uid());
             setGroup((now) =>
                 now && !now.messages.some((each) => each.id === message.id)
                     ? { ...now, messages: [...now.messages, message], answering: true }
