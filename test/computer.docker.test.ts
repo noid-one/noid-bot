@@ -384,8 +384,11 @@ test("skills every bot shares, and git, work on the real computer", { skip }, as
 
         await say(app!, id, `prompt has Marmot-${run}`);
         assert.equal(await answer(id), `has Marmot-${run}: true`);
-        await say(app!, id, `prompt has ${skill}/SKILL.md`);
-        assert.equal(await answer(id), `has ${skill}/SKILL.md: true`);
+        // Where it is: its folder once, for every skill there, and the skill by name (the compact list, pp 3d2e96b4).
+        await say(app!, id, "prompt has In /home/noid/.agents/skills/<name>/SKILL.md:");
+        assert.equal(await answer(id), "has In /home/noid/.agents/skills/<name>/SKILL.md:: true");
+        await say(app!, id, `prompt has - test-${run}: Marmot-${run}`);
+        assert.equal(await answer(id), `has - test-${run}: Marmot-${run}: true`);
     } finally {
         await onComputer(`rm -rf ${skill}`);
     }
@@ -544,8 +547,10 @@ test(
         // A bot on the computer finds it with its skills.
         const id = await newSession(app!, folder("skill-user"));
 
-        await say(app!, id, `prompt has ${skillDir}/SKILL.md`);
-        assert.equal(await answer(id), `has ${skillDir}/SKILL.md: true`);
+        await say(app!, id, "prompt has In /home/noid/.agents/skills/<name>/SKILL.md:");
+        assert.equal(await answer(id), "has In /home/noid/.agents/skills/<name>/SKILL.md:: true");
+        await say(app!, id, `prompt has - ${slug}:`);
+        assert.equal(await answer(id), `has - ${slug}:: true`);
         await desktop.act(owner(app!), { action: "release" });
         await onComputer(`rm -rf ${skillDir} /tmp/${slug}; pkill -x xterm; true`);
     },
