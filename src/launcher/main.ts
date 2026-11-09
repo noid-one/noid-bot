@@ -1075,6 +1075,11 @@ async function main(): Promise<void> {
         fail(TAILSCALE_MISSING_MESSAGE);
     }
 
+    // Before any access is set up: fail() exits at once, which would leave a Serve mount (or a tunnel) behind.
+    if (!existsSync(SERVER)) {
+        fail(`Missing ${SERVER}`);
+    }
+
     let mode: Mode | undefined = options.access;
 
     if (mode === undefined && options.host !== undefined) {
@@ -1157,10 +1162,6 @@ async function main(): Promise<void> {
                     `A Tailscale Serve mount from an earlier run may still publish port ${options.port}. Remove it with "tailscale serve --https=443 --set-path=/ off", start on another --port, or start with --access tailscale-serve. When it is gone already, delete ${serveMountFile}.`,
                 );
             }
-        }
-
-        if (!existsSync(SERVER)) {
-            fail(`Missing ${SERVER}`);
         }
 
         log(dim(`  Starting Pi Pocket (${modeLabel()})…`));

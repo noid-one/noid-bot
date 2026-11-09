@@ -587,8 +587,14 @@ withFake("a probe that hangs is abandoned and says so", { hang: true }, (run) =>
 /**
  * The launcher itself, copied beside a stub server that only says it is ready, started in `local` mode on `port` with
  * the fake tailscale on its PATH. It runs until the stub starts, which is after the stale mount cleanup, then quits.
+ * Without `server`, there is no stub: the launcher finds no server to run.
  */
-async function launchLocal(data: string, port: number, access = "local"): Promise<boolean> {
+async function launchLocal(
+    data: string,
+    port: number,
+    access = "local",
+    server = true,
+): Promise<boolean> {
     const repo = fileURLToPath(new URL("..", import.meta.url));
     const root = mkdtempSync(join(tmpdir(), "pi-pocket-launcher-"));
     const started = join(root, "started");
@@ -608,9 +614,11 @@ async function launchLocal(data: string, port: number, access = "local"): Promis
         }
 
         symlinkSync(join(repo, "node_modules"), join(root, "node_modules"));
-        writeFileSync(
-            join(root, "src", "server", "main.ts"),
-            `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+
+        if (server) {
+            writeFileSync(
+                join(root, "src", "server", "main.ts"),
+                `import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 writeFileSync(${JSON.stringify(started)}, "");
 // What the launcher tells its server about access, for the test to read back, and the Serve receipt as it was then.
 process.on("message", (message) => {
@@ -629,7 +637,8 @@ process.send?.({ type: "ready" });
 process.on("disconnect", () => process.exit(0));
 setInterval(() => {}, 60_000);
 `,
-        );
+            );
+        }
 
         launcher = spawn(
             process.execPath,
@@ -710,6 +719,17 @@ async function accessMessages(
 const receipt = (data: string) => join(data, "serve-mount.json");
 const own = (data: string, port: number) =>
     writeFileSync(receipt(data), `${JSON.stringify({ port })}\n`);
+
+withFake(
+    "a serve-mode start with no server to run stops before it mounts anything",
+    { serve: {} },
+    async (run) => {
+        // The missing server is found before the access is set up: a mount made first would be left behind by the exit.
+        assert.equal(await launchLocal(run.data, LOCAL_PORT, "tailscale-serve", false), false);
+        assert.ok(!run.fake.calls().includes(MOUNT), "nothing is mounted");
+        assert.equal(existsSync(receipt(run.data)), false);
+    },
+);
 
 withFake(
     "a local start leaves the owner's own mount at its port alone, and takes down one it made",
