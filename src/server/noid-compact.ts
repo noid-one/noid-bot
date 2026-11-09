@@ -515,13 +515,10 @@ export class NoidCompaction {
             const models = (await tx.doc(UsageDoc, id)).models as Record<string, Usage>;
             const total = Object.hasOwn(models, made.model) ? models[made.model] : undefined;
 
+            // A plain assignment: Chord 1.5's change tracking refuses defineProperty, and a key is `provider/id`, never
+            // `__proto__`.
             if (total === undefined) {
-                Object.defineProperty(models, made.model, {
-                    value: plainUsage(made.usage),
-                    enumerable: true,
-                    writable: true,
-                    configurable: true,
-                });
+                models[made.model] = plainUsage(made.usage);
             } else {
                 addUsage(total, made.usage);
             }

@@ -6,9 +6,15 @@ import { STOPPED } from "./docs.ts";
 
 /**
  * How a run that failed leaves its messages: the model or its provider answered with an error, no model was there to
- * ask, or the run broke. Stopped (`aborted`), cleared (`reset`), and replaced (`stale`) runs did not fail.
+ * ask, the run broke, or the server stopped while the model answered and no retry was left (`interrupted`, since Pi
+ * Durable 1.5). Stopped (`aborted`), cleared (`reset`), and replaced (`stale`) runs did not fail.
  */
-export const FAILED_RUN: ReadonlySet<string> = new Set(["model_error", "no_model", "faulted"]);
+export const FAILED_RUN: ReadonlySet<string> = new Set([
+    "model_error",
+    "no_model",
+    "faulted",
+    "interrupted",
+]);
 
 /** Why a subagent did not answer, for its report and its row: what went wrong, in a line, or that it was stopped. */
 export function whyUnanswered(reason: string, detail: unknown): string {
@@ -18,6 +24,10 @@ export function whyUnanswered(reason: string, detail: unknown): string {
 
     if (reason === "no_model") {
         return "its model is not available here";
+    }
+
+    if (reason === "interrupted" && (typeof detail !== "string" || detail.trim() === "")) {
+        return "the server stopped while the model answered, and it was not tried again";
     }
 
     const text = typeof detail === "string" && detail.trim() !== "" ? detail : reason;

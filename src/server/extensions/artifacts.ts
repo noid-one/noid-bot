@@ -5,7 +5,8 @@
  */
 import { extname } from "node:path";
 import type { Context } from "@earendil-works/chord";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { arr, obj, opt, str } from "@earendil-works/pi-schema";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { ArtifactBodyDoc, type ArtifactMeta, ArtifactsDoc, type ArtifactType } from "../docs.ts";
@@ -133,28 +134,31 @@ export default function createArtifacts(_host: PocketHost) {
         name: "artifact",
         description:
             "Publish an HTML page, Markdown document, or SVG image that the user opens in the app's artifact viewer. The same id publishes a new version. Give exactly one of content, edits, or path (up to 2,000,000 bytes).",
-        parameters: Type.Object({
-            id: Type.String({ description: "Stable kebab-case id; reuse it for a new version." }),
-            title: Type.String({ description: "Short title." }),
-            type: Type.Optional(
-                StringEnum(["html", "markdown", "svg"] as const, {
-                    description:
-                        "Default: html, or from a new path's extension. A path cannot change an existing type.",
-                }),
-            ),
-            content: Type.Optional(Type.String({ description: "The whole new version." })),
-            path: Type.Optional(
-                Type.String({
-                    description:
-                        "A UTF-8 file where this session runs, to copy as this version (a snapshot, not a live link, without the files beside it): absolute, ~/…, or relative to the session folder.",
-                }),
-            ),
-            edits: Type.Optional(
-                Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() }), {
-                    description: "Exact, unique replacements on the latest version.",
-                }),
-            ),
-        }),
+        parameters: obj(
+            {
+                id: str({ description: "Stable kebab-case id; reuse it for a new version." }),
+                title: str({ description: "Short title." }),
+                type: opt(
+                    StringEnum(["html", "markdown", "svg"] as const, {
+                        description:
+                            "Default: html, or from a new path's extension. A path cannot change an existing type.",
+                    }),
+                ),
+                content: opt(str({ description: "The whole new version." })),
+                path: opt(
+                    str({
+                        description:
+                            "A UTF-8 file where this session runs, to copy as this version (a snapshot, not a live link, without the files beside it): absolute, ~/…, or relative to the session folder.",
+                    }),
+                ),
+                edits: opt(
+                    arr(obj({ oldText: str(), newText: str() }, { open: true }), {
+                        description: "Exact, unique replacements on the latest version.",
+                    }),
+                ),
+            },
+            { open: true },
+        ),
         // The commit below is idempotent per call, so a rerun after a crash is harmless.
         replay: "safe",
         execute: async (args, api, context) => {

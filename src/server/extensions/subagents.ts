@@ -14,7 +14,8 @@
  * or provider failed is reported as such, and Pi is told to stop and tell the user, never to try another model.
  */
 import type { AssistantMessage, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { arr, bool, obj, opt, str } from "@earendil-works/pi-schema";
 import type { Context } from "@earendil-works/chord";
 import {
     AgentDoc,
@@ -130,7 +131,11 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
 
                         // A listener is never called inline, so the value it started on is this one's to check.
                         await strand(watch.value);
-                        watch.start(strand);
+                        watch.start(async (call) => {
+                            if (call.kind === "value") {
+                                await strand(call.value);
+                            }
+                        });
                     }
 
                     settled = await submission.wait(context);
@@ -319,8 +324,8 @@ async function leftQueue(
 
     try {
         await new Promise<void>((resolve, reject) => {
-            watch.start(async (value) => {
-                if (!queued(value)) {
+            watch.start(async (call) => {
+                if (call.kind === "value" && !queued(call.value)) {
                     resolve();
                 }
             });
@@ -755,40 +760,43 @@ export default function createSubagents(host: PocketHost) {
     const choosing = allowedModels(host).length > 0;
     const base = {
         action: StringEnum(["spawn", "send", "stop", "status"] as const),
-        name: Type.Optional(
-            Type.String({ description: "Short kebab-case name, for example test-runner." }),
-        ),
-        message: Type.Optional(Type.String()),
-        followUp: Type.Optional(Type.Boolean()),
-        thinking: Type.Optional(
+        name: opt(str({ description: "Short kebab-case name, for example test-runner." })),
+        message: opt(str()),
+        followUp: opt(bool()),
+        thinking: opt(
             StringEnum(THINKING_LEVELS, {
                 description:
                     "spawn only: its thinking level; left out, yours. One its model lacks becomes the nearest lower one it has, else its lowest.",
             }),
         ),
-        tools: Type.Optional(
-            Type.Array(Type.String(), {
+        tools: opt(
+            arr(str(), {
                 description: "spawn only: the tool names it may use. Default: your tools.",
             }),
         ),
-        agent: Type.Optional(
-            Type.String({
+        agent: opt(
+            str({
                 description:
                     "spawn only: the name of an agent file (~/.agents/agents/NAME.md; each is a bot too) whose instructions the subagent takes.",
             }),
         ),
     };
-    const offered = Type.Object({
-        ...base,
-        model: Type.Optional(
-            Type.String({
-                description:
-                    "spawn only: one of the models the user allows for subagents, listed in your instructions, as provider/modelId. Leave it out to use your own model.",
-            }),
-        ),
-    });
+    const offered = obj(
+        {
+            ...base,
+            model: opt(
+                str({
+                    description:
+                        "spawn only: one of the models the user allows for subagents, listed in your instructions, as provider/modelId. Leave it out to use your own model.",
+                }),
+            ),
+        },
+        { open: true },
+    );
     // Without a choice, no model parameter at all. A model passed anyway is still refused.
-    const parameters = choosing ? offered : (Type.Object(base) as unknown as typeof offered);
+    const parameters = choosing
+        ? offered
+        : (obj(base, { open: true }) as unknown as typeof offered);
 
     const subagent = defineTool({
         name: "subagent",

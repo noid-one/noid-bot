@@ -7,11 +7,12 @@
  */
 import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
+import { obj, str } from "@earendil-works/pi-schema";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import { withAbortSignal } from "@earendil-works/chord/context";
-import { type ToolCall, Type } from "@earendil-works/pi-ai";
+import { type ToolCall } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai/utils/validation";
 import {
     type CodemodeResult,
@@ -210,7 +211,7 @@ export default function createCodemode(_host: PocketHost) {
     const codemode = defineTool({
         name: CODEMODE_TOOL,
         description: DESCRIPTION,
-        parameters: Type.Object({ code: Type.String({ description: "Raw JavaScript source." }) }),
+        parameters: obj({ code: str({ description: "Raw JavaScript source." }) }, { open: true }),
         // A script's nested calls (bash, writes) are not safe to run twice.
         replay: "unsafe",
         execute: async (args, api: ToolExecutionApi<CodemodeDetails>, context) => {
@@ -257,7 +258,10 @@ export default function createCodemode(_host: PocketHost) {
                         `codemode/${n}/${name}`,
                         ...rest,
                     )) as ToolExecutionApi["memo"];
-                const hookApi: HookApi = { ...api, memo };
+                // A tool's api cannot read the conversation's entries: hooks get them for a model's calls only.
+                const noEntries = (): Promise<never> =>
+                    Promise.reject(new Error("A hook cannot read entries in a codemode call"));
+                const hookApi: HookApi = { ...api, memo, entry: noEntries, entries: noEntries };
                 const check = (value: unknown): JsonObject =>
                     validateToolArguments(tool, {
                         ...call,

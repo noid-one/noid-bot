@@ -14,7 +14,9 @@
  * Noid has the tool too, under the same rules: the owner talks to it most, and its settings are theirs to undo.
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { type Api, clampThinkingLevel, type Model, Type } from "@earendil-works/pi-ai";
+import { type Api, clampThinkingLevel, type Model } from "@earendil-works/pi-ai";
+import { obj, opt, str, union } from "@earendil-works/pi-schema";
+import { literal } from "../tool-schema.ts";
 import {
     type ConversationId,
     defineDoc,
@@ -298,19 +300,23 @@ export class BotSettings {
             name: BOT_SETTINGS_TOOL,
             description:
                 "Read your own settings (call with no fields), or change them when your person asks. Instructions are replaced whole: keep what should stay. Never claim a change without calling this.",
-            parameters: Type.Object({
-                name: Type.Optional(Type.String()),
-                instructions: Type.Optional(Type.String()),
-                model: Type.Optional(
-                    Type.String({ description: 'A name like "Claude Sonnet", or provider/id' }),
-                ),
-                thinkingLevel: Type.Optional(
-                    Type.Union(
-                        THINKING_LEVELS.map((level) => Type.Literal(level)),
-                        { description: "How hard you reason: raise it when asked to think harder" },
+            parameters: obj(
+                {
+                    name: opt(str()),
+                    instructions: opt(str()),
+                    model: opt(str({ description: 'A name like "Claude Sonnet", or provider/id' })),
+                    thinkingLevel: opt(
+                        union(
+                            THINKING_LEVELS.map((level) => literal(level)),
+                            {
+                                description:
+                                    "How hard you reason: raise it when asked to think harder",
+                            },
+                        ),
                     ),
-                ),
-            }),
+                },
+                { open: true },
+            ),
             replay: "safe",
             execute: async (given, api) => {
                 const args = settingsAsked(given);

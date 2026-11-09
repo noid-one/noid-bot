@@ -7,11 +7,12 @@
  * Edit `DEFERRED` to choose which tools wait: what each is for, and the prompt section that goes with it, if one does.
  * From pi-pocket 0.27 (PR #224, #225).
  */
-import { Type } from "@earendil-works/pi-ai";
+
 import {
     createToolSearchExtension,
     TOOL_SEARCH_TOOL_NAME,
 } from "@earendil-works/pi-durable/tool-search";
+import { num, obj, opt, str } from "@earendil-works/pi-schema";
 import {
     type ConversationId,
     defineExtension,
@@ -90,14 +91,17 @@ export default function createToolSearch(host: PocketHost) {
         annotations: { readOnlyHint: true },
         description:
             "Load tools that wait (deferred_tools lists them) before you use them. The query is their names (`browser`, or `browser, schedule`) or words to search for.",
-        parameters: Type.Object({
-            query: Type.String({ description: "Names of waiting tools, or words to search for." }),
-            limit: Type.Optional(
-                Type.Number({
-                    description: `Matches a text search loads (default ${SEARCH_LIMIT}).`,
-                }),
-            ),
-        }),
+        parameters: obj(
+            {
+                query: str({ description: "Names of waiting tools, or words to search for." }),
+                limit: opt(
+                    num({
+                        description: `Matches a text search loads (default ${SEARCH_LIMIT}).`,
+                    }),
+                ),
+            },
+            { open: true },
+        ),
         async execute(args: { query: string; limit?: number }, api, context) {
             const names = String(args.query)
                 .split(/[\s,]+/)

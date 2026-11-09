@@ -11,8 +11,10 @@
  * Archiving asks the owner first (rakazo's `archive_bot`; see approvals.ts).
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { Type } from "@earendil-works/pi-ai";
+
 import type { ConversationId } from "@earendil-works/pi-durable";
+import { bool, obj, opt, str, union } from "@earendil-works/pi-schema";
+import { literal } from "../tool-schema.ts";
 import { rebased } from "../docs.ts";
 import { defineDoc, defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { createHash } from "node:crypto";
@@ -213,7 +215,7 @@ export class BotMail {
             name: "bots",
             description:
                 "List the owner's other bots: their names, roles, where they work, and whether they are busy. Message one with bot_message.",
-            parameters: Type.Object({}),
+            parameters: obj({}, { open: true }),
             replay: "safe",
             execute: async (_args, api) => {
                 const self = this.#from(api.conversationId);
@@ -242,17 +244,20 @@ export class BotMail {
             name: "bot_message",
             description:
                 "Send another of the owner's bots a message: a request, a hand-over, or an answer to theirs. It arrives in their conversation; their answer comes back as a message to you. Hand over files through the shared folder and say where they are.",
-            parameters: Type.Object({
-                to: Type.String({ description: "The bot's name, as the bots tool lists it" }),
-                message: Type.String({
-                    description: "What you ask or tell them; make it stand on its own",
-                }),
-                steer: Type.Optional(
-                    Type.Boolean({
-                        description: "Interrupt their current work with it (default: after it)",
+            parameters: obj(
+                {
+                    to: str({ description: "The bot's name, as the bots tool lists it" }),
+                    message: str({
+                        description: "What you ask or tell them; make it stand on its own",
                     }),
-                ),
-            }),
+                    steer: opt(
+                        bool({
+                            description: "Interrupt their current work with it (default: after it)",
+                        }),
+                    ),
+                },
+                { open: true },
+            ),
             replay: "safe",
             execute: async (args, api) =>
                 reply(
@@ -322,11 +327,12 @@ export class BotMail {
             name: "bot_brief",
             description:
                 "What the other bots did lately: for each, whether it is busy or waiting for the owner, when its last run ended, and its last reply. Give a name for one bot.",
-            parameters: Type.Object({
-                name: Type.Optional(
-                    Type.String({ description: "One bot's name; all bots without it" }),
-                ),
-            }),
+            parameters: obj(
+                {
+                    name: opt(str({ description: "One bot's name; all bots without it" })),
+                },
+                { open: true },
+            ),
             replay: "safe",
             execute: async (args, api) => {
                 this.#requireMain(api.conversationId);
@@ -382,20 +388,21 @@ export class BotMail {
             name: "bot_create",
             description:
                 "Make a new bot for the owner: a role, instructions, and where it works: the shared computer (the default), or a folder of the owner's machine (kind host, with folder), where it asks before it changes anything. Its name says what it does, as a teammate's job title reads (Researcher, Release Manager, Inbox Triage); leave it out and it is named for its role. Its model is the owner's to choose.",
-            parameters: Type.Object({
-                name: Type.Optional(
-                    Type.String({
-                        description:
-                            "What it does, as a job title (Researcher, Release Manager): never a made-up or random word",
-                    }),
-                ),
-                role: Type.String({ description: "What it is for, in a line" }),
-                instructions: Type.Optional(Type.String()),
-                kind: Type.Optional(Type.Union([Type.Literal("computer"), Type.Literal("host")])),
-                folder: Type.Optional(
-                    Type.String({ description: "kind host: the folder it works in" }),
-                ),
-            }),
+            parameters: obj(
+                {
+                    name: opt(
+                        str({
+                            description:
+                                "What it does, as a job title (Researcher, Release Manager): never a made-up or random word",
+                        }),
+                    ),
+                    role: str({ description: "What it is for, in a line" }),
+                    instructions: opt(str()),
+                    kind: opt(union([literal("computer"), literal("host")])),
+                    folder: opt(str({ description: "kind host: the folder it works in" })),
+                },
+                { open: true },
+            ),
             execute: async (args, api) => {
                 this.#requireMain(api.conversationId);
 
@@ -424,11 +431,14 @@ export class BotMail {
         return defineTool({
             name: "bot_update",
             description: "Change another bot's role or instructions.",
-            parameters: Type.Object({
-                name: Type.String(),
-                role: Type.Optional(Type.String()),
-                instructions: Type.Optional(Type.String()),
-            }),
+            parameters: obj(
+                {
+                    name: str(),
+                    role: opt(str()),
+                    instructions: opt(str()),
+                },
+                { open: true },
+            ),
             execute: async (args, api) => {
                 this.#requireMain(api.conversationId);
 
@@ -462,7 +472,7 @@ export class BotMail {
         return defineTool({
             name: "bot_archive",
             description: "Archive another bot (the owner can bring it back). Asks the owner first.",
-            parameters: Type.Object({ name: Type.String() }),
+            parameters: obj({ name: str() }, { open: true }),
             execute: async (args, api) => {
                 this.#requireMain(api.conversationId);
 

@@ -3,8 +3,10 @@
  * memory tool, they apply at once, and every later session in the same project gets them in its system prompt; the
  * owner sees, edits, and forgets them in the ⋯ menu → Memory.
  */
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
+import { obj, opt, str, union } from "@earendil-works/pi-schema";
+import { literal } from "../tool-schema.ts";
 import type { Lesson } from "../docs.ts";
 import type { PocketHost } from "../host.ts";
 import { flat, MAX_LESSON, MEMORY_EXTENSION, type Project } from "../memory.ts";
@@ -52,20 +54,23 @@ export default function createMemory(host: PocketHost) {
     const tool = defineTool({
         name: "memory",
         description: DESCRIPTION,
-        parameters: Type.Object({
-            action: StringEnum(["add", "update", "remove", "list"]),
-            text: Type.Optional(
-                Type.String({
-                    description: `add, update: the lesson, one or two sentences (${String(MAX_LESSON)} characters at most)`,
-                }),
-            ),
-            scope: Type.Optional(
-                Type.Union([Type.Literal("project"), Type.Literal("everywhere")], {
-                    description: "add: project (default) or everywhere",
-                }),
-            ),
-            id: Type.Optional(Type.String({ description: "update, remove: the lesson's id" })),
-        }),
+        parameters: obj(
+            {
+                action: StringEnum(["add", "update", "remove", "list"]),
+                text: opt(
+                    str({
+                        description: `add, update: the lesson, one or two sentences (${String(MAX_LESSON)} characters at most)`,
+                    }),
+                ),
+                scope: opt(
+                    union([literal("project"), literal("everywhere")], {
+                        description: "add: project (default) or everywhere",
+                    }),
+                ),
+                id: opt(str({ description: "update, remove: the lesson's id" })),
+            },
+            { open: true },
+        ),
         // Safe to run again: an add finds the lesson this very call saved, an update sets the same text, and removing one
         // that is gone changes nothing.
         replay: "safe",

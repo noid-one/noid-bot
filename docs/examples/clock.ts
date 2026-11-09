@@ -2,10 +2,11 @@
  * A clock tool, and a /clock-zone command that sets the time zone it uses in a session. An example drop-in extension:
  * copy it into `~/.noid/extensions/`, then turn it on in Settings → Extensions.
  */
-import { Type } from "@earendil-works/pi-ai";
+
 import { defineDoc, defineExtension, defineTool } from "@earendil-works/pi-durable";
 // A type import is gone when the module runs. In the drop-in folder, import the types from "./_pocket.d.ts".
 import type { Web } from "../../types/pocket.d.ts";
+import { obj, opt, str } from "@earendil-works/pi-schema";
 
 /** Each session's time zone, as /clock-zone set it. A document kind is stored data: named after the module. */
 const ClockSettings = defineDoc<{ zone?: string }>({
@@ -22,11 +23,12 @@ const clock = defineTool({
     name: "clock",
     description:
         "The date and time now, in a time zone such as Europe/Berlin (by default, the session's or the server's).",
-    parameters: Type.Object({
-        zone: Type.Optional(
-            Type.String({ description: "An IANA time zone, such as America/Chicago" }),
-        ),
-    }),
+    parameters: obj(
+        {
+            zone: opt(str({ description: "An IANA time zone, such as America/Chicago" })),
+        },
+        { open: true },
+    ),
     // It only reads the clock: running it again after a restart cut it off is harmless.
     replay: "safe",
     execute: async (args, api, context) => {

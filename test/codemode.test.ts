@@ -1,8 +1,9 @@
 // Codemode: scripts call the conversation's tools through the same steps as direct calls, hooks included.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { obj, str } from "@earendil-works/pi-schema";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { Type } from "@earendil-works/pi-ai";
+
 import {
     defineExtension,
     defineTool,
@@ -20,14 +21,14 @@ const context = BACKGROUND_CONTEXT;
 const echo = defineTool({
     name: "echo",
     description: "Echo text",
-    parameters: Type.Object({ text: Type.String() }),
+    parameters: obj({ text: str() }, { open: true }),
     execute: async (args) => ({ output: [{ type: "text", text: `echo:${args.text}` }] }),
 });
 /** Streams its output and returns no content, like bash. */
 const shell = defineTool({
     name: "bash",
     description: "Run a command",
-    parameters: Type.Object({ command: Type.String() }),
+    parameters: obj({ command: str() }, { open: true }),
     outputLimits: { retain: "tail" },
     execute: async (args, api) => {
         api.output(`ran ${args.command}`);

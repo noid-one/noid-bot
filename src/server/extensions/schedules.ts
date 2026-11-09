@@ -3,9 +3,11 @@
  * to check back on something slow or for a regular job. While this is off, no scheduled message goes out; they wait
  * until it is on again.
  */
-import { Type } from "@earendil-works/pi-ai";
+
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";
 import type { Schedule } from "../docs.ts";
+import { obj, opt, str, union } from "@earendil-works/pi-schema";
+import { literal } from "../tool-schema.ts";
 import type { PocketHost } from "../host.ts";
 import { SCHEDULED_PREFIX, SCHEDULES_EXTENSION } from "../schedules.ts";
 import { describeMoment, describeRepeat, WHEN_HELP } from "../when.ts";
@@ -19,23 +21,24 @@ export default function createSchedules(host: PocketHost) {
         description:
             "Send yourself a message in this conversation later, or on repeat: to check back on something slow, or for a regular job. " +
             `Actions: add (when, message), list, cancel (id). ${WHEN_HELP} Clock times are in ${zone}.`,
-        parameters: Type.Object({
-            action: Type.Union([Type.Literal("add"), Type.Literal("list"), Type.Literal("cancel")]),
-            when: Type.Optional(
-                Type.String({
-                    description:
-                        "add: when it goes out, such as in 30m, tomorrow 9:00, or every weekday 8:00",
-                }),
-            ),
-            message: Type.Optional(
-                Type.String({
-                    description: "add: what you get then; write it so it stands on its own",
-                }),
-            ),
-            id: Type.Optional(
-                Type.String({ description: "cancel: the schedule's id, from add or list" }),
-            ),
-        }),
+        parameters: obj(
+            {
+                action: union([literal("add"), literal("list"), literal("cancel")]),
+                when: opt(
+                    str({
+                        description:
+                            "add: when it goes out, such as in 30m, tomorrow 9:00, or every weekday 8:00",
+                    }),
+                ),
+                message: opt(
+                    str({
+                        description: "add: what you get then; write it so it stands on its own",
+                    }),
+                ),
+                id: opt(str({ description: "cancel: the schedule's id, from add or list" })),
+            },
+            { open: true },
+        ),
         // Safe to run again: an add finds the schedule this very call made, list only reads, and a cancel of a schedule
         // that is gone changes nothing.
         replay: "safe",

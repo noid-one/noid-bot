@@ -5,8 +5,9 @@
  * bot's approvals (it is not in `CLEAN_RESULTS`): a group thread holds other bots' words.
  */
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
-import { Type } from "@earendil-works/pi-ai";
+
 import { type ConversationId, defineExtension, defineTool } from "@earendil-works/pi-durable";
+import { num, obj, opt, str } from "@earendil-works/pi-schema";
 import type { PocketApp } from "../app.ts";
 import { cutWhole } from "../cut.ts";
 import { defang } from "../fence.ts";
@@ -136,12 +137,15 @@ export class ChatSearch {
             name: CHAT_SEARCH_TOOL,
             description:
                 "Search what was said in your own chat (also what you no longer remember) and your group threads. Every word must match; newest first.",
-            parameters: Type.Object({
-                query: Type.String({ description: "Words to find" }),
-                limit: Type.Optional(
-                    Type.Number({ description: `At most this many (default ${String(LIMIT)})` }),
-                ),
-            }),
+            parameters: obj(
+                {
+                    query: str({ description: "Words to find" }),
+                    limit: opt(
+                        num({ description: `At most this many (default ${String(LIMIT)})` }),
+                    ),
+                },
+                { open: true },
+            ),
             replay: "safe",
             execute: async (args, api) => {
                 const found = await this.search(api.conversationId, args.query, args.limit);

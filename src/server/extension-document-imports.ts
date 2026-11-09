@@ -4,6 +4,8 @@ import { sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const compatUrl = new URL("./extension-document-compat.ts", import.meta.url).href;
+// Pi 1.5's pi-ai no longer exports TypeBox's Type: drop-ins written before it get it back (pi-pocket bd03d97e).
+const piAiUrl = new URL("./extension-pi-ai-compat.ts", import.meta.url).href;
 
 type Scope = { directory: string; report: (message: string) => void; warned: Set<string> };
 type Owner = { scope: Scope; module: string; root: string };
@@ -41,6 +43,10 @@ export function documentImports(directory: string, report: (message: string) => 
             resolve(specifier, context, nextResolve) {
                 const parent =
                     context.parentURL === undefined ? undefined : ownerOf(context.parentURL);
+
+                if (specifier === "@earendil-works/pi-ai" && parent !== undefined) {
+                    return { url: piAiUrl, shortCircuit: true };
+                }
 
                 if (specifier === "@earendil-works/pi-durable" && parent !== undefined) {
                     const target = new URL(compatUrl);

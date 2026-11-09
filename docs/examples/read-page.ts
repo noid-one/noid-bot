@@ -1,9 +1,10 @@
 /**
  * Reads a public web page for Pi: a read_page tool that fetches only public addresses and fences the page's text.
  */
-import { Type } from "@earendil-works/pi-ai";
+
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import type { Host } from "../../types/pocket.d.ts";
+import { num, obj, opt, str } from "@earendil-works/pi-schema";
 
 /** The text of an HTML page, roughly: no scripts, styles, or tags, and its common entities decoded. */
 function pageText(html: string): string {
@@ -27,12 +28,13 @@ export default function createReadPage(host: Host) {
     const readPage = defineTool({
         name: "read_page",
         description: "Read the text of a public web page (http or https).",
-        parameters: Type.Object({
-            url: Type.String({ description: "The page's address" }),
-            maxChars: Type.Optional(
-                Type.Number({ description: "The text to give at most (default 20000)" }),
-            ),
-        }),
+        parameters: obj(
+            {
+                url: str({ description: "The page's address" }),
+                maxChars: opt(num({ description: "The text to give at most (default 20000)" })),
+            },
+            { open: true },
+        ),
         replay: "safe",
         execute: async (args) => {
             const say = (text: string) => ({ output: [{ type: "text" as const, text }] });

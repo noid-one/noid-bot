@@ -482,9 +482,13 @@ export class CacheKeeper {
             return this.#drop(key);
         }
 
+        // The request's own `onPayload` belongs to its generation task (Pi Durable 1.5 runs `beforeProviderRequest` hooks
+        // there), which has ended: calling it fails. The warm goes without it; a payload those hooks changed then differs
+        // from the cached request, and the final payload guard below refuses it.
         const {
             signal: _signal,
             telemetry: _telemetry,
+            onPayload: _onPayload,
             ...rest
         } = entry.options as SimpleStreamOptions & {
             telemetry?: unknown;

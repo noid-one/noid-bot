@@ -861,7 +861,7 @@ export class PocketApp {
                     await tx.doc(ArtifactsDoc, conversation.id);
                     await tx.doc(SubagentsDoc, conversation.id);
                 },
-                onReport: (error) => this.notice("warning", describe(error)),
+                onReport: (report) => this.notice("warning", describe(report.error)),
             },
             context,
         );
@@ -871,9 +871,19 @@ export class PocketApp {
 
         await this.spend.load(conversations);
 
-        this.#unsubscribeCommits = this.harness.subscribeCommits((publication) =>
-            this.#committed(publication),
-        );
+        // An observer that throws is detached for good: one commit's error must not stop the app hearing of the rest.
+        const commits = this.harness.observeCommits({
+            advance: (publication) => {
+                try {
+                    this.#committed(publication);
+                } catch (error) {
+                    this.notice("warning", describe(error));
+                }
+            },
+            end: () => {},
+        });
+
+        this.#unsubscribeCommits = () => commits.detach();
         this.#unsubscribeApprovals = this.approvals.subscribe((id) => {
             void this.#rooms.get(id)?.then(
                 (room) => room.schedule(),
@@ -1064,7 +1074,7 @@ export class PocketApp {
             if (
                 change.type === "document" &&
                 change.record.kind === SpendDoc.definition.kind &&
-                change.value !== null
+                change.kind === "change"
             ) {
                 this.spend.countedChanged(change.value as { people: Record<string, number> });
                 alreadyPaid = true;
@@ -1081,7 +1091,7 @@ export class PocketApp {
             ) {
                 this.spend.usageChanged(
                     change.conversationId,
-                    change.value as UsageState | null,
+                    change.kind === "change" ? (change.value as UsageState) : null,
                     alreadyPaid,
                 );
 
@@ -1168,10 +1178,12 @@ export class PocketApp {
     #documentCommitted(change: Extract<DocumentCommitChange, { type: "document" }>): boolean {
         const kind = change.record.kind;
         const id = change.conversationId;
+        // A retired document reads as none.
+        const value = change.kind === "change" ? change.value : null;
         let sessionsChanged = false;
 
         if (kind === "pi.live" && id !== undefined) {
-            const busy = (change.value as LiveState | null)?.run !== undefined;
+            const busy = (value as LiveState | null)?.run !== undefined;
 
             if (busy !== this.#busy.has(id)) {
                 if (busy) {
@@ -1227,14 +1239,14 @@ export class PocketApp {
                 }
             }
         } else if (kind === "pi.agent" && id !== undefined) {
-            if (change.value !== null) {
-                this.#agents.set(id, change.value as AgentState);
+            if (value !== null) {
+                this.#agents.set(id, value as AgentState);
             }
 
             sessionsChanged = true;
         } else if (kind === SessionsDoc.definition.kind) {
             this.#sessions = {
-                ...((change.value as { items?: Record<string, SessionMeta> } | null)?.items ?? {}),
+                ...((value as { items?: Record<string, SessionMeta> } | null)?.items ?? {}),
             };
             sessionsChanged = true;
 
@@ -1246,29 +1258,22 @@ export class PocketApp {
                 );
             }
         } else if (kind === FolderFavoritesDoc.definition.kind) {
-            this.folderFavorites.committed(
-                change.value as { users: Record<string, string[]> } | null,
-            );
+            this.folderFavorites.committed(value as { users: Record<string, string[]> } | null);
         } else if (kind === MemoryDoc.definition.kind) {
             this.memory.committed();
         } else if (ROOM_DOCS.has(kind) && id !== undefined) {
             if (kind === ChatDoc.definition.kind) {
-                if (
-                    this.#noteChat(
-                        id,
-                        (change.value as { messages?: ChatMessage[] } | null)?.messages,
-                    )
-                ) {
+                if (this.#noteChat(id, (value as { messages?: ChatMessage[] } | null)?.messages)) {
                     sessionsChanged = true;
                 }
             } else if (kind === SubagentsDoc.definition.kind) {
-                this.#noteSubagents(id, change.value as SubagentsValue | null);
+                this.#noteSubagents(id, value as SubagentsValue | null);
                 // The list counts each session's subagents, and the board lists them.
                 sessionsChanged = true;
             }
 
             void this.#rooms.get(id)?.then(
-                (room) => room.setDoc(kind, change.value as Record<string, unknown> | null),
+                (room) => room.setDoc(kind, value as Record<string, unknown> | null),
                 () => {},
             );
 
@@ -1277,7 +1282,7 @@ export class PocketApp {
                     void pending.then(
                         (room) => {
                             if (room.id !== id && this.rootOf(room.id) === id) {
-                                room.setDoc(kind, change.value as Record<string, unknown> | null);
+                                room.setDoc(kind, value as Record<string, unknown> | null);
                             }
                         },
                         () => {},

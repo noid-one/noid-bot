@@ -1634,7 +1634,11 @@ export class SessionTools {
                 };
 
                 await strand(watch.value);
-                watch.start(strand);
+                watch.start(async (call) => {
+                    if (call.kind === "value") {
+                        await strand(call.value);
+                    }
+                });
             }
 
             settled = await submission.wait(context);

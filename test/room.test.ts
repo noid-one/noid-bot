@@ -7,16 +7,21 @@ import { Room } from "../src/server/room.ts";
 
 test("a room that fails to open stops following its view (pi-pocket ca9fe5ac)", async () => {
     let following = 0;
-    const view = {
-        subscribe: () => {
+    // Pi Durable 1.5's watch: started, it follows the view until stopped.
+    const conversation = {
+        watch: async () => {
             following++;
 
-            return () => {
-                following--;
+            return {
+                value: { conversation: {}, docs: {}, entries: [] },
+                start: () => {},
+                stop: async () => {
+                    following--;
+                },
             };
         },
-    };
-    const conversation = { viewState: async () => view } as unknown as Conversation;
+        context: async () => ({ entries: [] }),
+    } as unknown as Conversation;
     // A storage read that fails after the view is followed.
     const app = {
         harness: {

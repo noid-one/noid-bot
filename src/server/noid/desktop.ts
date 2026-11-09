@@ -12,8 +12,9 @@
  */
 import type { Context } from "@earendil-works/chord";
 import { randomUUID } from "node:crypto";
+import { num, obj, opt, str } from "@earendil-works/pi-schema";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { Type } from "@earendil-works/pi-ai";
+
 import {
     type ConversationId,
     defineExtension,
@@ -533,17 +534,20 @@ export class Desktop {
             name: "desktop",
             description:
                 "Use the shared computer's desktop: programs with windows, by mouse and keyboard. Actions: screenshot; click, double_click, right_click, move (x, y); drag (x, y to to_x, to_y); scroll (x, y, dy steps, negative up); type (text, up to 1000 characters); key (keys, such as ctrl+s, Return, alt+Tab); open (command, such as xterm); release (when done, so other bots can use it).",
-            parameters: Type.Object({
-                action: Type.String(),
-                x: Type.Optional(Type.Number()),
-                y: Type.Optional(Type.Number()),
-                to_x: Type.Optional(Type.Number()),
-                to_y: Type.Optional(Type.Number()),
-                dy: Type.Optional(Type.Number()),
-                text: Type.Optional(Type.String()),
-                keys: Type.Optional(Type.String()),
-                command: Type.Optional(Type.String()),
-            }),
+            parameters: obj(
+                {
+                    action: str(),
+                    x: opt(num()),
+                    y: opt(num()),
+                    to_x: opt(num()),
+                    to_y: opt(num()),
+                    dy: opt(num()),
+                    text: opt(str()),
+                    keys: opt(str()),
+                    command: opt(str()),
+                },
+                { open: true },
+            ),
             // One mouse: a click and the typing after it must not overlap.
             executionMode: "sequential",
             execute: async (args, api, context) => {
