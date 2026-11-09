@@ -8,7 +8,7 @@ import { triggersOn } from "../commands.js";
 import { extensionMenuItems, safeMode } from "../extension-ui.js";
 import { modelRefreshAvailable, refreshModels } from "../model-refresh.js";
 import { sheetBody } from "../sheets.js";
-import { api, attempt, closeSettings, collab, notify, store } from "../store.js";
+import { api, attempt, closeSettings, collab, notify, openRunning, store } from "../store.js";
 import { Boundary, BOTTOM_SHEETS, html, Icon, scrimPress, SheetEmbed, SheetInfo } from "../ui.js";
 import { defaultsKept } from "./model.js";
 
@@ -164,12 +164,12 @@ function groupsOf() {
                         : "What Pi spent for you.",
                     sheet: { type: "spend" },
                 },
+                // A board in the conversation's place, not a page here (`running-board.js`).
                 {
                     id: "running",
                     icon: "pulse",
                     label: "Running now",
-                    about: "Everything Pi is doing in the sessions you can see.",
-                    sheet: { type: "running" },
+                    run: openRunning,
                 },
             ],
         },

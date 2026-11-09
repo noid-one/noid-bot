@@ -49,6 +49,7 @@ import { ToolPage } from "./tool-page.js";
 import { branchAvailable, headLabel } from "./sheets/branch.js";
 import { SignIn } from "./signin.js";
 import { openSubagents } from "./subagents.js";
+import { RunningBoard } from "./running-board.js";
 import { SubagentsBoard } from "./subagents-board.js";
 import {
     actions,
@@ -459,7 +460,7 @@ function App() {
 
     const inConversation = state.conversationId !== null;
     const rail = prefs().sidebar === "rail";
-    // The subagents board, or an extension's page, takes the conversation's place, and the panels beside it give it
+    // A board (subagents, or Running now), or an extension's page, takes the conversation's place, and the panels beside it give it
     // their room.
     const board = state.board;
     const page = !board && state.page !== null;
@@ -488,14 +489,16 @@ function App() {
         </aside>
         <div class=${`pane window ${placed ? "boarded" : ""}`} data-part="pane">
             ${
-                board
-                    ? html`<${SubagentsBoard} />`
-                    : page
-                      ? html`<${ExtensionPage} key=${`${state.page.module}:${state.page.id}`} />`
-                      : tool
-                        ? html`<${ToolPage} />`
-                        : inConversation
-                          ? html`<${Topbar} />
+                board === "running"
+                    ? html`<${RunningBoard} />`
+                    : board
+                      ? html`<${SubagentsBoard} />`
+                      : page
+                        ? html`<${ExtensionPage} key=${`${state.page.module}:${state.page.id}`} />`
+                        : tool
+                          ? html`<${ToolPage} />`
+                          : inConversation
+                            ? html`<${Topbar} />
                     ${
                         peeking &&
                         tiles.length > 0 &&
@@ -508,7 +511,7 @@ function App() {
                         !state.missing &&
                         html`<${Composer} key=${state.conversationId} />`
                     }`
-                          : html`<div class="home-list" data-part="home-list">
+                            : html`<div class="home-list" data-part="home-list">
                           <${RailNav} />
                           <${SessionList} />
                       </div>
