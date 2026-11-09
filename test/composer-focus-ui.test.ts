@@ -443,3 +443,44 @@ test(
         assert.equal(await resizing(), false, "the drag ended");
     },
 );
+
+test(
+    "an Enter that ends a composed word (Chinese, Japanese, Korean input) does not save the field (rakazo 771f7f45e)",
+    real,
+    async () => {
+        await home(VIEWPORTS.desktop);
+        await page.navigate(`${base}/s/${Number(one)}`);
+        await opened(one);
+        await page.evaluate(`
+        const { openSheet } = await import("/store.js");
+
+        openSheet({ type: "rename" });
+    `);
+        const field = ".sheet-body .field input";
+
+        await until(
+            () =>
+                inPage<boolean>(
+                    `return JSON.stringify(document.querySelector('${field}') !== null)`,
+                ),
+            "the rename sheet",
+        );
+        await page.type({ selector: field }, "ime title");
+        const enter = (composing: boolean) =>
+            page.evaluate(`
+            document.querySelector('${field}').dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Enter", bubbles: true, isComposing: ${composing} }),
+            );
+            await new Promise((resolve) => setTimeout(resolve, 300));
+        `);
+        const open = () =>
+            inPage<boolean>(`return JSON.stringify(document.querySelector('${field}') !== null)`);
+
+        await enter(true);
+        assert.equal(await open(), true, "still choosing the word");
+        assert.notEqual(app.sessionMeta(one)?.title, "ime title");
+        await enter(false);
+        await until(async () => !(await open()), "saved and closed");
+        assert.equal(app.sessionMeta(one)?.title, "ime title");
+    },
+);

@@ -1,7 +1,7 @@
 // Scheduled messages of this session; a bot's are its routines.
 import { useEffect, useState } from "preact/hooks";
 import { actions, attempt, canSteer, closeSheet, store } from "../store.js";
-import { formatWhen, html, Icon, Sheet } from "../ui.js";
+import { composing, formatWhen, html, Icon, Sheet } from "../ui.js";
 
 /** A run as one line: when, and what came of it. */
 const runLine = (run) =>
@@ -78,7 +78,7 @@ export function SchedulesSheet() {
                     placeholder=${bot === undefined ? "in 2h check the deploy" : "every weekday 8:00 summarize my inbox"}
                     value=${when}
                     onInput=${(event) => setWhen(event.currentTarget.value)}
-                    onKeyDown=${(event) => event.key === "Enter" && add()}
+                    onKeyDown=${(event) => event.key === "Enter" && !composing(event) && add()}
                 />
                 <button class="button primary" disabled=${when.trim() === ""} onClick=${add}>
                     Add

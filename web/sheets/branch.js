@@ -6,6 +6,7 @@ import { useDragToClose } from "../gestures.js";
 import {
     anchorStyle,
     BOTTOM_SHEETS,
+    composing,
     html,
     Icon,
     popAnchor,
@@ -252,7 +253,7 @@ export function BranchPicker() {
             event.preventDefault();
             keyed.current = true;
             setPicked((active + step + rows.length) % rows.length);
-        } else if (event.key === "Enter" && rows[active] && !switching) {
+        } else if (event.key === "Enter" && !composing(event) && rows[active] && !switching) {
             event.preventDefault();
             pick(rows[active]);
         }

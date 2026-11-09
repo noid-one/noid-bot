@@ -1,7 +1,7 @@
 // The sign-in screen, for a browser that is not signed in.
 
 import { useState } from "preact/hooks";
-import { html, NoidMark } from "./ui.js";
+import { composing, html, NoidMark } from "./ui.js";
 
 export function SignIn() {
     const [value, setValue] = useState("");
@@ -49,7 +49,7 @@ export function SignIn() {
                 autocomplete="off"
                 spellcheck=${false}
                 onInput=${(event) => setValue(event.currentTarget.value)}
-                onKeyDown=${(event) => event.key === "Enter" && go()}
+                onKeyDown=${(event) => event.key === "Enter" && !composing(event) && go()}
             />
             <button class="button primary" onClick=${go}>Sign in</button>
         </div>

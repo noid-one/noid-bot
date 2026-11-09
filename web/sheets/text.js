@@ -1,7 +1,7 @@
 // One text field and a button: renaming, resetting, instructions, compacting, and your name.
 import { useContext, useState } from "preact/hooks";
 import { attempt, closeSheet, notify } from "../store.js";
-import { html, Sheet, SheetEmbed } from "../ui.js";
+import { composing, html, Sheet, SheetEmbed } from "../ui.js";
 
 export function TextSheet({
     title,
@@ -49,7 +49,7 @@ export function TextSheet({
                         value=${value}
                         placeholder=${placeholder}
                         onInput=${(event) => setValue(event.currentTarget.value)}
-                        onKeyDown=${(event) => event.key === "Enter" && save()}
+                        onKeyDown=${(event) => event.key === "Enter" && !composing(event) && save()}
                     />`
             }
         </div>

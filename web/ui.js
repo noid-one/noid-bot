@@ -11,6 +11,9 @@ import { actions, filesShown, notify, openSheet, store } from "./store.js";
 
 export const html = htm.bind(h);
 
+/** An Enter or other key that ends a word being composed (Chinese, Japanese, Korean input): not the field's own. */
+export const composing = (event) => event.isComposing || event.keyCode === 229;
+
 // ─── Images ──────────────────────────────────────────────────────────────────────
 
 const currentConversation = () => store.state.view.conversation?.id;

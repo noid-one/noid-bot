@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { jumpToEntry } from "../chat.js";
 import { foldedMatch } from "../fold-case.js";
 import { actions, closeSheet, isRow, loadEarlier, store } from "../store.js";
-import { html, Icon, Marked, plainText, Sheet, Spinner, writtenText } from "../ui.js";
+import { composing, html, Icon, Marked, plainText, Sheet, Spinner, writtenText } from "../ui.js";
 
 /** How many entries a page of earlier history has (`app.history` on the server), and how many pages find reads. */
 const HISTORY_PAGE = 400;
@@ -188,7 +188,7 @@ export function FindSheet({ initial }) {
         if (move !== undefined && results.length > 0) {
             event.preventDefault();
             setPick((Math.min(pick, results.length - 1) + move + results.length) % results.length);
-        } else if (event.key === "Enter" && chosen) {
+        } else if (event.key === "Enter" && !composing(event) && chosen) {
             event.preventDefault();
             jump(chosen.entry);
         }

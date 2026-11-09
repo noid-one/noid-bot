@@ -6,6 +6,7 @@ import { useDragToClose } from "../gestures.js";
 import {
     anchorStyle,
     BOTTOM_SHEETS,
+    composing,
     formatTokens,
     html,
     Icon,
@@ -233,7 +234,7 @@ export function ModelPicker({ forDefault: forDefaultProp = false } = {}) {
             event.preventDefault();
             keyed.current = true;
             setPicked((active + step + shown.length) % shown.length);
-        } else if (event.key === "Enter" && shown[active]) {
+        } else if (event.key === "Enter" && !composing(event) && shown[active]) {
             event.preventDefault();
             pick(shown[active]);
         }
