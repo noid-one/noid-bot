@@ -81,7 +81,12 @@ export function parseKeys(combo: string): { key: string; modifiers: number } {
     }
 
     const last = parts.at(-1) ?? "";
-    const key = last.length === 1 ? last : (KEY_NAMES[last.trim().toLowerCase()] ?? last.trim());
+    // A line break is the Enter key, as typing one is: sent as its own text it submits a form all the same.
+    const key = /^(?:\r\n?|\n)$/.test(last)
+        ? "Enter"
+        : last.length === 1
+          ? last
+          : (KEY_NAMES[last.trim().toLowerCase()] ?? last.trim());
 
     if (key.length !== 1 && KEYS[key] === undefined) {
         throw new BrowserError(`Unknown key "${last}".`);

@@ -22,6 +22,7 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { downloadLines, type SavedDownload, saveDownloads } from "../browser/downloads.ts";
+import { parseKeys } from "../browser/keys.ts";
 import type { BrowserPage, LogEntry, Purchase, Target } from "../browser/page.ts";
 import { displayUrl, normalizeUrl } from "../browser/urls.ts";
 import { presetOf, viewportFrom } from "../browser/viewport.ts";
@@ -64,15 +65,20 @@ const CHANGING = new Set<Action>([
 ]);
 const MAX_TEXT = 20_000;
 
-/** Keys that submit a form or press the focused control, with or without modifiers: what a key that may pay is. */
+/**
+ * Keys that submit a form or press the focused control, with or without modifiers: what a key that may pay is. Read as
+ * the press sends it (`parseKeys`), so "\r" is Enter and " " is Space; a combination it refuses presses nothing.
+ */
 function pressingKey(combo: string): "enter" | "space" | undefined {
-    const key = combo.split("+").at(-1)!.trim().toLowerCase();
+    let key: string;
 
-    return ["enter", "return", "numpadenter"].includes(key)
-        ? "enter"
-        : ["space", "spacebar", ""].includes(key) && combo !== ""
-          ? "space"
-          : undefined;
+    try {
+        key = parseKeys(combo).key;
+    } catch {
+        return undefined;
+    }
+
+    return key === "Enter" ? "enter" : key === " " ? "space" : undefined;
 }
 
 /** A purchase as its card shows it: the site, and the button and amount in the page's own words. */
@@ -376,7 +382,8 @@ export default function createBrowser(host: PocketHost) {
                 context,
             );
             const before = page.logSeq;
-            const startedAt = Date.now();
+            // The call's downloads are waited for from here, or from the owner's answer to a "Pay on" card.
+            let startedAt = Date.now();
             const target: Target = {
                 ...(args.ref === undefined ? {} : { ref: args.ref.replace(/^\[|\]$/g, "") }),
                 ...(args.selector === undefined ? {} : { selector: args.selector }),
@@ -395,6 +402,11 @@ export default function createBrowser(host: PocketHost) {
             let image: ImageContent | undefined;
             let failed = false;
             const run = <T>(promise: Promise<T>) => awaitWithContext(promise, context);
+
+            const askToPay = async (check: () => Promise<Purchase | undefined>) => {
+                await payFirst(api, context, check);
+                startedAt = Date.now();
+            };
 
             switch (action) {
                 case "navigate": {
@@ -472,7 +484,7 @@ export default function createBrowser(host: PocketHost) {
 
                 case "click": {
                     need(pointed, "a ref, selector, label, or x and y");
-                    await payFirst(api, context, () => page.purchase(target));
+                    await askToPay(() => page.purchase(target));
                     const clicked = await run(
                         page.click(target, signal === undefined ? {} : { signal }),
                     );
@@ -500,10 +512,14 @@ export default function createBrowser(host: PocketHost) {
                 case "type": {
                     need(args.text !== undefined, "text");
 
-                    // Enter in a field submits its form.
-                    if (args.submit === true) {
-                        await payFirst(api, context, () =>
-                            page.purchase(pointed ? target : undefined, "enter"),
+                    // Typing into a target clicks it first, and Enter in a field submits its form.
+                    if (pointed || args.submit === true) {
+                        await askToPay(
+                            async () =>
+                                (pointed ? await page.purchase(target) : undefined) ??
+                                (args.submit === true
+                                    ? await page.purchase(pointed ? target : undefined, "enter")
+                                    : undefined),
                         );
                     }
 
@@ -535,7 +551,7 @@ export default function createBrowser(host: PocketHost) {
                     const key = pressingKey(args.key!);
 
                     if (key !== undefined) {
-                        await payFirst(api, context, () => page.purchase(undefined, key));
+                        await askToPay(() => page.purchase(undefined, key));
                     }
 
                     await run(page.press(args.key!, signal === undefined ? {} : { signal }));

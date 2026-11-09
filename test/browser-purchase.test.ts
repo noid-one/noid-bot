@@ -47,13 +47,23 @@ const SHOP = `<!doctype html><title>Shop</title><body><main>
 <form id="find" onsubmit="event.preventDefault()"><input id="search"><button type="submit">Search</button></form>
 </main></body>`;
 
+// A plain "Continue" button and a field, with a "Place order" button drawn over both: a click on either lands on it.
+const COVERED = `<!doctype html><title>Shop</title><body><main>
+<button id="next" style="position:absolute;left:20px;top:20px;width:200px;height:60px">Continue</button>
+<input id="code" style="position:absolute;left:20px;top:100px;width:200px">
+<button id="cover" style="position:absolute;left:0;top:0;width:400px;height:200px;z-index:9"
+ onclick="window.ordered = (window.ordered || 0) + 1">Place order · €40</button>
+</main></body>`;
+
 let site: Server;
 let base = "";
 
 before(async () => {
     site = createServer((request, response) => {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        response.end(request.url === "/shop" ? SHOP : CHECKOUT);
+        response.end(
+            request.url === "/shop" ? SHOP : request.url === "/covered" ? COVERED : CHECKOUT,
+        );
     });
     await new Promise<void>((done) => site.listen(0, "127.0.0.1", done));
     base = `http://127.0.0.1:${(site.address() as { port: number }).port}`;
@@ -111,6 +121,12 @@ test("the page tells a press that pays from one that does not", real, async () =
         // With the order button focused, Enter presses it.
         await page.evaluate("document.getElementById('order').focus(); 1");
         assert.equal((await page.purchase(undefined, "enter"))?.reason, "final_step");
+        assert.equal(await page.evaluate("String(window.ordered)"), "undefined", "nothing pressed");
+
+        // A click lands on what is drawn over its target: the order button over "Continue" and a field.
+        await page.navigate(`${base}/covered`);
+        assert.equal((await page.purchase({ selector: "#next" }))?.label, "Place order · €40");
+        assert.equal((await page.purchase({ selector: "#code" }))?.reason, "final_step");
         assert.equal(await page.evaluate("String(window.ordered)"), "undefined", "nothing pressed");
     } finally {
         await browsers.closeAll({ final: true });
@@ -204,6 +220,95 @@ test(
             assert.ok(await app.answerApproval((await card()).id, false, owner(app)));
             await until(() => results.length === 6, "the denied key");
             assert.equal(await ordered(), "1");
+        } finally {
+            await app.close();
+        }
+    },
+);
+
+test(
+    "the browser tool asks however a press reaches a pay button: a covered target, typing, a line break, Space",
+    real,
+    async () => {
+        const results: string[] = [];
+
+        const route: FauxResponseStep = (context) => {
+            const { role, text } = lastText(context as never);
+
+            if (role === "toolResult") {
+                results.push(text);
+
+                return fauxAssistantMessage([fauxText("done")]);
+            }
+
+            const match = /^browser (.*)$/s.exec(text);
+
+            return match === null
+                ? fauxAssistantMessage([fauxText("ok")])
+                : fauxAssistantMessage(
+                      [
+                          fauxToolCall(
+                              "browser",
+                              JSON.parse(match[1]!) as Parameters<typeof fauxToolCall>[1],
+                          ),
+                      ],
+                      { stopReason: "toolUse" },
+                  );
+        };
+
+        const app: App = await openApp(scriptedModel(route), join(root, "purchase-ways"));
+        const id = await newSession(app);
+        const page = () => app.browsers.page(Number(id))!;
+
+        // Each press, denied on its card: the page shows whether anything was pressed.
+        const denied = async (args: Record<string, unknown>, what: string) => {
+            const count = results.length;
+
+            await app.commands.submit(id, owner(app), {
+                text: `browser ${JSON.stringify(args)}`,
+                requestId: crypto.randomUUID(),
+            });
+            await until(() => app.approvals.forConversation(id).length > 0, `the card for ${what}`);
+            const card = app.approvals.forConversation(id)[0]!;
+
+            assert.match(card.subject, /^Pay on 127\.0\.0\.1:\d+\?/, what);
+            assert.ok(await app.answerApproval(card.id, false, owner(app)));
+            await until(() => results.length === count + 1, what);
+            assert.match(results.at(-1)!, /denied this payment/, what);
+        };
+
+        const go = async (path: string) => {
+            const count = results.length;
+
+            await app.commands.submit(id, owner(app), {
+                text: `browser ${JSON.stringify({ action: "navigate", url: `${base}${path}` })}`,
+                requestId: crypto.randomUUID(),
+            });
+            await until(() => results.length === count + 1, path);
+        };
+
+        try {
+            await loadTools(app, id, "browser");
+
+            // A click, or the click typing makes first, on a control the order button is drawn over.
+            await go("/covered");
+            await denied({ action: "click", selector: "#next" }, "a covered click");
+            await denied({ action: "type", selector: "#code", text: "SAVE10" }, "a covered field");
+            assert.equal(await page().evaluate("String(window.ordered)"), "undefined");
+
+            // Space, and a line break sent as a key, on the focused order button.
+            await go("/shop");
+            await page().evaluate("document.getElementById('order').focus(); 1");
+            await denied({ action: "press", key: " " }, "Space");
+            await denied({ action: "press", key: "\r" }, "a carriage return");
+            assert.equal(await page().evaluate("String(window.ordered)"), "undefined");
+
+            // Typing with Enter, or a line break pressed, in a card field submits the card form.
+            await go("/checkout");
+            await denied({ action: "type", selector: "#cvc", text: "123", submit: true }, "submit");
+            await page().evaluate("document.getElementById('cvc').focus(); 1");
+            await denied({ action: "press", key: "\n" }, "a line feed");
+            assert.equal(await page().evaluate("String(window.paid)"), "undefined");
         } finally {
             await app.close();
         }

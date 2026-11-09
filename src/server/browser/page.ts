@@ -126,7 +126,6 @@ export type Purchase = {
 export type PageDownload = {
     seq: number;
     guid: string;
-    url: string;
     /** The name the site gave it. */
     name: string;
     state: "inProgress" | "completed" | "canceled";
@@ -418,7 +417,6 @@ export class BrowserPage {
                     {
                         seq: ++this.#downloadSeq,
                         guid: String(params.guid),
-                        url: String(params.url ?? ""),
                         name: String(params.suggestedFilename ?? ""),
                         state: "inProgress",
                         received: 0,
@@ -1208,16 +1206,35 @@ export class BrowserPage {
     /**
      * What a click on `target`, or with `key` that key on `target` or on what has focus, would buy; none when nothing
      * is there to press or it buys nothing. Nothing is pressed. A page that does not answer may pay, so it counts.
+     *
+     * A click is judged where it lands (rakazo's `at_point`): the target is scrolled into view as `click` does, and what
+     * is at its middle decides, since a control drawn over it gets the click.
      */
     async purchase(
         target: Target | undefined,
         key?: "enter" | "space",
     ): Promise<Purchase | undefined> {
         let found: Json;
+        let at = target;
+
+        if (
+            key === undefined &&
+            target !== undefined &&
+            !(typeof target.x === "number" && typeof target.y === "number")
+        ) {
+            try {
+                const { x, y } = await this.locate(target);
+
+                at = { x, y };
+            } catch {
+                // Nothing there to click: the click fails the same way.
+                return undefined;
+            }
+        }
 
         try {
             found = await this.#evaluate(
-                `(${PURCHASE_SCRIPT})(${JSON.stringify(target ?? null)}, ${JSON.stringify(key ?? false)})`,
+                `(${PURCHASE_SCRIPT})(${JSON.stringify(at ?? null)}, ${JSON.stringify(key ?? false)})`,
                 5_000,
             );
         } catch {
@@ -1902,13 +1919,13 @@ export class BrowserPage {
 
     /**
      * noid: how a download of this page goes, from its page's events or the browser's (`Browser.downloadProgress`, which
-     * also says where the file went). A download of another page changes nothing.
+     * also says where the file went). A download of another page changes nothing. Whether the download is this page's.
      */
-    downloadEvent(params: Json): void {
+    downloadEvent(params: Json): boolean {
         const download = this.#downloads.find((each) => each.guid === params.guid);
 
         if (download === undefined) {
-            return;
+            return false;
         }
 
         if (params.state === "completed" || params.state === "canceled") {
@@ -1923,6 +1940,8 @@ export class BrowserPage {
         }
 
         this.#downloadChanged();
+
+        return true;
     }
 
     #downloadChanged(): void {
@@ -1938,10 +1957,6 @@ export class BrowserPage {
         return this.#downloads
             .filter((download) => download.seq > after)
             .map((each) => ({ ...each }));
-    }
-
-    get downloadSeq(): number {
-        return this.#downloadSeq;
     }
 
     /** noid: wait for the next change in this page's downloads, or `ms`, whichever comes first. */

@@ -2,7 +2,14 @@
 // 5c99a28d4). The shared browser is played by a Chromium on this machine, so no Docker is needed.
 import { root } from "./env.ts";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import {
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    symlinkSync,
+    writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -38,18 +45,21 @@ before(async () => {
     }
 
     server = createServer((request, response) => {
-        if (request.url === "/file") {
+        // Two files of the same name: another bot's, or the owner's, statement.
+        if (request.url === "/file" || request.url === "/other") {
             response.writeHead(200, {
                 "content-type": "application/pdf",
                 "content-disposition": 'attachment; filename="state$ment;.pdf"',
             });
-            response.end("%PDF-1.4 statement");
+            response.end(request.url === "/file" ? "%PDF-1.4 statement" : "%PDF-1.4 the other one");
 
             return;
         }
 
         response.writeHead(200, { "content-type": "text/html" });
-        response.end(`<a id="get" href="/file">Get the statement</a>`);
+        response.end(
+            `<a id="get" href="/file">Get the statement</a> <a id="other" href="/other">Get the other one</a>`,
+        );
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -67,6 +77,7 @@ before(async () => {
             claims: () => true,
             launch: () => Chromium.launch(chromium, profileFolder(chromium, dir), []),
             downloadPath: shared,
+            downloadFiles: () => new NodeExecutionEnv({ cwd: shared }),
         },
     });
 });
@@ -76,6 +87,15 @@ after(async () => {
     server?.closeAllConnections();
     server?.close();
 });
+
+/** Wait until `check` holds: what the browser does with a file happens a moment after its events. */
+async function until(check: () => boolean, what: string): Promise<void> {
+    for (const started = Date.now(); !check(); await new Promise((done) => setTimeout(done, 20))) {
+        if (Date.now() - started > 10_000) {
+            throw new Error(`Timed out waiting for ${what}`);
+        }
+    }
+}
 
 /** Save the page's downloads since `after` into `folder`, as a call of the browser tool does. */
 const save = async (opened: Awaited<ReturnType<Browsers["open"]>>, folder: string, after = 0) =>
@@ -179,10 +199,69 @@ test("a Downloads folder reached through a link refuses the download", real, asy
         { name: "state_ment_.pdf", error: DOWNLOADS_UNUSABLE },
     ]);
     assert.deepEqual(readdirSync(elsewhere), [], "nothing in the other bot's folder");
+    assert.deepEqual(
+        readdirSync(shared),
+        [],
+        "not left in the shared folder, where every bot reads",
+    );
+});
 
-    for (const name of readdirSync(shared)) {
-        rmSync(join(shared, name));
-    }
+test(
+    "two bots' files of the same name each reach their own bot, and the owner's stays",
+    real,
+    async () => {
+        // The owner's own statement, already in the shared folder: the browser saves each download under its guid.
+        writeFileSync(join(shared, "state_ment_.pdf"), "the owner's");
+        const one = await browsers.open(++page);
+        const two = await browsers.open(++page);
+
+        await one.navigate(base);
+        await two.navigate(base);
+        await one.click({ selector: "#get" });
+        await two.click({ selector: "#other" });
+        const first = await save(one, join(bot, "One"));
+        const second = await save(two, join(bot, "Two"));
+
+        assert.equal(readFileSync(first.saved[0]!.path!, "utf8"), "%PDF-1.4 statement");
+        assert.equal(readFileSync(second.saved[0]!.path!, "utf8"), "%PDF-1.4 the other one");
+        assert.equal(readFileSync(join(shared, "state_ment_.pdf"), "utf8"), "the owner's");
+        assert.deepEqual(readdirSync(shared), ["state_ment_.pdf"]);
+    },
+);
+
+test("a download that is no bot's gets the name its site gave it", real, async () => {
+    const before = new Set(readdirSync(shared));
+    const opened = await browsers.open(++page);
+
+    await opened.navigate(base);
+    // A tab of its own, as the owner's on the computer's desktop: no page of Pi's began the download.
+    await opened.evaluate(`window.open(${JSON.stringify(`${base}/other`)}); 1`);
+    await until(
+        () => readdirSync(shared).some((name) => !before.has(name) && name.endsWith(".pdf")),
+        "the owner's download",
+    );
+
+    const added = readdirSync(shared).filter((name) => !before.has(name));
+
+    assert.deepEqual(added, ["state_ment_ (1).pdf"], "a free name beside the one there");
+    assert.equal(readFileSync(join(shared, added[0]!), "utf8"), "%PDF-1.4 the other one");
+    assert.deepEqual((await save(opened, join(bot, "Owner's"))).saved, [], "not the bot's");
+});
+
+test("a download no call moved is deleted when its page closes", real, async () => {
+    const before = readdirSync(shared);
+    const id = ++page;
+    const opened = await browsers.open(id);
+
+    await opened.navigate(base);
+    await opened.click({ selector: "#get" });
+    await until(
+        () => opened.downloads().some((download) => download.state === "completed"),
+        "the download",
+    );
+    assert.equal(readdirSync(shared).length, before.length + 1, "in the shared folder");
+    await browsers.close(id);
+    await until(() => readdirSync(shared).length === before.length, "the download deleted");
 });
 
 test("a site's name for a file becomes one plain segment", () => {
