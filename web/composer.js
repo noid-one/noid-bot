@@ -175,6 +175,22 @@ function endSend(id, was, went) {
     return cleared;
 }
 
+/**
+ * Run `run`, a slash command or `!` command of conversation `id`, as a message on its way: Send waits for it, also
+ * when that conversation's box changes meanwhile (an upload ending) or is shown again after a switch.
+ */
+async function runAsSend(id, was, run) {
+    onTheWay.set(id, was);
+    changed(id);
+
+    try {
+        return await run();
+    } finally {
+        onTheWay.delete(id);
+        changed(id);
+    }
+}
+
 /** Each conversation's pastes by number, kept with its draft so a reload keeps them. */
 function loadPastes(id) {
     try {
@@ -686,24 +702,23 @@ export function Composer() {
             commandRequest.current = request;
         }
 
-        setSending(true);
-        const ok = await attempt(async () => {
-            try {
-                await command.run(arg, request?.requestId);
-            } catch (error) {
-                // A 4xx made no run, or refused it for good: the next send is a new request. After a network error
-                // or a 5xx, the run may be there: the same send finds it.
-                if (error.status >= 400 && error.status < 500) {
-                    commandRequest.current = null;
+        const ok = await runAsSend(conversationId, text, () =>
+            attempt(async () => {
+                try {
+                    await command.run(arg, request?.requestId);
+                } catch (error) {
+                    // A 4xx made no run, or refused it for good: the next send is a new request. After a network
+                    // error or a 5xx, the run may be there: the same send finds it.
+                    if (error.status >= 400 && error.status < 500) {
+                        commandRequest.current = null;
+                    }
+
+                    throw error;
                 }
 
-                throw error;
-            }
-
-            return true;
-        });
-
-        setSending(false);
+                return true;
+            }),
+        );
 
         if (ok) {
             commandRequest.current = null;
@@ -780,12 +795,9 @@ export function Composer() {
             return notify("info", "Say which command to run, such as !git status.");
         }
 
-        setSending(true);
-        const started = await attempt(() =>
-            actions.shell(command, !full.startsWith("!!"), requestId.current),
+        const started = await runAsSend(conversationId, text, () =>
+            attempt(() => actions.shell(command, !full.startsWith("!!"), requestId.current)),
         );
-
-        setSending(false);
 
         if (!started) {
             return;
