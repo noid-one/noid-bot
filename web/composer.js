@@ -150,11 +150,10 @@ const dropRequest = (id) => {
 /**
  * The end of conversation `id`'s send of the box as it was (`was`). Gone, its words leave the draft: words typed on
  * since stay without them (an insert meanwhile trims the sent words' end spaces, pi-pocket 6043bfd0). A draft
- * changed otherwise stays as it is. Returns whether the box is now empty of what went.
+ * changed otherwise stays as it is.
  */
 function endSend(id, was, went) {
     onTheWay.delete(id);
-    let cleared = false;
 
     if (went) {
         dropRequest(id);
@@ -164,22 +163,19 @@ function endSend(id, was, went) {
         if (now === was) {
             drafts.set(id, "");
             savePastes(id, {});
-            cleared = true;
         } else if (now.startsWith(sentWords)) {
             drafts.set(id, now.slice(sentWords.length).trimStart());
         }
     }
 
     changed(id);
-
-    return cleared;
 }
 
 /**
- * Run `run`, a slash command or `!` command of conversation `id`, as a message on its way: Send waits for it, also
- * when that conversation's box changes meanwhile (an upload ending) or is shown again after a switch. Once it went,
- * its words leave the draft as a sent message's do (`endSend`), in whichever box shows that conversation now: one
- * shown after a switch would keep them, and Enter would run them again. One that failed stays in the box.
+ * Run `run`, the send of a message, slash command, or `!` command of conversation `id`: Send waits for it, also when
+ * that conversation's box changes meanwhile (an upload ending) or is shown again after a switch. Once it went, its
+ * words leave the draft (`endSend`), in whichever box shows that conversation now: one shown after a switch would keep
+ * them, and Enter would send them again. One that failed stays in the box.
  */
 async function runAsSend(id, was, run) {
     onTheWay.set(id, was);
@@ -436,7 +432,9 @@ export function Composer() {
     const { view, conversationId } = store.state;
     const historyScope = { person: store.state.me?.id, conversation: conversationId };
     const [text, setText] = useState(() => drafts.get(conversationId));
-    const [files, showFiles] = useState(() => unsent.get(conversationId) ?? []);
+    const files = unsent.get(conversationId) ?? [];
+    const sending = onTheWay.has(conversationId);
+    const [, redraw] = useState(0);
     // For this conversation's box, wherever the person is when a change (an upload ending) comes.
     const setFiles = (change) => changeFiles(conversationId, change);
     // The box as it is now, for a send that ends after the person typed on (rakazo 11aaeeb52).
@@ -446,7 +444,6 @@ export function Composer() {
     const [steer, setSteer] = useState(true);
     // The queued message tapped open, wrapped: one line each until then. The queue holds only a message's start.
     const [reading, setReading] = useState(null);
-    const [sending, setSending] = useState(() => onTheWay.has(conversationId));
     // Images sent to a model that cannot see them: asked once at Send, for these files and this model (`blindModel`).
     const [blind, setBlind] = useState(null);
     // Slash command suggestions: the highlighted one, and whether Escape hid the list.
@@ -509,8 +506,7 @@ export function Composer() {
 
             const draft = drafts.get(id);
 
-            showFiles(unsent.get(id) ?? []);
-            setSending(onTheWay.has(id));
+            redraw((count) => count + 1);
 
             // A send that ended took its words out of the draft (`endSend`).
             if (draft !== boxNow.current) {
@@ -842,22 +838,21 @@ export function Composer() {
         }
 
         setBlind(null);
-        // The send is the conversation's, not this box's: switched away and back, it is still on its way (`endSend`).
+        // The send is the conversation's, not this box's: switched away and back, it is still on its way (`runAsSend`).
         const id = conversationId;
-        const was = text;
         const going = new Set(
             files.filter((file) => file.state === "done").map((file) => file.key),
         );
 
-        onTheWay.set(id, was);
-        changed(id);
-        const ok = await attempt(() =>
-            actions.submit(
-                full,
-                attachments,
-                busy && steer ? "steer" : "followUp",
-                inlineFiles && mentionsFiles,
-                requestFor(id, JSON.stringify([full, attachments])),
+        const ok = await runAsSend(id, text, () =>
+            attempt(() =>
+                actions.submit(
+                    full,
+                    attachments,
+                    busy && steer ? "steer" : "followUp",
+                    inlineFiles && mentionsFiles,
+                    requestFor(id, JSON.stringify([full, attachments])),
+                ),
             ),
         );
 
@@ -873,8 +868,6 @@ export function Composer() {
                 return current.filter((file) => !going.has(file.key));
             });
         }
-
-        endSend(id, was, Boolean(ok));
 
         if (ok && !coarse) {
             box.current?.focus();
