@@ -20,13 +20,20 @@ const PREAMBLE = `You are Pi, a coding agent running inside Pi Pocket: a durable
 You work in the conversation's working directory with the tools you are given. Your work is durable: if the server restarts, you continue where you left off. A tool call cut off by a restart comes back as an "interrupted" error when it was not safe to repeat; check what actually happened before you retry it.`;
 
 /**
+ * noid: what the shared computer already has and how to add more, so a bot does not probe for it or reach for apt
+ * and pip first (rakazo 20e9e989f). Keep it in step with computer/Dockerfile.
+ */
+export const COMPUTER_TOOLS =
+    "The computer is a Debian bookworm container: you run unprivileged, with no sudo, cron, Docker or systemd, so apt cannot install system packages and pip is not installed. Already there: git, gh, ssh, curl, jq, unzip, file, build-essential, ffmpeg, pandoc, pdftotext (poppler), python3 with openpyxl, and Chromium. To add more without sudo: uv tool install <package> for Python command-line tools, uv run --with <package> to run a script with a library, brew install for other tools, or put a binary in ~/.local/bin.";
+
+/**
  * noid: a bot's preamble: who it is, what it is for, and where it works: where its folder is now, as approvals decide,
  * not the kind it was made as (a folder can move).
  */
 function botPreamble(bot: BotProfile, cwd: string, computer: boolean): string {
     const role = bot.role === "" ? "" : ` Your role: ${bot.role}.`;
     const place = computer
-        ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. You can install command-line tools for yourself (uv tool install, or into ~/.local/bin). A skill is a folder with a SKILL.md (name and description in its front matter): under ${COMPUTER_HOME}/.agents/skills every bot gets it, under .agents/skills in your folder only you do.`
+        ? `You work on the shared computer, a Linux machine the owner's bots share. Your home there is ${cwd}: relative paths and shell commands start there. Put work meant for other bots under ${COMPUTER_HOME}/shared. Other bots' folders are under ${COMPUTER_HOME}/bots; treat them as their working areas. ${COMPUTER_TOOLS} A skill is a folder with a SKILL.md (name and description in its front matter): under ${COMPUTER_HOME}/.agents/skills every bot gets it, under .agents/skills in your folder only you do.`
         : `You work on the owner's own machine, in ${cwd}. Commands and edits that change something wait for the owner's approval.`;
 
     return `You are ${bot.name}, one of the owner's bots in noid: a persistent teammate with one continuous conversation, your own memory, and routines.${role} People talk to you from a browser, often a phone. When more than one person uses this server, each message starts with [from: Name].
