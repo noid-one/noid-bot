@@ -112,7 +112,7 @@ noid compacts a session's context with Pi's settings in `~/.pi/agent/settings.js
 }
 ```
 
-Other models keep the general values. An entry that Pi refuses (not a whole number, or a name with no provider) is left out, and the server log says so. Noid's own compaction uses its model's values too. See Pi's `settings.md` for each setting.
+Other models keep the general values. With no `compaction.reserveTokens` in Pi's settings, noid gives each model its own reserve instead of Pi Durable's 16,384 (from Pi Pocket 0.28.1): room for the whole summary the model can write, up to 32,768 tokens and a quarter of its context window, never less than 16,384. Pi Durable writes a summary in at most 80% of the reserve, thinking included, so 13,107 tokens cut off a long session's cumulative summary, and every run after it failed. A model with a 200,000-token window now compacts somewhat earlier. Your own `reserveTokens` (general or per model) wins. An entry that Pi refuses (not a whole number, or a name with no provider) is left out, and the server log says so. Noid's own compaction uses its model's values too. See Pi's `settings.md` for each setting.
 
 **Pi Pocket does not support these yet:** extra skill and prompt paths from each session folder's settings, and run policy per project (compaction, retries, stream timeouts, steering, and follow-up mode). The usual project folders for skills and prompts still work.
 

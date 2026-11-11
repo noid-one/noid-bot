@@ -717,13 +717,14 @@ export class Room {
             decisions: this.decisions,
             schedules: Object.values(this.schedules)
                 .sort((a, b) => a.next - b.next)
-                .map(({ id, text, next, every, by, runs }) => ({
+                .map(({ id, text, next, every, by, runs, skipped, skippedAt }) => ({
                     id,
                     text,
                     next,
                     ...(every === undefined ? {} : { repeat: describeRepeat(every) }),
                     ...(by === undefined ? {} : { by }),
                     runs,
+                    ...(skipped === undefined ? {} : { skipped, skippedAt }),
                 })),
             // The branch is read from the repository each time, so one Pi or a person switched to shows on the next update.
             branch: this.#readHead(),

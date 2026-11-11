@@ -23,10 +23,16 @@ test("every tool the preamble names is in the computer image", () => {
         python3: "python3",
         Chromium: "chromium",
     };
+
     for (const [named, pkg] of Object.entries(packages)) {
         assert.ok(COMPUTER_TOOLS.includes(named), `preamble names ${named}`);
-        assert.match(dockerfile, new RegExp(`^\\s+${pkg} \\\\$`, "m"), `Dockerfile installs ${pkg}`);
+        assert.match(
+            dockerfile,
+            new RegExp(`^\\s+${pkg} \\\\$`, "m"),
+            `Dockerfile installs ${pkg}`,
+        );
     }
+
     assert.match(dockerfile, /uv-\$\{uv_arch\}/, "uv is installed");
     assert.match(dockerfile, /gh_/, "gh is installed");
     assert.match(dockerfile, /^USER 1000:1000$/m, "runs unprivileged");

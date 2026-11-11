@@ -1240,7 +1240,15 @@ export class PocketApp {
                 }
 
                 sessionsChanged = true;
-                this.alerts.runChanged(id, busy);
+                // Why the run failed, also when no answer of Pi's says so (its compaction failed): the push says that,
+                // not "finished" with the answer before (Pi Pocket a58fde47).
+                const ended = busy ? undefined : endedNow.get(id);
+                const failure = busy
+                    ? undefined
+                    : ((ended !== undefined && ended !== "aborted" ? ended.failure : undefined) ??
+                      this.#failed.get(id));
+
+                this.alerts.runChanged(id, busy, failure);
 
                 if (!busy) {
                     this.workspace.runEnded(id);
@@ -1384,7 +1392,6 @@ export class PocketApp {
     #harnessSettings(): HarnessSettings {
         const settings = this.settings;
         // Each model's own compaction values from Pi's settings, too (Pi Pocket a0a7f6c).
-        const compaction = compactionReader(settings, (line) => this.#log(line));
 
         const safe = <T>(read: () => T): T | undefined => {
             try {
@@ -1396,6 +1403,12 @@ export class PocketApp {
 
         const registry = () => this.#registry;
         const stream = () => this.streamSettings();
+        // Every model Pi knows, so each gets room for its summary when Pi's settings set no reserve (`compaction.ts`).
+        const compaction = compactionReader(
+            settings,
+            (line) => this.#log(line),
+            () => safe(() => this.models.getModels()) ?? [],
+        );
 
         return {
             // A phase can wait for hours without changing state; repeated process kills must not park it.
@@ -2476,6 +2489,14 @@ export class PocketApp {
 
     isBusy(id: ConversationId): boolean {
         return this.#busy.has(id);
+    }
+
+    /**
+     * Why the session's last run failed, while it is idle after it: also a failure that left no failed answer, such as
+     * a compaction that could not be written (Pi Pocket be7d9853). Undefined once a run starts again.
+     */
+    runFailure(id: ConversationId): string | undefined {
+        return this.#busy.has(id) ? undefined : this.#failed.get(id);
     }
 
     /** The conversations with a run going. */

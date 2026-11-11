@@ -1529,6 +1529,14 @@ export class SessionTools {
     /** A session's last words, for the bot: how its run ended, and Pi's last answer, fenced. */
     async #lastWords(id: ConversationId, title: string, state: string): Promise<string> {
         const name = `${quoted(title, 80)} (/s/${String(id)})`;
+        // A run that failed with no answer of its own (its compaction failed) left the answer before it as the last:
+        // the failure is what came of the run, not that answer (Pi Pocket be7d9853).
+        const failure = this.#app.runFailure(id);
+
+        if (failure !== undefined) {
+            return `${name} stopped with an error: ${snippet(failure, 300)}`;
+        }
+
         const page = await (await this.#app.conversation(id)).entries({}, 16, undefined, context);
         const last = page.items
             .map((entry) => projectEntry(entry))
