@@ -5,7 +5,7 @@
  * how the screen looked before and after, where the computer's skills are found: one bot's folder, or the folder every
  * bot shares. A bot finds it with its other skills and repeats it with the desktop tool; a routine can ask for it.
  */
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import { defineDoc } from "@earendil-works/pi-durable";
 import { rebased } from "../docs.ts";
 import type { User } from "../config.ts";

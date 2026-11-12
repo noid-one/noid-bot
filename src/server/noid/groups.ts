@@ -7,8 +7,7 @@
  * request id, never sent twice. A message left in a bot's queue when its run failed ends that bot's turn. Only the
  * owner starts rounds, so bots answering each other cannot loop; the owner can stop one.
  */
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT as context, type Context } from "@earendil-works/chord/context";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
     AssistantEntry,

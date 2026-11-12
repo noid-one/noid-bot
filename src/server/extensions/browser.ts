@@ -9,9 +9,8 @@ import { posix } from "node:path";
 import { COMPUTER_HOME, normalFolder } from "../noid/computer.ts";
 import { arr, bool, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import { literal } from "../tool-schema.ts";
-import { awaitWithContext } from "@earendil-works/chord/context";
+import { awaitWithContext, type Context } from "@earendil-works/chord/context";
 import { type ImageContent, type TextContent } from "@earendil-works/pi-ai";
-import type { Context } from "@earendil-works/chord";
 import {
     AgentDoc,
     type ConversationId,

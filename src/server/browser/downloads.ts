@@ -4,8 +4,7 @@
  * browser saves every download in one folder, people's own too, each under its guid so none writes over another; a
  * bot's page tells its downloads apart by their page. One a bot's call does not place is deleted, not left there.
  */
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { posix } from "node:path";
 import type { BrowserPage, PageDownload } from "./page.ts";

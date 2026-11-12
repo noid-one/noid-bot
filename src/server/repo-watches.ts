@@ -13,8 +13,7 @@
  * watches up with their repo_watch tool (`extensions/session-tools.ts`).
  */
 import { randomUUID } from "node:crypto";
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import {
     type ConversationId,
     defineTask,

@@ -5,8 +5,7 @@
  * stopped after a while with nothing to do. Its home is a named volume, so files and logins outlive the container, and
  * so is Homebrew's prefix (/home/linuxbrew, the only one its bottles install into), so formulae outlive it too.
  */
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import {
     err,
     ExecutionError,

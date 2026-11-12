@@ -4,7 +4,7 @@
  * file, not every file), and in English, so a failure can be told from another by what git says. Programs a
  * repository configures, such as clean and smudge filters, still run, as they do for any git command there.
  */
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { execFile } from "node:child_process";
 import { lstat, rm } from "node:fs/promises";

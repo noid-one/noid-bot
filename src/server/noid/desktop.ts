@@ -10,10 +10,9 @@
  * lease wins. Calls run one at a time, and one cut off by a restart is never run again (pi-durable's default for a tool
  * that does not say it is safe to replay): a click may or may not have happened.
  */
-import type { Context } from "@earendil-works/chord";
 import { randomUUID } from "node:crypto";
 import { num, obj, opt, str } from "@earendil-works/pi-schema";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 
 import {
     type ConversationId,

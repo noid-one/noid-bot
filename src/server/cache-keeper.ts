@@ -509,6 +509,9 @@ export class CacheKeeper {
         const options: ObservedOptions = {
             ...rest,
             maxTokens: 1,
+            // Pi 1.5.1 continues Anthropic threads: a warm that joined one would reset it, and the next real turn
+            // would start a new one (Pi Pocket e8d2b314).
+            disableContinuation: true,
             maxRetries: 0,
             signal: abort.signal,
             [FINAL_PAYLOAD]: (payload) => {

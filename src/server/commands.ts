@@ -8,8 +8,8 @@ import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, extname, join, posix, sep } from "node:path";
-import { type Context, copyJson, type JsonValue } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { copyJson, type JsonValue } from "@earendil-works/chord/json";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import {
     clampThinkingLevel,
     type ImageContent,

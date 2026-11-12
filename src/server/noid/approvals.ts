@@ -18,8 +18,7 @@
  * "Always allow" on a card keeps a rule for that bot and tool. A question nobody answers in time is denied; time never
  * allows anything.
  */
-import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { ToolAnnotations } from "@earendil-works/pi-coding-agent";
 import {
     CompactionTask,

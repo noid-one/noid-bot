@@ -3,7 +3,7 @@
  * images replies show, and the `@` file list, through the session's ExecutionEnv instead of this machine's disk. They
  * answer as their host versions in `files.ts` do, so the routes and the app need not know where a folder is.
  */
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { createHash } from "node:crypto";
 import { posix } from "node:path";

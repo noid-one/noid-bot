@@ -4,7 +4,7 @@
  * the call, so a replayed call finds the version it already wrote instead of writing another.
  */
 import { extname } from "node:path";
-import type { Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
 import { arr, obj, opt, str } from "@earendil-works/pi-schema";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool, section } from "@earendil-works/pi-durable";

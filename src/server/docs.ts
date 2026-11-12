@@ -5,7 +5,7 @@
  * Kinds are part of the stored data: rename one and old sessions lose it.
  */
 import type { BotProfile } from "./noid/bots.ts";
-import type { JsonValue } from "@earendil-works/chord";
+import type { JsonValue } from "@earendil-works/chord/json";
 import {
     type CheckpointInfo,
     type ConversationId,
