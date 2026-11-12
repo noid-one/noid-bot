@@ -965,13 +965,19 @@ export function timeAgo(ms) {
 
 /** Markdown as plain text, for one-line previews such as a quote: no emphasis, code ticks, or markers. */
 export function plainText(markdown) {
-    return String(markdown ?? "")
-        .replace(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
-        .replace(/`([^`]*)`/g, "$1")
-        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-        .replace(/(\*\*|__)(.+?)\1/g, "$2")
-        .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,!?:;]|$)/gm, "$1$2")
-        .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "");
+    return (
+        String(markdown ?? "")
+            // HTML comments go, unfinished ones to the end, as chat shows none; inside code they stay (rakazo 60c7eaae0).
+            .replace(/```[\s\S]*?```|`[^`\n]*`|<!--[\s\S]*?(?:-->|$)/g, (part) =>
+                part.startsWith("<!--") ? "" : part,
+            )
+            .replace(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
+            .replace(/`([^`]*)`/g, "$1")
+            .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(/(\*\*|__)(.+?)\1/g, "$2")
+            .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,!?:;]|$)/gm, "$1$2")
+            .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "")
+    );
 }
 
 /** What separates a message to Pi from the list of files attached to it, which the server adds. */

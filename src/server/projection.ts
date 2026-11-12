@@ -850,13 +850,19 @@ export function projectStats(
 
 /** Markdown as plain text, for snippets in quotes, pins, and notifications: no emphasis, code ticks, or markers. */
 export function plainText(markdown: string): string {
-    return markdown
-        .replace(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
-        .replace(/`([^`]*)`/g, "$1")
-        .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-        .replace(/(\*\*|__)(.+?)\1/g, "$2")
-        .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,!?:;]|$)/gm, "$1$2")
-        .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "");
+    return (
+        markdown
+            // HTML comments go, unfinished ones to the end, as chat shows none; inside code they stay (rakazo 60c7eaae0).
+            .replace(/```[\s\S]*?```|`[^`\n]*`|<!--[\s\S]*?(?:-->|$)/g, (part) =>
+                part.startsWith("<!--") ? "" : part,
+            )
+            .replace(/```[^\n]*\n?([\s\S]*?)```/g, "$1")
+            .replace(/`([^`]*)`/g, "$1")
+            .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+            .replace(/(\*\*|__)(.+?)\1/g, "$2")
+            .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,!?:;]|$)/gm, "$1$2")
+            .replace(/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "")
+    );
 }
 
 /** A short single-line snippet of a message. */
