@@ -13,6 +13,7 @@
 # Homebrew: its prefix (/home/linuxbrew, a volume of its own) belongs to noid, so brew installs without sudo, and
 # build-essential and file are what it needs on Linux; its bin/ is on PATH after the system's, so it adds tools
 # without shadowing Debian's. ffmpeg from Debian, for audio and video work.
+# fonts-thai-tlwg: Thai pages in the browser show their words, not boxes (rakazo ddcceff94).
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
@@ -28,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     fonts-noto-cjk \
+    fonts-thai-tlwg \
     fonts-noto-color-emoji \
     ca-certificates \
     procps \
