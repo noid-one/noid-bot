@@ -2,9 +2,30 @@
  * Reads a public web page for Pi: a read_page tool that fetches only public addresses and fences the page's text.
  */
 
+import { MIMEType } from "node:util";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import type { Host } from "../../types/pocket.d.ts";
 import { num, obj, opt, str } from "@earendil-works/pi-schema";
+
+/**
+ * A body's text in the charset its type declares (`text/html; charset=windows-1252`), which `Response.text()` ignores:
+ * it always reads UTF-8. UTF-8 when the type names none, or one this runtime does not know (rakazo 1621d80ba).
+ */
+export function bodyText(body: ArrayBuffer, contentType: string): string {
+    let decoder = new TextDecoder();
+
+    try {
+        const charset = contentType === "" ? null : new MIMEType(contentType).params.get("charset");
+
+        if (charset) {
+            decoder = new TextDecoder(charset);
+        }
+    } catch {
+        // A malformed type or an unknown charset label: UTF-8, as before.
+    }
+
+    return decoder.decode(body);
+}
 
 /** The text of an HTML page, roughly: no scripts, styles, or tags, and its common entities decoded. */
 function pageText(html: string): string {
@@ -63,7 +84,7 @@ export default function createReadPage(host: Host) {
                 }
 
                 const type = response.headers.get("content-type") ?? "";
-                const body = await response.text();
+                const body = bodyText(await response.arrayBuffer(), type);
 
                 text = type.includes("html") ? pageText(body) : body;
             } catch (error) {
