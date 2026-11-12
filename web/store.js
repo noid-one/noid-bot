@@ -63,6 +63,7 @@ const emptyView = () => ({
     watch: null,
     branch: null,
     subagentsHeld: null,
+    held: [],
     /** The run of the server whose entries these are, and the one that may be kept and named (`have`), or null. */
     run: null,
     build: null,
@@ -1359,6 +1360,8 @@ function mergeView(current, data) {
         watch: data.watch === undefined ? base.watch : data.watch,
         // Why subagents' reports wait (a spend limit), or null when none do: the subagents bar says it.
         subagentsHeld: data.subagentsHeld === undefined ? base.subagentsHeld : data.subagentsHeld,
+        // What a Stop held out of the queue: it waits until someone sends it.
+        held: data.held ?? base.held,
         // What the folder has checked out: `{ branch }` or `{ detached }`, and null outside a repository.
         branch: data.branch === undefined ? base.branch : data.branch,
     };
@@ -2000,6 +2003,10 @@ export const actions = {
     turns: (action, to) => api(`c/${current()}/turns`, { action, ...(to ? { to } : {}) }),
     setAccess: (userId, patch) => api(`users/${encodeURIComponent(userId)}`, patch),
     withdraw: (submissionId) => api(`c/${current()}/withdraw`, { submissionId }),
+    /** What a Stop held: send them all, or drop one or take it back into the box, by its key. */
+    sendHeld: () => api(`c/${current()}/held`, { action: "send" }),
+    dropHeld: (key) => api(`c/${current()}/held`, { action: "drop", key }),
+    editHeld: (key, id = current()) => api(`c/${id}/held`, { action: "edit", key }),
     configure: (change) => api(`c/${current()}/configure`, change),
     /** The owner's model and thinking level for new sessions, `{ provider, modelId, thinkingLevel }`; null clears it. */
     setDefaultModel: (choice) => api("settings", { defaultModel: choice }),

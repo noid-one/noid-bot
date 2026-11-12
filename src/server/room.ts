@@ -30,6 +30,8 @@ import {
     DecisionsDoc,
     type Goal,
     GoalDoc,
+    HeldDoc,
+    type HeldMessage,
     type Notes,
     NotesDoc,
     type Pin,
@@ -83,6 +85,7 @@ export const ROOM_DOCS = new Set(
         ScheduleDoc,
         GoalDoc,
         WatchDoc,
+        HeldDoc,
     ].map((doc) => doc.definition.kind),
 );
 /** A typing indicator lasts this long unless the browser renews it. */
@@ -352,6 +355,8 @@ export class Room {
     turns: Turns = { on: false, asks: [] };
     decisions: Record<string, Decision> = {};
     schedules: Record<string, Schedule> = {};
+    /** The messages a Stop held out of the queue, in their order. */
+    held: HeldMessage[] = [];
     goal: Goal | undefined;
     watch: PrWatch | undefined;
     /** Who is typing where, by user id. Memory only: it means nothing after a restart. */
@@ -429,6 +434,7 @@ export class Room {
         this.schedules = {
             ...((await harness.snapshot(ScheduleDoc, this.id, context))?.items ?? {}),
         };
+        this.held = [...((await harness.snapshot(HeldDoc, this.id, context))?.items ?? [])];
         this.goal = (await harness.snapshot(GoalDoc, this.id, context))?.goal;
         this.watch = (await harness.snapshot(WatchDoc, this.id, context))?.watch;
 
@@ -496,6 +502,8 @@ export class Room {
             this.decisions = { ...((value?.calls as Record<string, Decision>) ?? {}) };
         } else if (kind === ScheduleDoc.definition.kind) {
             this.schedules = { ...((value?.items as Record<string, Schedule>) ?? {}) };
+        } else if (kind === HeldDoc.definition.kind) {
+            this.held = [...((value?.items as HeldMessage[] | undefined) ?? [])];
         } else if (kind === GoalDoc.definition.kind) {
             this.goal = (value?.goal as Goal | undefined) ?? undefined;
         } else if (kind === WatchDoc.definition.kind) {
@@ -726,6 +734,13 @@ export class Room {
                     runs,
                     ...(skipped === undefined ? {} : { skipped, skippedAt }),
                 })),
+            // What a Stop held: each message's start and who wrote it, as the queue shows them.
+            held: this.held.map((item) => ({
+                key: item.key,
+                mode: item.mode,
+                ...(item.by === undefined ? {} : { by: item.by }),
+                text: cutQueued(queuedText(item.content)),
+            })),
             // The branch is read from the repository each time, so one Pi or a person switched to shows on the next update.
             branch: this.#readHead(),
             goal:
