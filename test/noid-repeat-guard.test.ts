@@ -37,7 +37,8 @@ const requests: string[] = [];
  * "loop failing" calls `cat` on a missing file again and again; "loop numbered" echoes noop-1, noop-2, …; "loop poll"
  * reads a file that changes before each read; "loop page" reads a file ten lines at a time, by offset; "loop told"
  * echoes noop-1, noop-2, … saying each time what it does. Each goes until it is stopped, or gives up after `GIVES_UP`
- * calls. "loop batch" echoes part-0 … part-29 in one answer; "loop jammed" cats a missing file five times in each answer.
+ * calls. "loop clicks" runs a new command each time (no digits) that always prints the same; "loop mixed" does that and
+ * reads a page of the book in the same answer. "loop batch" echoes part-0 … part-29 in one answer; "loop jammed" cats a missing file five times in each answer.
  */
 const route: FauxResponseStep = (request) => {
     const { messages } = request as { messages: { role: string; content: unknown }[] };
@@ -58,6 +59,43 @@ const route: FauxResponseStep = (request) => {
             Array.from({ length: kind === "batch" ? BATCH : 5 }, (_, n) =>
                 fauxToolCall("bash", { command: each(n) }),
             ),
+            { stopReason: "toolUse" },
+        );
+    }
+
+    /**
+     * A different command each call, letters only, so no two have one shape: printf ignores the extra word and always
+     * prints the same screenful ("clicks"), or nothing at all ("quiet", as mkdir or git add -q do).
+     */
+    const reworded = `printf ${"same".repeat(80)} ${"x".repeat(calls + 1)}`;
+    const quiet = `true ${"x".repeat(calls + 1)}`;
+
+    // A different command each call that always fails the same way, with a short error.
+    if (kind === "broken") {
+        return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: `false ${"x".repeat(calls + 1)}` })],
+            { stopReason: "toolUse" },
+        );
+    }
+
+    if (kind === "quiet") {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: quiet })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    if (kind === "clicks") {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: reworded })], {
+            stopReason: "toolUse",
+        });
+    }
+
+    if (kind === "mixed") {
+        return fauxAssistantMessage(
+            [
+                fauxToolCall("bash", { command: reworded }),
+                fauxToolCall("read", { path: book, offset: calls * 10 + 1, limit: 10 }),
+            ],
             { stopReason: "toolUse" },
         );
     }
@@ -176,6 +214,46 @@ test("a bot that numbers the same call is stopped at the 25th", async () => {
 
     assert.equal(count, MAX_SIMILAR);
     assert.match(last, new RegExp(`bash ${MAX_SIMILAR} times in a row with nearly the same input`));
+});
+
+test("a bot that gets the same answer from one tool whatever it passes is stopped at the 25th", async () => {
+    const id = await hostBot("Clicker");
+
+    await send(id, "loop clicks");
+    const { count, last } = await results(id);
+
+    assert.equal(count, MAX_SIMILAR);
+    assert.match(last, new RegExp(`bash ${MAX_SIMILAR} times in a row and got the same result`));
+    assert.equal(app.isBusy(id), false, "its run stopped");
+});
+
+test("a bot whose quiet commands all print nothing is not stopped: an empty answer is no sign of a loop", async () => {
+    const id = await hostBot("Quiet");
+
+    await send(id, "loop quiet");
+    const { refused } = await results(id);
+
+    assert.equal(refused, 0);
+});
+
+test("a short error is the same answer whatever the input: a reworded failing call is stopped at the 25th", async () => {
+    const id = await hostBot("Broken");
+
+    await send(id, "loop broken");
+    const { count, last } = await results(id);
+
+    assert.equal(count, MAX_SIMILAR);
+    assert.match(last, /got the same result/);
+});
+
+test("an answer that calls more than one tool is not a same-result step", async () => {
+    const id = await hostBot("Mixer");
+
+    await send(id, "loop mixed");
+    const { refused } = await results(id);
+
+    assert.equal(refused, 0);
+    assert.equal((await results(id, "read")).refused, 0);
 });
 
 test("a bot polling something that changes is not stopped", async () => {

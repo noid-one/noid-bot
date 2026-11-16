@@ -372,6 +372,9 @@ export function pushRoute(path, { replace = false } = {}) {
         return;
     }
 
+    // The route it opens over: history follows in order, so that route's entry is the one under the new entry.
+    const under = shown;
+
     homeRequest++;
     heading(path === HOME ? "back" : "forward");
     moved();
@@ -381,10 +384,18 @@ export function pushRoute(path, { replace = false } = {}) {
             await traverse(-depth());
         }
 
-        const here = history.state?.pocket?.back;
+        const here = history.state?.pocket;
         const back =
-            path === HOME ? 0 : replace ? here : typeof here === "number" ? here + 1 : undefined;
-        const state = { pocket: { layers: 0, back } };
+            path === HOME
+                ? 0
+                : replace
+                  ? here?.back
+                  : typeof here?.back === "number"
+                    ? here.back + 1
+                    : undefined;
+        // In this route's place, it is over what this route was over.
+        const from = replace ? here?.from : under;
+        const state = { pocket: { layers: 0, back, ...(from === undefined ? {} : { from }) } };
 
         shownBack = back;
 
@@ -395,6 +406,31 @@ export function pushRoute(path, { replace = false } = {}) {
         }
     });
     // Layers still open (a panel that stays) get their entries again, above the new route.
+    settle();
+}
+
+/**
+ * The route this one was opened over (a path), whose entry is under this route's, so `popRoute` goes back there.
+ * Undefined when not known, or while history has not caught up with the route the app shows.
+ */
+export const routeUnder = () =>
+    location.pathname === shown ? history.state?.pocket?.from : undefined;
+
+/**
+ * Back to the route under this one (the one a route was opened over), which the app shows already: as `pushRoute` goes
+ * to a new route, but back, so that no entry of the route left stays to come back to. The layers still open (a sheet
+ * that stays) get their entries again over it. Should history not land there, the app follows the address
+ * (pi-pocket 13a69ee2).
+ */
+export function popRoute(path) {
+    homeRequest++;
+    heading("back");
+    moved();
+    shown = path;
+    queue(async () => {
+        await traverse(-(depth() + 1), { follow: true });
+        shownBack = history.state?.pocket?.back;
+    });
     settle();
 }
 

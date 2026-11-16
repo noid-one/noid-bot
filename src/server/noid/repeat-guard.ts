@@ -8,8 +8,12 @@
  * five failing answers in a row is stuck, and so is the 25th call in a row of one shape. An answer the run has not had
  * before starts the count over: polling a page or a build that changes is progress. So does the model's own text: it
  * said what it is doing. Calls of one shape from one model answer are one step: reading 30 files at once is not a
- * loop. A stuck call is refused with a line that says so, and the run stops, so the bot cannot try once more; the owner
- * gets one notice, and any call the run still makes is refused too.
+ * loop. One tool that keeps getting the same answer whatever its input (clicks at new spots on a screen that never
+ * changes, reworded calls) is stuck at its 25th step too (rakazo cb4d79662): only model answers that call that tool
+ * alone count, its answers are compared whole, images included, and a short answer ("Saved.", nothing) ends the run,
+ * as edits of one file and quiet commands make progress that looks the same. A stuck call is refused with a line that
+ * says so, and the run stops, so the bot cannot try once more; the owner gets one notice, and any call the run still
+ * makes is refused too.
  *
  * Only bots' runs: a person's own session has them watching. Calls a codemode script makes (`parent`) are a program's,
  * not the model going round, and are not counted. State is memory only: a restart starts each count over.
@@ -45,6 +49,10 @@ type Streak = {
     /** The streak's last counted call, whose answer `afterTool` reads, and the model answer it came from. */
     callId?: string;
     response?: number;
+    /** The tool of the last step, the answer it keeps getting, and its steps in a row that got it, whatever the input. */
+    tool?: string;
+    sameResult?: string;
+    sameCount: number;
     /** Once the run is stopped, what every later call of it is refused with, and the stop, settled once it is done. */
     stopped?: string;
     stopping?: Promise<void>;
@@ -90,19 +98,34 @@ function blankDigits(value: unknown): unknown {
     return value;
 }
 
-/** What the model got back: failed or not, and its content, hashed (details can carry timings). */
-function fingerprint(result: { output?: unknown; isError?: boolean }): string {
-    const hash = createHash("sha256")
-        .update(JSON.stringify(result.output ?? null))
-        .digest("hex");
+/**
+ * What the model got back: failed or not, and its content (`written`, the output as JSON), hashed (details can carry
+ * timings).
+ */
+function fingerprint(written: string, failed: boolean): string {
+    const hash = createHash("sha256").update(written).digest("hex");
 
-    return `${result.isError === true ? "failed:" : ""}${hash}`;
+    return `${failed ? "failed:" : ""}${hash}`;
 }
 
-export function stuckText(tool: string, count: number, failing: boolean): string {
-    return failing
-        ? `Stopped: you called ${tool} with the same input ${count} times in a row, and it failed each time. Do not call it again this way: tell your person what is stuck, and what you would try instead.`
-        : `Stopped: you called ${tool} ${count} times in a row with nearly the same input, without getting anything new. Tell your person what you were trying to do, and what is in the way.`;
+/**
+ * Answers shorter than this, written out, are acknowledgements ("Saved.", a silent command's empty output): the same for
+ * every input because they say little, not because nothing changes, so they never make a same-answer run. A screenshot
+ * or a page's text is well over it. A failure counts whatever its length: the same short error for every input is stuck.
+ */
+const SUBSTANTIAL = 200;
+
+export type StuckKind = "failing" | "similar" | "sameResult";
+
+export function stuckText(tool: string, count: number, kind: StuckKind): string {
+    switch (kind) {
+        case "failing":
+            return `Stopped: you called ${tool} with the same input ${count} times in a row, and it failed each time. Do not call it again this way: tell your person what is stuck, and what you would try instead.`;
+        case "similar":
+            return `Stopped: you called ${tool} ${count} times in a row with nearly the same input, without getting anything new. Tell your person what you were trying to do, and what is in the way.`;
+        case "sameResult":
+            return `Stopped: you called ${tool} ${count} times in a row and got the same result each time, whatever you passed it. Tell your person what you were trying to do, and what is in the way.`;
+    }
 }
 
 export function createRepeatGuard(app: PocketApp) {
@@ -118,7 +141,7 @@ export function createRepeatGuard(app: PocketApp) {
         let streak = streaks.get(id);
 
         if (streak === undefined || streak.run !== run) {
-            streak = { run, count: 0, shapeCount: 0, results: [], failures: 0 };
+            streak = { run, count: 0, shapeCount: 0, results: [], failures: 0, sameCount: 0 };
             streaks.set(id, streak);
         }
 
@@ -181,6 +204,9 @@ export function createRepeatGuard(app: PocketApp) {
                             results: [],
                             failures: 0,
                             callId: undefined,
+                            tool: undefined,
+                            sameResult: undefined,
+                            sameCount: 0,
                         });
                     }
                 },
@@ -212,6 +238,22 @@ export function createRepeatGuard(app: PocketApp) {
                         return undefined;
                     }
 
+                    const sameAnswer = response !== undefined && response === streak.response;
+
+                    // One tool's run of steps: a new answer calling it alone is one more step; another tool starts over, at
+                    // nothing when the answer called more than one tool.
+                    if (call.name !== streak.tool) {
+                        Object.assign(streak, {
+                            tool: call.name,
+                            sameResult: undefined,
+                            sameCount: sameAnswer ? 0 : 1,
+                        });
+                    } else if (!sameAnswer && streak.sameCount > 0) {
+                        streak.sameCount++;
+                    } else if (!sameAnswer) {
+                        streak.sameCount = 1;
+                    }
+
                     streak.callId = call.id;
                     streak.response = response;
 
@@ -225,16 +267,17 @@ export function createRepeatGuard(app: PocketApp) {
                     streak.shape = shape;
 
                     const failing = streak.failures >= MAX_IDENTICAL_FAILING - 1;
+                    const similar = streak.shapeCount >= MAX_SIMILAR;
 
-                    if (!failing && streak.shapeCount < MAX_SIMILAR) {
+                    if (!failing && !similar && streak.sameCount < MAX_SIMILAR) {
                         return undefined;
                     }
 
-                    streak.stopped = stuckText(
-                        call.name,
-                        failing ? streak.count : streak.shapeCount,
-                        failing,
-                    );
+                    streak.stopped = failing
+                        ? stuckText(call.name, streak.count, "failing")
+                        : similar
+                          ? stuckText(call.name, streak.shapeCount, "similar")
+                          : stuckText(call.name, streak.sameCount, "sameResult");
                     stop(id, streak, call.name);
 
                     return { block: streak.stopped };
@@ -247,6 +290,24 @@ export function createRepeatGuard(app: PocketApp) {
                     }
 
                     const streak = await streakOf(id, context);
+                    const written = JSON.stringify(result.output ?? null);
+                    const failed = result.isError === true;
+                    const seen = fingerprint(written, failed);
+
+                    // The tool's run of steps holds while its answer stays the same; a new answer starts it over at this step.
+                    if (call.name === streak.tool && streak.sameCount > 0) {
+                        if (!failed && written.length < SUBSTANTIAL) {
+                            // Edits of one file, silent commands: progress that looks the same. Ends the run.
+                            streak.sameCount = 0;
+                            streak.sameResult = undefined;
+                        } else {
+                            if (streak.sameResult !== undefined && streak.sameResult !== seen) {
+                                streak.sameCount = 1;
+                            }
+
+                            streak.sameResult = seen;
+                        }
+                    }
 
                     if (
                         streak.callId !== call.id ||
@@ -254,8 +315,6 @@ export function createRepeatGuard(app: PocketApp) {
                     ) {
                         return undefined;
                     }
-
-                    const seen = fingerprint(result);
 
                     // Something new: whatever it waits on is moving, so the count starts over from this call.
                     if (!streak.results.includes(seen)) {

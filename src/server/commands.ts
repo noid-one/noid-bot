@@ -40,6 +40,7 @@ import {
     ChatDoc,
     HeldDoc,
     type HeldMessage,
+    heldRequest,
     NotesDoc,
     PinsDoc,
     type Schedule,
@@ -1365,6 +1366,7 @@ export class Commands {
 
         // Subagents' reports go: a person meant the work stopped.
         await this.#discardReports(id);
+        await this.#stoppedByPerson(id);
         void conversation
             .abort(context)
             .catch((error: unknown) => app.notice("error", `Abort failed: ${describe(error)}`, id));
@@ -1378,6 +1380,24 @@ export class Commands {
                     : `stopped the run; ${held} queued ${held === 1 ? "message waits" : "messages wait"} to be sent`,
             );
         }
+    }
+
+    /** A subagent a person stops: its report to its parent says a person did, not that it failed (Pi Pocket e3aa23d1). */
+    async #stoppedByPerson(id: ConversationId): Promise<void> {
+        const parent = this.#app.parentOf(id);
+
+        if (parent === undefined || !this.#app.isBusy(id)) {
+            return;
+        }
+
+        await this.#app.harness.commit(async (tx) => {
+            const agents = (await tx.doc(SubagentsDoc, parent)).agents;
+            const name = Object.keys(agents).find((each) => agents[each]!.conversationId === id);
+
+            if (name !== undefined) {
+                agents[name]!.stoppedBy = { by: "person", at: Date.now() };
+            }
+        }, context);
     }
 
     /**
@@ -1440,7 +1460,7 @@ export class Commands {
                         requestId:
                             first === undefined
                                 ? `held-${String(item.id)}`
-                                : `${first.replace(/(~\d+)+$/, "")}~${String(item.id)}`,
+                                : heldRequest(first, Number(item.id)),
                         ...(item.entry === undefined
                             ? {}
                             : { entry: copyJson(item.entry) as JsonValue }),

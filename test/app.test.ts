@@ -78,6 +78,10 @@ const route: FauxResponseStep = (context, options) => {
         });
     }
 
+    if (text.startsWith("read the image ")) {
+        return call("read", { path: text.slice("read the image ".length) });
+    }
+
     if (text.includes("say hi please")) {
         return fauxAssistantMessage([fauxText("hi from helper")]);
     }
@@ -2227,6 +2231,27 @@ test("sessions and artifacts survive closing and reopening the storage", async (
     app = await open();
     assert.ok(app.sessions().some((each) => each.id === Number(id)));
     assert.equal((await app.artifactBody(id, "demo-page", undefined)).content, "<h1>one</h1>");
+});
+
+test("read shrinks an image larger than 2000 pixels a side, not refuses it", async () => {
+    const id = await newSession();
+
+    await app.commands.configure(id, owner(), {
+        model: { provider: "faux", modelId: "faux-vision" },
+    });
+    const path = join(work, "wide-screenshot.png");
+
+    writeFileSync(path, greyPng(1198, 2626));
+    await say(id, `read the image ${path}`);
+    const { BACKGROUND_CONTEXT } = await import("@earendil-works/chord/context");
+    const conversation = (await app.harness.conversation(id, BACKGROUND_CONTEXT))!;
+    const { messages } = await conversation.context(BACKGROUND_CONTEXT);
+    const result = messages.findLast((message) => message.role === "toolResult")!;
+    const parts = result.content as { type: string; text?: string; data?: string }[];
+    const image = parts.find((part) => part.type === "image");
+
+    assert.ok(image, `an image, not ${JSON.stringify(parts.map((part) => part.text))}`);
+    assert.equal(heightOf(Buffer.from(image.data!, "base64")), 2000);
 });
 
 /** An image's height in pixels: from a PNG's header, or a JPEG's first frame header. */

@@ -20,7 +20,13 @@ import type { FauxResponseStep } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { AuthorsDoc, ScheduleDoc } from "../src/server/docs.ts";
-import { describeRepeat, nextClockTime, parseWhen, zonedMoment } from "../src/server/when.ts";
+import {
+    describeMoment,
+    describeRepeat,
+    nextClockTime,
+    parseWhen,
+    zonedMoment,
+} from "../src/server/when.ts";
 
 const iso = (moment: number) => new Date(moment).toISOString();
 /** Sunday, October 4, 2026, 10:00 in Chicago (15:00 UTC). */
@@ -56,10 +62,16 @@ test("times read the way people write them, in their time zone", () => {
 
     for (const [text, problem] of [
         ["every 5m x", /at most every 10 minutes/],
+        // Past what a date holds: the add reply and every list after it would throw (pi-pocket 62052188).
+        ["every 100000000 days x", /366 days/],
+        ["every 999999999999m x", /366 days/],
         ["soon x", /Say when/],
     ] as const) {
         assert.throws(() => parseWhen(text, sunday, chicago), problem, text);
     }
+
+    // One stored before the cap still lists.
+    assert.equal(describeMoment(9e15, chicago, sunday), "never (too far ahead)");
 });
 
 test("clock times hold across daylight saving changes", () => {
