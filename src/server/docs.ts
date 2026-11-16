@@ -244,8 +244,11 @@ export type SubagentRecord = {
      * a later time, so it needs them again.
      */
     dealtAt?: number;
-    /** Who stopped its run: a person, or its parent (`subagent stop`). A new message clears it (Pi Pocket e3aa23d1). */
-    stoppedBy?: "person" | "parent";
+    /**
+     * Who stopped it last, a person or its parent (`subagent stop`), and when (Pi Pocket e3aa23d1). It counts for a
+     * message sent before then: one sent after, or a held one followed since, is not the one it stopped.
+     */
+    stoppedBy?: { by: "person" | "parent"; at: number };
 };
 
 /** A subagent's report waiting to go to its parent: all those waiting go together, as one message. */

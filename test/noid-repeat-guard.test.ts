@@ -63,8 +63,18 @@ const route: FauxResponseStep = (request) => {
         );
     }
 
-    /** A different command each call, letters only, so no two have one shape: printf ignores the extra word and always prints "same". */
-    const reworded = `printf same ${"x".repeat(calls + 1)}`;
+    /**
+     * A different command each call, letters only, so no two have one shape: printf ignores the extra word and always
+     * prints the same screenful ("clicks"), or nothing at all ("quiet", as mkdir or git add -q do).
+     */
+    const reworded = `printf ${"same".repeat(80)} ${"x".repeat(calls + 1)}`;
+    const quiet = `true ${"x".repeat(calls + 1)}`;
+
+    if (kind === "quiet") {
+        return fauxAssistantMessage([fauxToolCall("bash", { command: quiet })], {
+            stopReason: "toolUse",
+        });
+    }
 
     if (kind === "clicks") {
         return fauxAssistantMessage([fauxToolCall("bash", { command: reworded })], {
@@ -207,6 +217,15 @@ test("a bot that gets the same answer from one tool whatever it passes is stoppe
     assert.equal(count, MAX_SIMILAR);
     assert.match(last, new RegExp(`bash ${MAX_SIMILAR} times in a row and got the same result`));
     assert.equal(app.isBusy(id), false, "its run stopped");
+});
+
+test("a bot whose quiet commands all print nothing is not stopped: an empty answer is no sign of a loop", async () => {
+    const id = await hostBot("Quiet");
+
+    await send(id, "loop quiet");
+    const { refused } = await results(id);
+
+    assert.equal(refused, 0);
 });
 
 test("an answer that calls more than one tool is not a same-result step", async () => {

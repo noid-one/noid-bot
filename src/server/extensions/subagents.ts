@@ -92,11 +92,14 @@ type ReporterInput = {
     followUp: boolean;
     requestedBy?: string;
 };
-/** "follow": a Stop took the message out of the queue; it goes again as `request` (`key`: its old submission). */
+/**
+ * "follow": a Stop took the message out of the queue; it goes again as `request` (`key`: its old submission), followed
+ * `since` then.
+ */
 type ReporterState =
     | { phase: "deliver" }
     | { phase: "report"; report?: string }
-    | { phase: "follow"; request: string; key: string };
+    | { phase: "follow"; request: string; key: string; since?: number };
 
 /** How a message to a subagent ended: settled, or dropped by a person from the queue a Stop held it in. */
 type Settled =
@@ -106,7 +109,7 @@ type Settled =
 /** What a reporter concludes from a message that a person took out of the queue for good. */
 const DROPPED = { status: "unanswered", reason: "dropped" } as const;
 
-/** How often a reporter looks at a message a Stop held, until it goes again or is dropped. */
+/** How often a reporter looks at a held message sent again, until it is answered. */
 const FOLLOW_MS = 3_000;
 
 /** Whether a message a Stop took out of `conversationId`'s queue still waits, held, to go again. */
@@ -135,6 +138,7 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
         settled: Settled,
         withdrawn: boolean,
         sent: { id: SubmissionId; request: string } | undefined,
+        since: number,
     ): Promise<void> => {
         const { name, conversationId } = reporter.input;
         // A failure of its model or provider (a sign-in, a model that is gone, a quota): named, with the model.
@@ -180,7 +184,12 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
 
                 return {
                     status: "running",
-                    checkpoint: { phase: "follow", request: again, key: String(sent!.id) },
+                    checkpoint: {
+                        phase: "follow",
+                        request: again,
+                        key: String(sent!.id),
+                        since: Date.now(),
+                    },
                 } as const;
             }
 
@@ -192,7 +201,11 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                     : settled.reason === "dropped"
                       ? STOPPED
                       : `${ranOn}${whyUnanswered(settled.reason, settled.detail)}`;
-                const by = agent?.stoppedBy;
+                // The stop that ended this message, not one before it was sent or followed.
+                const by =
+                    agent?.stoppedBy !== undefined && agent.stoppedBy.at >= since
+                        ? agent.stoppedBy.by
+                        : undefined;
 
                 if (agent !== undefined) {
                     agent.answeredAt = Date.now();
@@ -265,6 +278,7 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                     requestedBy === undefined
                         ? `subagent:${reporter.id}`
                         : requestFor(requestedBy, `subagent-${reporter.id}`);
+                const sentAt = Date.now();
                 const submission = await subagent.submit({ ...request, requestId }, context);
                 // Pi Durable leaves a failed run's inbox alone, so a queued follow-up waits for a boundary that never
                 // comes: once the subagent is idle with it still queued, withdraw it, which ends the wait below.
@@ -307,10 +321,15 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                     await withdrawing.catch(() => {});
                 }
 
-                await conclude(reporter, runtime, context, settled, withdrawn, {
-                    id: submission.id,
-                    request: requestId,
-                });
+                await conclude(
+                    reporter,
+                    runtime,
+                    context,
+                    settled,
+                    withdrawn,
+                    { id: submission.id, request: requestId },
+                    sentAt,
+                );
             },
             // A message a person's Stop took from the subagent's queue, to go again later under the next request id
             // (`commands.ts`): followed to its answer, which is reported as any other. Dropped, it is reported so.
@@ -324,33 +343,67 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                     (signal): signal is AbortSignal => signal !== undefined,
                 );
 
+                const signal = AbortSignal.any(signals);
+                // When the follow began; a checkpoint from before it was kept follows from now.
+                const since = checkpoint.since ?? Date.now();
+
                 for (;;) {
-                    let found: SubmissionRecord | undefined;
+                    // Watched before the look, so a send or a drop in between still wakes the wait below.
+                    const watch = await runtime.watchDoc(HeldDoc, child, context);
+                    const changed = new Promise<void>((resolve) =>
+                        watch?.start(async (call) => {
+                            if (call.kind === "value") {
+                                resolve();
+                            }
+                        }),
+                    );
 
-                    await runtime.commit(async (tx) => {
-                        found = await tx.submissionByRequest(child, checkpoint.request);
+                    try {
+                        let found: SubmissionRecord | undefined;
 
-                        return undefined;
-                    }, context);
+                        await runtime.commit(async (tx) => {
+                            found = await tx.submissionByRequest(child, checkpoint.request);
 
-                    const record = found as SubmissionRecord | undefined;
+                            return undefined;
+                        }, context);
 
-                    if (record?.status === "done" || record?.status === "unanswered") {
-                        return conclude(reporter, runtime, context, record as never, false, {
-                            id: record.id,
-                            request: checkpoint.request,
-                        });
+                        const record = found as SubmissionRecord | undefined;
+
+                        if (record?.status === "done" || record?.status === "unanswered") {
+                            return await conclude(
+                                reporter,
+                                runtime,
+                                context,
+                                record as never,
+                                false,
+                                { id: record.id, request: checkpoint.request },
+                                since,
+                            );
+                        }
+
+                        if (record !== undefined) {
+                            // Sent again and under way: answered soon, so looked at again shortly.
+                            await pause(FOLLOW_MS, signal);
+                        } else if (await heldAgain(runtime, child, checkpoint.key, context)) {
+                            // Still held, perhaps for days: nothing to do until the held messages change.
+                            await (watch === undefined
+                                ? pause(FOLLOW_MS, signal)
+                                : Promise.race([changed, aborted(signal)]));
+                        } else {
+                            // Gone: a person dropped what was held.
+                            return await conclude(
+                                reporter,
+                                runtime,
+                                context,
+                                DROPPED,
+                                false,
+                                undefined,
+                                since,
+                            );
+                        }
+                    } finally {
+                        await watch?.stop();
                     }
-
-                    // Gone: a person dropped what was held.
-                    if (
-                        record === undefined &&
-                        !(await heldAgain(runtime, child, checkpoint.key, context))
-                    ) {
-                        return conclude(reporter, runtime, context, DROPPED, false, undefined);
-                    }
-
-                    await pause(FOLLOW_MS, AbortSignal.any(signals));
                 }
             },
             // The report waits with the others for the courier, which this starts when none is at work. A batch still in the
@@ -545,6 +598,17 @@ function settleBatch(
 const GATHER_MS = 2_000;
 
 /** Wait `ms`, or until `signal` ends the wait, as Pi Durable's own waits do. */
+/** Rejects with the signal's reason once it aborts. */
+function aborted(signal: AbortSignal): Promise<never> {
+    return new Promise((_, reject) => {
+        if (signal.aborted) {
+            reject(signal.reason);
+        }
+
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+}
+
 function pause(ms: number, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
 
@@ -1027,7 +1091,7 @@ export default function createSubagents(host: PocketHost) {
                     const record = (await tx.doc(SubagentsDoc, api.conversationId)).agents[name];
 
                     if (record !== undefined) {
-                        record.stoppedBy = "parent";
+                        record.stoppedBy = { by: "parent", at: Date.now() };
                     }
                 }, context);
                 await (await api.conversation(agent!.conversationId, context))!.abort(context);
@@ -1161,7 +1225,6 @@ export default function createSubagents(host: PocketHost) {
                 // For the subagents bar: what it works on now, and since when.
                 record.asked = message.trim().slice(0, 300);
                 record.askedAt = Date.now();
-                delete record.stoppedBy;
                 const input = {
                     name,
                     conversationId,

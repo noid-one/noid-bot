@@ -43,6 +43,23 @@ const route: FauxResponseStep = (request) => {
         return fauxAssistantMessage([fauxText(`result of ${subagent}: ${text.slice(0, 40)}`)]);
     }
 
+    // A stop and a new message in one answer: the stop's report must not lose who stopped it to the new message.
+    const redo = /^redo (\S+)$/.exec(text);
+
+    if (redo !== null) {
+        return fauxAssistantMessage(
+            [
+                fauxToolCall("subagent", { action: "stop", name: redo[1]! } as never),
+                fauxToolCall("subagent", {
+                    action: "send",
+                    name: redo[1]!,
+                    message: "Try again.",
+                } as never),
+            ],
+            { stopReason: "toolUse" },
+        );
+    }
+
     const action = /^(spawn|nudge|halt) (\S+)$/.exec(text);
 
     if (action !== null) {
@@ -174,6 +191,22 @@ test("the parent's own stop is said as its own", async () => {
         () => told(id, "halted stopped: you stopped it before it answered"),
         "the report of the parent's stop",
     );
-    assert.equal((await agent(id, "halted")).stoppedBy, "parent");
+    assert.equal((await agent(id, "halted")).stoppedBy?.by, "parent");
     assert.ok(!(await inbox(id)).join("\n").includes("halted failed"), "a stop is no failure");
+});
+
+test("a stop and a new message in one answer: the stop is still said as the parent's", async () => {
+    const id = await session();
+
+    await say(id, "spawn again");
+    await until(() => stuck(id, "again"), "the subagent on a stuck call");
+    await say(id, "redo again");
+    await until(
+        () => told(id, "again stopped: you stopped it before it answered"),
+        "the report of the parent's stop",
+    );
+    assert.ok(
+        !(await inbox(id)).join("\n").includes("again failed: stopped"),
+        "the stop is no failure, though a new message came after it",
+    );
 });

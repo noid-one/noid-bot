@@ -1395,7 +1395,7 @@ export class Commands {
             const name = Object.keys(agents).find((each) => agents[each]!.conversationId === id);
 
             if (name !== undefined) {
-                agents[name]!.stoppedBy = "person";
+                agents[name]!.stoppedBy = { by: "person", at: Date.now() };
             }
         }, context);
     }

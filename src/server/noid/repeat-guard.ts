@@ -10,8 +10,10 @@
  * said what it is doing. Calls of one shape from one model answer are one step: reading 30 files at once is not a
  * loop. One tool that keeps getting the same answer whatever its input (clicks at new spots on a screen that never
  * changes, reworded calls) is stuck at its 25th step too (rakazo cb4d79662): only model answers that call that tool
- * alone count, and its answers are compared whole, images included. A stuck call is refused with a line that says so, and the run stops, so the bot cannot try once more; the owner
- * gets one notice, and any call the run still makes is refused too.
+ * alone count, its answers are compared whole, images included, and a short answer ("Saved.", nothing) ends the run,
+ * as edits of one file and quiet commands make progress that looks the same. A stuck call is refused with a line that
+ * says so, and the run stops, so the bot cannot try once more; the owner gets one notice, and any call the run still
+ * makes is refused too.
  *
  * Only bots' runs: a person's own session has them watching. Calls a codemode script makes (`parent`) are a program's,
  * not the model going round, and are not counted. State is memory only: a restart starts each count over.
@@ -104,6 +106,16 @@ function fingerprint(result: { output?: unknown; isError?: boolean }): string {
 
     return `${result.isError === true ? "failed:" : ""}${hash}`;
 }
+
+/**
+ * Answers shorter than this, written out, are acknowledgements ("Saved.", a silent command's empty output): the same for
+ * every input because they say little, not because nothing changes, so they never make a same-answer run. A screenshot
+ * or a page's text is well over it.
+ */
+const SUBSTANTIAL = 200;
+
+const substantial = (result: { output?: unknown }) =>
+    JSON.stringify(result.output ?? null).length >= SUBSTANTIAL;
 
 export type StuckKind = "failing" | "similar" | "sameResult";
 
@@ -284,11 +296,17 @@ export function createRepeatGuard(app: PocketApp) {
 
                     // The tool's run of steps holds while its answer stays the same; a new answer starts it over at this step.
                     if (call.name === streak.tool && streak.sameCount > 0) {
-                        if (streak.sameResult !== undefined && streak.sameResult !== seen) {
-                            streak.sameCount = 1;
-                        }
+                        if (!substantial(result)) {
+                            // Edits of one file, silent commands: progress that looks the same. Ends the run.
+                            streak.sameCount = 0;
+                            streak.sameResult = undefined;
+                        } else {
+                            if (streak.sameResult !== undefined && streak.sameResult !== seen) {
+                                streak.sameCount = 1;
+                            }
 
-                        streak.sameResult = seen;
+                            streak.sameResult = seen;
+                        }
                     }
 
                     if (

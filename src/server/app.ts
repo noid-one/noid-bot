@@ -43,7 +43,6 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
 import { CodingTools, createCodingTools } from "@earendil-works/pi-durable/tools";
 import { Alerts } from "./alerts.ts";
 import { Attribution, type Missing } from "./attribution.ts";
@@ -3610,6 +3609,9 @@ async function codingTools(log: (line: string) => void) {
 
         // Where Pi Durable loads it from, so a missing package shows now and not on the first image.
         createRequire(node).resolve("@silvia-odwyer/photon/photon_rs_bg.wasm");
+        // Imported here, not at the top: the module loads Photon as it loads, and without it the server must still
+        // start.
+        const { createNodePhotonImages } = await import("@earendil-works/pi-durable/images/node");
 
         return createCodingTools({ images: await createNodePhotonImages() });
     } catch (error) {

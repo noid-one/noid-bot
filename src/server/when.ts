@@ -561,6 +561,12 @@ export function describeRepeat(repeat: Repeat): string {
 
 /** A moment as people read it in `zone`: "Mon 07:00" within the week ahead, "Oct 12 07:00" after that. */
 export function describeMoment(at: number, zone: string, now = Date.now()): string {
+    // Past what a date holds: a repeat stored before repeats were capped at 366 days. Said so, rather than throwing for
+    // every list it is in.
+    if (Number.isNaN(new Date(at).getTime())) {
+        return "never (too far ahead)";
+    }
+
     const soon = at - now < 6 * 24 * 60 * 60_000;
 
     return new Intl.DateTimeFormat("en-US", {
