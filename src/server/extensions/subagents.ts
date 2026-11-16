@@ -203,7 +203,7 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                       : `${ranOn}${whyUnanswered(settled.reason, settled.detail)}`;
                 // The stop that ended this message, not one before it was sent or followed.
                 const by =
-                    agent?.stoppedBy !== undefined && agent.stoppedBy.at >= since
+                    agent?.stoppedBy !== undefined && agent.stoppedBy.at > since
                         ? agent.stoppedBy.by
                         : undefined;
 
@@ -344,8 +344,10 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                 );
 
                 const signal = AbortSignal.any(signals);
-                // When the follow began; a checkpoint from before it was kept follows from now.
-                const since = checkpoint.since ?? Date.now();
+                // When the follow began, and once the message goes again, when it went: a stop before then is not the
+                // one that ends it. A checkpoint from before it was kept follows from now.
+                let since = checkpoint.since ?? Date.now();
+                let resent = false;
 
                 for (;;) {
                     // Watched before the look, so a send or a drop in between still wakes the wait below.
@@ -382,13 +384,18 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                         }
 
                         if (record !== undefined) {
+                            if (!resent) {
+                                resent = true;
+                                since = Date.now();
+                            }
+
                             // Sent again and under way: answered soon, so looked at again shortly.
                             await pause(FOLLOW_MS, signal);
                         } else if (await heldAgain(runtime, child, checkpoint.key, context)) {
                             // Still held, perhaps for days: nothing to do until the held messages change.
                             await (watch === undefined
                                 ? pause(FOLLOW_MS, signal)
-                                : Promise.race([changed, aborted(signal)]));
+                                : whenChanged(changed, signal));
                         } else {
                             // Gone: a person dropped what was held.
                             return await conclude(
@@ -597,18 +604,25 @@ function settleBatch(
 /** How long a courier waits, for a parent that is idle, for more reports to go with the first. */
 const GATHER_MS = 2_000;
 
-/** Wait `ms`, or until `signal` ends the wait, as Pi Durable's own waits do. */
-/** Rejects with the signal's reason once it aborts. */
-function aborted(signal: AbortSignal): Promise<never> {
-    return new Promise((_, reject) => {
-        if (signal.aborted) {
-            reject(signal.reason);
-        }
+/** Wait for `changed`, or until `signal` ends the wait; the abort listener goes either way. */
+async function whenChanged(changed: Promise<void>, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
+    let stop = () => {};
 
-        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    });
+    try {
+        await Promise.race([
+            changed,
+            new Promise<never>((_, reject) => {
+                stop = () => reject(signal.reason);
+                signal.addEventListener("abort", stop, { once: true });
+            }),
+        ]);
+    } finally {
+        signal.removeEventListener("abort", stop);
+    }
 }
 
+/** Wait `ms`, or until `signal` ends the wait, as Pi Durable's own waits do. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
 

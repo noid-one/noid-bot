@@ -70,6 +70,14 @@ const route: FauxResponseStep = (request) => {
     const reworded = `printf ${"same".repeat(80)} ${"x".repeat(calls + 1)}`;
     const quiet = `true ${"x".repeat(calls + 1)}`;
 
+    // A different command each call that always fails the same way, with a short error.
+    if (kind === "broken") {
+        return fauxAssistantMessage(
+            [fauxToolCall("bash", { command: `false ${"x".repeat(calls + 1)}` })],
+            { stopReason: "toolUse" },
+        );
+    }
+
     if (kind === "quiet") {
         return fauxAssistantMessage([fauxToolCall("bash", { command: quiet })], {
             stopReason: "toolUse",
@@ -226,6 +234,16 @@ test("a bot whose quiet commands all print nothing is not stopped: an empty answ
     const { refused } = await results(id);
 
     assert.equal(refused, 0);
+});
+
+test("a short error is the same answer whatever the input: a reworded failing call is stopped at the 25th", async () => {
+    const id = await hostBot("Broken");
+
+    await send(id, "loop broken");
+    const { count, last } = await results(id);
+
+    assert.equal(count, MAX_SIMILAR);
+    assert.match(last, /got the same result/);
 });
 
 test("an answer that calls more than one tool is not a same-result step", async () => {

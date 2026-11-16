@@ -98,24 +98,22 @@ function blankDigits(value: unknown): unknown {
     return value;
 }
 
-/** What the model got back: failed or not, and its content, hashed (details can carry timings). */
-function fingerprint(result: { output?: unknown; isError?: boolean }): string {
-    const hash = createHash("sha256")
-        .update(JSON.stringify(result.output ?? null))
-        .digest("hex");
+/**
+ * What the model got back: failed or not, and its content (`written`, the output as JSON), hashed (details can carry
+ * timings).
+ */
+function fingerprint(written: string, failed: boolean): string {
+    const hash = createHash("sha256").update(written).digest("hex");
 
-    return `${result.isError === true ? "failed:" : ""}${hash}`;
+    return `${failed ? "failed:" : ""}${hash}`;
 }
 
 /**
  * Answers shorter than this, written out, are acknowledgements ("Saved.", a silent command's empty output): the same for
  * every input because they say little, not because nothing changes, so they never make a same-answer run. A screenshot
- * or a page's text is well over it.
+ * or a page's text is well over it. A failure counts whatever its length: the same short error for every input is stuck.
  */
 const SUBSTANTIAL = 200;
-
-const substantial = (result: { output?: unknown }) =>
-    JSON.stringify(result.output ?? null).length >= SUBSTANTIAL;
 
 export type StuckKind = "failing" | "similar" | "sameResult";
 
@@ -292,11 +290,13 @@ export function createRepeatGuard(app: PocketApp) {
                     }
 
                     const streak = await streakOf(id, context);
-                    const seen = fingerprint(result);
+                    const written = JSON.stringify(result.output ?? null);
+                    const failed = result.isError === true;
+                    const seen = fingerprint(written, failed);
 
                     // The tool's run of steps holds while its answer stays the same; a new answer starts it over at this step.
                     if (call.name === streak.tool && streak.sameCount > 0) {
-                        if (!substantial(result)) {
+                        if (!failed && written.length < SUBSTANTIAL) {
                             // Edits of one file, silent commands: progress that looks the same. Ends the run.
                             streak.sameCount = 0;
                             streak.sameResult = undefined;
