@@ -607,6 +607,7 @@ const GATHER_MS = 2_000;
 /** Wait for `changed`, or until `signal` ends the wait; the abort listener goes either way. */
 async function whenChanged(changed: Promise<void>, signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
+
     let stop = () => {};
 
     try {
