@@ -30,12 +30,20 @@ import {
     LiveDoc,
     type ModelRef,
     section,
+    type SettledSubmissionRecord,
     type SubmissionId,
     type SubmissionRecord,
     type TaskRuntime,
     type Tx,
 } from "@earendil-works/pi-durable";
-import { type PendingReport, REPORT_PREFIX, SubagentsDoc } from "../docs.ts";
+import {
+    HeldDoc,
+    heldRequest,
+    type PendingReport,
+    REPORT_PREFIX,
+    STOPPED,
+    SubagentsDoc,
+} from "../docs.ts";
 import { describe } from "../errors.ts";
 import type { PocketHost } from "../host.ts";
 import { levelFor, sameModel, THINKING_LEVELS } from "../models.ts";
@@ -84,17 +92,169 @@ type ReporterInput = {
     followUp: boolean;
     requestedBy?: string;
 };
-type ReporterState = { phase: "deliver" } | { phase: "report"; report?: string };
+/** "follow": a Stop took the message out of the queue; it goes again as `request` (`key`: its old submission). */
+type ReporterState =
+    | { phase: "deliver" }
+    | { phase: "report"; report?: string }
+    | { phase: "follow"; request: string; key: string };
 
-/** Delivers one message to a subagent, waits for the answer, and reports it to the parent, through `Courier`. */
+/** How a message to a subagent ended: settled, or dropped by a person from the queue a Stop held it in. */
+type Settled =
+    | SettledSubmissionRecord
+    | { status: "unanswered"; reason: "dropped"; detail?: undefined; type?: undefined };
+
+/** What a reporter concludes from a message that a person took out of the queue for good. */
+const DROPPED = { status: "unanswered", reason: "dropped" } as const;
+
+/** How often a reporter looks at a message a Stop held, until it goes again or is dropped. */
+const FOLLOW_MS = 3_000;
+
+/** Whether a message a Stop took out of `conversationId`'s queue still waits, held, to go again. */
+async function heldAgain(
+    runtime: TaskRuntime<ReporterInput, ReporterState, null, object>,
+    conversationId: ConversationId,
+    key: string,
+    context: Context,
+): Promise<boolean> {
+    const items = (await runtime.snapshot(HeldDoc, conversationId, context))?.items ?? [];
+
+    return items.some((item) => item.key === key);
+}
+
+/**
+ * Delivers one message to a subagent, waits for the answer, and reports it to the parent, through `Courier`. A message
+ * a person's Stop held (Pi Pocket e3aa23d1) is followed until it goes again and answers, or is dropped; a stop by a
+ * person or by the parent is said as such, not as a failure.
+ */
 function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
+    /** Report how a message ended, or follow it when a Stop held it to go again (`sent`: its submission and request). */
+    const conclude = async (
+        reporter: { input: ReporterInput },
+        runtime: TaskRuntime<ReporterInput, ReporterState, null, object>,
+        context: Context,
+        settled: Settled,
+        withdrawn: boolean,
+        sent: { id: SubmissionId; request: string } | undefined,
+    ): Promise<void> => {
+        const { name, conversationId } = reporter.input;
+        // A failure of its model or provider (a sign-in, a model that is gone, a quota): named, with the model.
+        const modelFailed =
+            !withdrawn &&
+            settled.status === "unanswered" &&
+            modelFailure(settled.reason, settled.detail);
+        const ran = modelFailed
+            ? (await runtime.snapshot(AgentDoc, conversationId, context))?.model
+            : undefined;
+        const ranOn = ran === undefined ? "" : `${ran.provider}/${ran.modelId}: `;
+        const stopped =
+            !withdrawn && settled.status === "unanswered" && settled.reason === "aborted";
+        // Only a message still in the queue can be held and sent again: one the run took (`entry`) ended with it.
+        const queued = (settled as { entry?: unknown }).entry === undefined;
+        const again =
+            stopped && queued && sent !== undefined
+                ? heldRequest(sent.request, Number(sent.id))
+                : undefined;
+        const held =
+            again !== undefined &&
+            (await heldAgain(runtime, conversationId, String(sent!.id), context));
+
+        await runtime.commit(async (tx) => {
+            const next = (report?: string) =>
+                ({ status: "running", checkpoint: { phase: "report", report } }) as const;
+            // Reads first: a commit reads the tables only before it writes one.
+            const resent =
+                again === undefined
+                    ? undefined
+                    : await tx.submissionByRequest(conversationId, again);
+
+            if (again !== undefined && (held || resent !== undefined)) {
+                // Held until a person acts, which can take long: the parent hears now that its answer comes later.
+                if (held && resent === undefined) {
+                    await putReports(tx, runtime.conversationId, Courier, [
+                        {
+                            name,
+                            text: `${REPORT_PREFIX}${name} stopped: a person stopped it. Your message waits, held, until a person sends it or drops it; its answer then comes by itself]`,
+                        },
+                    ]);
+                }
+
+                return {
+                    status: "running",
+                    checkpoint: { phase: "follow", request: again, key: String(sent!.id) },
+                } as const;
+            }
+
+            const agent = (await tx.doc(SubagentsDoc, runtime.conversationId)).agents[name];
+
+            if (settled.status === "unanswered") {
+                const why = withdrawn
+                    ? IDLE
+                    : settled.reason === "dropped"
+                      ? STOPPED
+                      : `${ranOn}${whyUnanswered(settled.reason, settled.detail)}`;
+                const by = agent?.stoppedBy;
+
+                if (agent !== undefined) {
+                    agent.answeredAt = Date.now();
+                    agent.failed = true;
+                    agent.error = why;
+                }
+
+                if (settled.reason === "dropped") {
+                    return next(
+                        `${REPORT_PREFIX}${name} stopped: a person stopped it, and took your message out of its queue]`,
+                    );
+                }
+
+                // A stop by someone known is no failure.
+                if (stopped && by !== undefined) {
+                    return next(
+                        `${REPORT_PREFIX}${name} stopped: ${by === "parent" ? "you stopped it" : "a person stopped it"} before it answered]`,
+                    );
+                }
+
+                // Pi may be waiting for its answer, and is told none comes. One its model failed tells Pi to stop and
+                // tell its person, not to try again on another model.
+                return next(
+                    `${REPORT_PREFIX}${name} failed: ${why}]${modelFailed ? ` ${MODEL_FAILED}` : ""}`,
+                );
+            }
+
+            if (settled.type !== "input") {
+                return next();
+            }
+
+            if (agent === undefined || agent.reported.includes(settled.answer)) {
+                return next();
+            }
+
+            agent.reported.push(settled.answer);
+            agent.answeredAt = Date.now();
+            agent.failed = false;
+            delete agent.error;
+            const answer = (await tx.entry(AssistantEntry, settled.answer))?.model?.[0] as
+                AssistantMessage | undefined;
+
+            return next(`${REPORT_PREFIX}${name} answered, no reply needed] ${textOf(answer)}`);
+        }, context);
+
+        // The people in the session see it at once, as well as in its report.
+        if (modelFailed && settled.status === "unanswered") {
+            host.notice(
+                "warning",
+                `Subagent ${name} failed: ${ranOn}${whyUnanswered(settled.reason, settled.detail)}. Pi was told to stop and tell you, not to switch models.`,
+                runtime.conversationId,
+            );
+        }
+    };
+
     return defineTask<ReporterInput, ReporterState, null>({
         name: "pocket.subagent-reporter",
         version: 1,
         initial: () => ({ phase: "deliver" }),
         phases: {
             deliver: async (reporter, runtime, context) => {
-                const { name, conversationId, message, followUp, requestedBy } = reporter.input;
+                const { conversationId, message, followUp, requestedBy } = reporter.input;
                 const subagent = (await runtime.conversation(conversationId, context))!;
                 const request = {
                     type: "input",
@@ -147,67 +307,50 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                     await withdrawing.catch(() => {});
                 }
 
-                // A failure of its model or provider (a sign-in, a model that is gone, a quota): named, with the model.
-                const modelFailed =
-                    !withdrawn &&
-                    settled.status === "unanswered" &&
-                    modelFailure(settled.reason, settled.detail);
-                const ran = modelFailed
-                    ? (await runtime.snapshot(AgentDoc, conversationId, context))?.model
-                    : undefined;
-                const ranOn = ran === undefined ? "" : `${ran.provider}/${ran.modelId}: `;
+                await conclude(reporter, runtime, context, settled, withdrawn, {
+                    id: submission.id,
+                    request: requestId,
+                });
+            },
+            // A message a person's Stop took from the subagent's queue, to go again later under the next request id
+            // (`commands.ts`): followed to its answer, which is reported as any other. Dropped, it is reported so.
+            follow: async (reporter, runtime, context) => {
+                const checkpoint = reporter.state.checkpoint as Extract<
+                    ReporterState,
+                    { phase: "follow" }
+                >;
+                const child = reporter.input.conversationId;
+                const signals = [runtime.signal, context.abortSignal].filter(
+                    (signal): signal is AbortSignal => signal !== undefined,
+                );
 
-                await runtime.commit(async (tx) => {
-                    const next = (report?: string) =>
-                        ({ status: "running", checkpoint: { phase: "report", report } }) as const;
+                for (;;) {
+                    let found: SubmissionRecord | undefined;
 
-                    const agent = (await tx.doc(SubagentsDoc, runtime.conversationId)).agents[name];
+                    await runtime.commit(async (tx) => {
+                        found = await tx.submissionByRequest(child, checkpoint.request);
 
-                    if (settled.status === "unanswered") {
-                        const why = withdrawn
-                            ? IDLE
-                            : `${ranOn}${whyUnanswered(settled.reason, settled.detail)}`;
+                        return undefined;
+                    }, context);
 
-                        if (agent !== undefined) {
-                            agent.answeredAt = Date.now();
-                            agent.failed = true;
-                            agent.error = why;
-                        }
+                    const record = found as SubmissionRecord | undefined;
 
-                        // Stopped too: Pi may be waiting for its answer, and is told none comes. One its model failed
-                        // tells Pi to stop and tell its person, not to try again on another model.
-                        return next(
-                            `${REPORT_PREFIX}${name} failed: ${why}]${modelFailed ? ` ${MODEL_FAILED}` : ""}`,
-                        );
+                    if (record?.status === "done" || record?.status === "unanswered") {
+                        return conclude(reporter, runtime, context, record as never, false, {
+                            id: record.id,
+                            request: checkpoint.request,
+                        });
                     }
 
-                    if (settled.type !== "input") {
-                        return next();
+                    // Gone: a person dropped what was held.
+                    if (
+                        record === undefined &&
+                        !(await heldAgain(runtime, child, checkpoint.key, context))
+                    ) {
+                        return conclude(reporter, runtime, context, DROPPED, false, undefined);
                     }
 
-                    if (agent === undefined || agent.reported.includes(settled.answer)) {
-                        return next();
-                    }
-
-                    agent.reported.push(settled.answer);
-                    agent.answeredAt = Date.now();
-                    agent.failed = false;
-                    delete agent.error;
-                    const answer = (await tx.entry(AssistantEntry, settled.answer))?.model?.[0] as
-                        AssistantMessage | undefined;
-
-                    return next(
-                        `${REPORT_PREFIX}${name} answered, no reply needed] ${textOf(answer)}`,
-                    );
-                }, context);
-
-                // The people in the session see it at once, as well as in its report.
-                if (modelFailed && settled.status === "unanswered") {
-                    host.notice(
-                        "warning",
-                        `Subagent ${name} failed: ${ranOn}${whyUnanswered(settled.reason, settled.detail)}. Pi was told to stop and tell you, not to switch models.`,
-                        runtime.conversationId,
-                    );
+                    await pause(FOLLOW_MS, AbortSignal.any(signals));
                 }
             },
             // The report waits with the others for the courier, which this starts when none is at work. A batch still in the
@@ -227,28 +370,9 @@ function reporterFor(Courier: CourierTask, host: Pick<PocketHost, "notice">) {
                         )) !== undefined;
 
                     if (report !== undefined && !sentBefore) {
-                        const id = runtime.conversationId;
-                        const state = await tx.doc(SubagentsDoc, id);
-                        // Reads first: a commit reads the tables only before it writes one.
-                        const queued = await queuedBatch(tx, id, state.sending?.request);
-                        const idle = !(await working(tx, state.courier));
-                        const taken = queued === undefined ? [] : (state.sending?.reports ?? []);
-
-                        if (queued !== undefined) {
-                            await unqueue(tx, id, queued);
-                            delete state.sending;
-                        }
-
-                        // Assigned whole: a document keeps its own copy of what is assigned to it.
-                        state.outbox = [
-                            ...taken,
-                            ...(state.outbox ?? []),
+                        await putReports(tx, runtime.conversationId, Courier, [
                             { name: reporter.input.name, text: report },
-                        ];
-
-                        if (idle) {
-                            state.courier = await tx.createTask(Courier, null, BACKGROUND);
-                        }
+                        ]);
                     }
 
                     return { status: "terminal", outcome: { status: "completed", result: null } };
@@ -291,6 +415,35 @@ async function unqueue(tx: Tx, conversationId: ConversationId, id: SubmissionId)
     }
 
     tx.settleSubmission(id, { status: "unanswered", reason: "merged" });
+}
+
+/**
+ * Add reports for the parent: they wait with the others for the courier, which this starts when none is at work. A
+ * batch still in the parent's queue takes them too: it is taken back out, and goes again with these, so the queue holds
+ * one message of reports, with all of them. Reads come first in it: call it before the commit writes a table.
+ */
+async function putReports(
+    tx: Tx,
+    id: ConversationId,
+    Courier: CourierTask,
+    reports: readonly PendingReport[],
+): Promise<void> {
+    const state = await tx.doc(SubagentsDoc, id);
+    const queued = await queuedBatch(tx, id, state.sending?.request);
+    const idle = !(await working(tx, state.courier));
+    const taken = queued === undefined ? [] : (state.sending?.reports ?? []);
+
+    if (queued !== undefined) {
+        await unqueue(tx, id, queued);
+        delete state.sending;
+    }
+
+    // Assigned whole: a document keeps its own copy of what is assigned to it.
+    state.outbox = [...taken, ...(state.outbox ?? []), ...reports];
+
+    if (idle) {
+        state.courier = await tx.createTask(Courier, null, BACKGROUND);
+    }
 }
 
 /** Whether a task is there and can still take reports. */
@@ -869,6 +1022,14 @@ export default function createSubagents(host: PocketHost) {
             }
 
             if (action === "stop") {
+                // Its report says the parent stopped it, not a person.
+                await api.commit(async (tx) => {
+                    const record = (await tx.doc(SubagentsDoc, api.conversationId)).agents[name];
+
+                    if (record !== undefined) {
+                        record.stoppedBy = "parent";
+                    }
+                }, context);
                 await (await api.conversation(agent!.conversationId, context))!.abort(context);
 
                 return reply(`Stopped ${name}.`, agent!.conversationId);
@@ -1000,6 +1161,7 @@ export default function createSubagents(host: PocketHost) {
                 // For the subagents bar: what it works on now, and since when.
                 record.asked = message.trim().slice(0, 300);
                 record.askedAt = Date.now();
+                delete record.stoppedBy;
                 const input = {
                     name,
                     conversationId,

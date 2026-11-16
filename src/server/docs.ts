@@ -75,6 +75,14 @@ export type HeldMessage = {
     heldAt: number;
 };
 
+/**
+ * The request id a message a Stop held goes again under (`Commands.#hold`): its first one's, so it stays its sender's,
+ * with the old submission's id. A subagent's reporter follows it by this id (`extensions/subagents.ts`).
+ */
+export function heldRequest(request: string, submission: number): string {
+    return `${request.replace(/(~\d+)+$/, "")}~${String(submission)}`;
+}
+
 /** The messages a Stop kept from the queue, in their order (`Commands.abort`, `Commands.sendHeld`). */
 export const HeldDoc = defineDoc<{ items: HeldMessage[] }>({
     kind: "pocket.held",
@@ -236,6 +244,8 @@ export type SubagentRecord = {
      * a later time, so it needs them again.
      */
     dealtAt?: number;
+    /** Who stopped its run: a person, or its parent (`subagent stop`). A new message clears it (Pi Pocket e3aa23d1). */
+    stoppedBy?: "person" | "parent";
 };
 
 /** A subagent's report waiting to go to its parent: all those waiting go together, as one message. */
