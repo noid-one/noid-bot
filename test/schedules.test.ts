@@ -56,6 +56,9 @@ test("times read the way people write them, in their time zone", () => {
 
     for (const [text, problem] of [
         ["every 5m x", /at most every 10 minutes/],
+        // Past what a date holds: the add reply and every list after it would throw (pi-pocket 62052188).
+        ["every 100000000 days x", /366 days/],
+        ["every 999999999999m x", /366 days/],
         ["soon x", /Say when/],
     ] as const) {
         assert.throws(() => parseWhen(text, sunday, chicago), problem, text);
