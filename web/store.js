@@ -1,5 +1,5 @@
 // App state, the server connection, and API calls. Components read `store.state` and re-render on `store.subscribe`.
-import { onRoute, pushRoute } from "./back.js";
+import { onRoute, popRoute, pushRoute, routeUnder } from "./back.js";
 import { sessionForest, unfolded } from "./session-tree.js";
 import { liveMessage } from "./live.js";
 import { cutWhole } from "./cut.js";
@@ -1835,11 +1835,15 @@ export function closeSignIn(flowId) {
     store.set((state) => (state.auth?.flowId === flowId ? { auth: null } : {}));
 }
 
-export function navigate(conversationId, { replace = false, sheet = null } = {}) {
+export function navigate(conversationId, { replace = false, sheet = null, back = false } = {}) {
     const path = conversationId === null ? "/" : `/s/${conversationId}`;
 
     if (location.pathname !== path || store.state.conversationId !== conversationId) {
-        pushRoute(path, { replace });
+        if (back) {
+            popRoute(path);
+        } else {
+            pushRoute(path, { replace });
+        }
     }
 
     // The subagents board and extensions' pages show in the conversation's place: going to one, even the one under it,
@@ -1872,6 +1876,18 @@ export function navigate(conversationId, { replace = false, sheet = null } = {})
         ...sheetChange(sheet, state),
     }));
     showKept(conversationId);
+}
+
+/**
+ * Go up to the session this one belongs to (a subagent's parent). Opened over it, back to its entry, as a swipe back
+ * goes; reached another way (the list, a notification), in this route's place. Either way no entry of this route stays
+ * above the parent's, for back to open again (pi-pocket 13a69ee2).
+ */
+export function navigateUp(conversationId) {
+    navigate(
+        conversationId,
+        routeUnder() === `/s/${conversationId}` ? { back: true } : { replace: true },
+    );
 }
 
 /** The number of the last session gone to, so a read of the device that comes late does not show an older one. */
