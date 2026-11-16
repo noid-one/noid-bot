@@ -7,6 +7,7 @@
  * `alerts.ts`, provider sign-ins in `providers.ts`, and each conversation's shared live view in `room.ts`.
  */
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -42,7 +43,8 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { createNodePhotonImages } from "@earendil-works/pi-durable/images/node";
+import { CodingTools, createCodingTools } from "@earendil-works/pi-durable/tools";
 import { Alerts } from "./alerts.ts";
 import { Attribution, type Missing } from "./attribution.ts";
 import { Browsers } from "./browser.ts";
@@ -743,7 +745,7 @@ export class PocketApp {
 
         const registry = createRegistry();
 
-        registry.install(CodingTools);
+        registry.install(await codingTools(this.#log));
         // noid: a bot going round the same call with nobody watching is stopped (`repeat-guard.ts`): before approvals,
         // so a stuck call is refused rather than asked about.
         registry.install(createRepeatGuard(this));
@@ -3594,5 +3596,25 @@ export class PocketApp {
         })();
 
         return this.#closing;
+    }
+}
+
+/**
+ * Pi Durable's coding tools, whose `read` shrinks and converts images with Photon, in a worker thread that exits when
+ * idle (pi-pocket 0adf63d3). Without Photon's WebAssembly, `read` sends only images that fit the model's limits as
+ * they are.
+ */
+async function codingTools(log: (line: string) => void) {
+    try {
+        const node = import.meta.resolve("@earendil-works/pi-durable/images/node");
+
+        // Where Pi Durable loads it from, so a missing package shows now and not on the first image.
+        createRequire(node).resolve("@silvia-odwyer/photon/photon_rs_bg.wasm");
+
+        return createCodingTools({ images: await createNodePhotonImages() });
+    } catch (error) {
+        log(`read cannot shrink images, Photon is missing: ${describe(error)}`);
+
+        return CodingTools;
     }
 }
