@@ -1609,6 +1609,7 @@ function streamEvents(query) {
     /** When this stream last said anything, and how often the server pings it: unknown until a first ping. */
     let heardAt = Date.now();
     let pingMs = pingPeriod;
+    let pings = 0;
     let watchdog;
     const connection = {
         close() {
@@ -1637,6 +1638,12 @@ function streamEvents(query) {
     const watch = () => {
         watchdog = setInterval(() => {
             if (source === connection && connection.silent(2.5)) {
+                // A whole first batch, then no ping after the first: the path holds small events back (a tunnel, an
+                // older server), so a new stream would go quiet too. Poll instead, as the first-batch fallback does.
+                if (!local && settled && pings <= 1) {
+                    localStorage.setItem(TRANSPORT_KEY, `poll:${Date.now()}`);
+                }
+
                 connect();
             }
         }, pingMs);
@@ -1655,6 +1662,7 @@ function streamEvents(query) {
             watch();
         }
 
+        pings++;
         heardAt = Date.now();
     });
 
