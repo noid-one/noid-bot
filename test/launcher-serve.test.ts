@@ -11,6 +11,7 @@ import {
     mkdtempSync,
     readdirSync,
     readFileSync,
+    realpathSync,
     rmSync,
     symlinkSync,
     writeFileSync,
@@ -757,6 +758,48 @@ withFake(
     },
 );
 
+// A copy of a data folder, made to try something on, brings the receipt of a mount the original's server still runs
+// behind: taking it down cut that server's tailnet address.
+const copied = (data: string, port: number) =>
+    writeFileSync(receipt(data), `${JSON.stringify({ port, data: "/elsewhere/.noid" })}\n`);
+
+withFake(
+    "a local start on a copied data folder leaves the original's mount alone",
+    { serve: mounted("http://127.0.0.1:9000") },
+    async (run) => {
+        copied(run.data, 9000);
+        assert.equal(await launchLocal(run.data, LOCAL_PORT), true);
+        assert.deepEqual(run.fake.offs(), []);
+    },
+);
+
+withFake(
+    "a serve-mode start on a copied data folder leaves the original's mount alone",
+    { serve: mounted("http://127.0.0.1:9000") },
+    async (run) => {
+        copied(run.data, 9000);
+        await launchLocal(run.data, LOCAL_PORT, "tailscale-serve");
+        assert.deepEqual(run.fake.offs(), []);
+    },
+);
+
+withFake(
+    "a receipt from before folders were named is still this folder's, and adopting names it",
+    { serve: mounted() },
+    async (run) => {
+        own(run.data, LOCAL_PORT);
+        await launchLocal(run.data, LOCAL_PORT, "tailscale-serve");
+        assert.ok(!run.fake.calls().includes(MOUNT), "the mount is adopted");
+        assert.deepEqual(
+            JSON.parse(readFileSync(join(run.data, "receipt-at-ready.json"), "utf8")),
+            {
+                port: LOCAL_PORT,
+                data: realpathSync(run.data),
+            },
+        );
+    },
+);
+
 withFake(
     "a serve-mode start clears a receipted mount, writes its own, and takes it down on quit",
     { serve: mounted("http://127.0.0.1:9000") },
@@ -767,9 +810,12 @@ withFake(
         await launchLocal(run.data, LOCAL_PORT, "tailscale-serve");
         assert.ok(run.fake.calls().includes(OFF));
         assert.ok(run.fake.calls().includes(MOUNT));
-        assert.equal(
-            readFileSync(join(run.data, "receipt-at-ready.json"), "utf8").trim(),
-            '{"port":8787}',
+        assert.deepEqual(
+            JSON.parse(readFileSync(join(run.data, "receipt-at-ready.json"), "utf8")),
+            {
+                port: 8787,
+                data: realpathSync(run.data),
+            },
         );
         assert.deepEqual(await accessMessages(run.data), [
             { mode: "tailscale-serve", label: "Tailscale Serve", url: `https://${NAME}` },

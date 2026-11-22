@@ -8,7 +8,15 @@
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    realpathSync,
+    renameSync,
+    rmSync,
+    writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -63,16 +71,29 @@ const options = parseArgs(process.argv.slice(2));
 mkdirSync(options.data, { recursive: true, mode: 0o700 });
 const settingsFile = join(options.data, "launcher.json");
 /**
- * The receipt for a Tailscale Serve mount this launcher made: the port it points at. It is written before the mount
- * command runs and kept until the mount is gone, so a run killed outright leaves the next start what to take down. A
- * mount the launcher found and adopted gets none, and neither does the owner's own `tailscale serve` at this port.
+ * The receipt for a Tailscale Serve mount this launcher made: the port it points at, and the data folder of the run
+ * that made it. It is written before the mount command runs and kept until the mount is gone, so a run killed outright
+ * leaves the next start what to take down. A mount the launcher found and adopted gets none, and neither does the
+ * owner's own `tailscale serve` at this port.
  */
 const serveMountFile = join(options.data, "serve-mount.json");
+const dataFolder = realpathSync(options.data);
 
-/** The port of the mount that the receipt names, if there is one. */
+/**
+ * The port of the mount that the receipt names, if there is one and this data folder's run made it. A copy of a data
+ * folder carries the receipt of a mount another server still runs behind: taking that down cuts its tailnet address.
+ * A receipt from before folders were named counts as this folder's.
+ */
 function savedServeMountPort(): number | undefined {
     try {
-        const { port } = JSON.parse(readFileSync(serveMountFile, "utf8")) as { port?: number };
+        const { port, data } = JSON.parse(readFileSync(serveMountFile, "utf8")) as {
+            port?: number;
+            data?: string;
+        };
+
+        if (data !== undefined && data !== dataFolder) {
+            return undefined;
+        }
 
         return Number.isSafeInteger(port) && port! > 0 && port! < 65_536 ? port : undefined;
     } catch {
@@ -86,7 +107,9 @@ function recordServeMount(): void {
     const temp = `${serveMountFile}.tmp`;
 
     try {
-        writeFileSync(temp, `${JSON.stringify({ port: options.port })}\n`, { mode: 0o600 });
+        writeFileSync(temp, `${JSON.stringify({ port: options.port, data: dataFolder })}\n`, {
+            mode: 0o600,
+        });
         renameSync(temp, serveMountFile);
     } catch (error) {
         log(yellow(`  Could not write ${tilde(serveMountFile)}: ${(error as Error).message}`));
@@ -842,9 +865,16 @@ function prepareServe(): boolean {
     // An existing mount of ours is adopted rather than mounted again. Only a mount this launcher left behind is this
     // run's to take down; one the owner made stays when this launcher quits, which is what the line says.
     if (result.adopted) {
+        const ours = savedServeMountPort() === options.port;
+
+        // A receipt from before folders were named gets this folder's name, so a copy made later leaves the mount alone.
+        if (ours) {
+            recordServeMount();
+        }
+
         log(
             dim(
-                savedServeMountPort() === options.port
+                ours
                     ? "  Using the Tailscale Serve mount an earlier run left behind."
                     : "  Using the Tailscale Serve mount already in place; it stays when this launcher quits.",
             ),
