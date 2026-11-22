@@ -459,6 +459,7 @@ test("long polling delivers the stream's events, resends until acknowledged, and
 
     type Poll = {
         session: string;
+        hold: number;
         events: { seq: number; event: string; data: Record<string, unknown> }[];
     };
     const poll = async (query: string): Promise<Poll> =>
@@ -477,6 +478,8 @@ test("long polling delivers the stream's events, resends until acknowledged, and
             ["hello", "sessions"],
         );
         assert.ok(first.events.some((each) => each.event === "view" && each.data.full === true));
+        // Each answer says how long the server holds a poll, so the tab knows when one has hung.
+        assert.equal(first.hold, 25_000);
         // Without an acknowledgement, the same events come again (a debounced update may follow them).
         const again = await poll(`tab=t1&c=${id}&session=${first.session}&ack=0`);
 
@@ -492,6 +495,7 @@ test("long polling delivers the stream's events, resends until acknowledged, and
             const next = await poll(`tab=t1&c=${id}&session=${first.session}&ack=${ack}`);
 
             assert.equal(next.session, first.session);
+            assert.equal(next.hold, 25_000);
             assert.ok(next.events.every((each) => each.seq > ack));
 
             for (const each of next.events) {

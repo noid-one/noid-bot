@@ -194,6 +194,8 @@ export function reviewPrompt(input: {
     tool: string;
     args: Record<string, unknown>;
     task: string;
+    /** The owner's earlier messages, oldest first (`OwnerWords.earlier`). */
+    earlier?: string[];
     bot: BotProfile;
     /** The call opens a site the run was not given: only its address is checked (`NEW_SITE_RULES`). */
     newSite?: boolean;
@@ -206,6 +208,12 @@ export function reviewPrompt(input: {
         ...(input.newSite === true ? NEW_SITE_RULES : []),
         `tool: ${input.tool}`,
         `<tool_args>\n${asData(JSON.stringify(redact(input.args)))}\n</tool_args>`,
+        ...(input.earlier?.length
+            ? [
+                  "owner_earlier_messages are the owner's own earlier messages in this chat, oldest first; owner_task is the latest.",
+                  `<owner_earlier_messages>\n${asData(JSON.stringify(input.earlier))}\n</owner_earlier_messages>`,
+              ]
+            : []),
         `<owner_task>\n${asData(snippet(input.task || "(none given)", input.newSite === true ? MAX_NEW_SITE_TASK : MAX_TASK))}\n</owner_task>`,
         `<bot>\n${asData(snippet(`${input.bot.name}: ${input.bot.role || "no role"}`, MAX_ROLE))}\n</bot>`,
     ].join("\n");
@@ -293,20 +301,21 @@ function hasRepeatedKey(json: string): boolean {
     return false;
 }
 
+/** What the owner asked: their newest message, and a few before it from the same stretch of chat, oldest first. */
+export type OwnerWords = { task: string; earlier: string[] };
+
 /**
- * What the owner last wrote to a bot: the task its call is checked against. Only the owner's own messages count, in
- * the bot's own conversation (a subagent's task is the bot's words): not mail from other bots, not a webhook, not a
- * schedule the bot set up, which a page or another bot could have worded. Empty when there is none.
+ * The owner's earlier messages the checker sees besides the newest: how many, how far back from it, and how much of
+ * each. A bot keeps one long chat, and a request from days ago is not permission now (rakazo 2430ddbd1).
  */
-async function ownerTask(app: PocketApp, id: ConversationId, ownerId: string): Promise<string> {
-    const root = app.rootOf(id);
-    const written = (await app.harness.snapshot(AuthorsDoc, root, context))?.entries ?? {};
-    const conversation = await app.harness.conversation(root, context);
-    const page = await conversation?.entries({}, TASK_LOOKBACK, undefined, context);
-    const asked = page?.items.find(
-        (entry) => entry.kind === "pi.user" && written[String(entry.id)] === ownerId,
-    );
-    const content = (asked?.model?.[0] as { content?: unknown } | undefined)?.content;
+const EARLIER_MESSAGES = 3;
+const EARLIER_WINDOW_MS = 2 * 60 * 60 * 1000;
+const MAX_EARLIER = 300;
+
+/** A user entry's words and when it was written. */
+function wordsOf(entry: { model?: readonly unknown[] }): { text: string; at: number } {
+    const message = entry.model?.[0] as { content?: unknown; timestamp?: number } | undefined;
+    const content = message?.content;
     const text =
         typeof content === "string"
             ? content
@@ -319,17 +328,59 @@ async function ownerTask(app: PocketApp, id: ConversationId, ownerId: string): P
               : "";
 
     // Several people on a server: the owner's messages start with their name, which says nothing about the task.
-    return text.replace(/^\[from: [^\]]+\] /, "");
+    return { text: text.replace(/^\[from: [^\]]+\] /, ""), at: message?.timestamp ?? 0 };
 }
 
-/** What a bot was asked to do: a group round going on, else what the owner last wrote it. Empty when nothing. */
-export async function taskOf(app: PocketApp, id: ConversationId): Promise<string> {
-    const owner = ownerOf(app);
-
-    return (
-        (await app.groups.roundTask(app.rootOf(id))) ??
-        (owner === undefined ? "" : await ownerTask(app, id, owner.id))
+/**
+ * What the owner wrote to a bot: the task its call is checked against. Only the owner's own messages count, in the
+ * bot's own conversation (a subagent's task is the bot's words): not mail from other bots, not a webhook, not a
+ * schedule the bot set up, which a page or another bot could have worded. Empty when there is none.
+ */
+async function ownerWords(
+    app: PocketApp,
+    id: ConversationId,
+    ownerId: string,
+): Promise<OwnerWords> {
+    const root = app.rootOf(id);
+    const written = (await app.harness.snapshot(AuthorsDoc, root, context))?.entries ?? {};
+    const conversation = await app.harness.conversation(root, context);
+    const page = await conversation?.entries({}, TASK_LOOKBACK, undefined, context);
+    const owned = (page?.items ?? []).filter(
+        (entry) => entry.kind === "pi.user" && written[String(entry.id)] === ownerId,
     );
+    const [newest, ...before] = owned.map(wordsOf);
+
+    if (newest === undefined) {
+        return { task: "", earlier: [] };
+    }
+
+    return { task: newest.text, earlier: earlierWords(newest, before) };
+}
+
+/** Of the owner's messages before the newest (newest first), the ones the checker sees, oldest first. */
+export function earlierWords(newest: { at: number }, before: { text: string; at: number }[]) {
+    return before
+        .filter((words) => words.text.trim() !== "" && newest.at - words.at <= EARLIER_WINDOW_MS)
+        .slice(0, EARLIER_MESSAGES)
+        .map((words) => snippet(words.text.trim(), MAX_EARLIER))
+        .reverse();
+}
+
+/** What a bot was asked to do: a group round going on, else what the owner wrote it. Empty when nothing. */
+async function wordsFor(app: PocketApp, id: ConversationId): Promise<OwnerWords> {
+    const owner = ownerOf(app);
+    const round = await app.groups.roundTask(app.rootOf(id));
+
+    if (round !== undefined) {
+        return { task: round, earlier: [] };
+    }
+
+    return owner === undefined ? { task: "", earlier: [] } : await ownerWords(app, id, owner.id);
+}
+
+/** What a bot was asked to do now: the round's task or the owner's newest message. */
+export async function taskOf(app: PocketApp, id: ConversationId): Promise<string> {
+    return (await wordsFor(app, id)).task;
 }
 
 /** A provider's error can quote a key: anything that looks like one is left out. */
@@ -413,7 +464,8 @@ export async function review(
         const limit = timeoutMs();
         const deadline = AbortSignal.timeout(limit);
         const deadlineAt = Date.now() + limit;
-        const prompt = reviewPrompt({ tool, args, task: await taskOf(app, id), bot, newSite });
+        const words = await wordsFor(app, id);
+        const prompt = reviewPrompt({ tool, args, ...words, bot, newSite });
 
         timedOut = () => deadline.aborted;
         const handOff = (why: string, backup: { provider: string; id: string }) =>

@@ -86,6 +86,16 @@ test("each action is its xdotool command, and arguments that do not fit are refu
         "ctrl+s",
         "Return",
     ]);
+    // Web key names become xdotool's: it would skip an unknown one and still exit 0.
+    assert.deepEqual(commandFor({ action: "key", keys: "PageDown ctrl+ArrowLeft pgup del" }), [
+        "xdotool",
+        "key",
+        "--",
+        "Page_Down",
+        "ctrl+Left",
+        "Page_Up",
+        "Delete",
+    ]);
     // Typed text is one argument after `--`: it cannot become an option or a second command.
     assert.deepEqual(commandFor({ action: "type", text: "--help; rm -rf ~" }), [
         "xdotool",

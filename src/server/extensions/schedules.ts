@@ -12,7 +12,7 @@ import type { PocketHost } from "../host.ts";
 import { SCHEDULED_PREFIX, SCHEDULES_EXTENSION } from "../schedules.ts";
 import { describeMoment, describeRepeat, WHEN_HELP } from "../when.ts";
 
-const GUIDE = `Messages that start with "${SCHEDULED_PREFIX.trim()}" were set up earlier, by a person or by you with the schedule tool, and arrive at their time. Nobody may be watching when one arrives: do the work, then end with a short summary that stands on its own.`;
+const GUIDE = `Messages that start with "${SCHEDULED_PREFIX.trim()}" were set up earlier, by a person or by you with the schedule tool, and arrive at their time. Nobody may be watching when one arrives: do the work, then end with a short summary that stands on its own. Each one is a single scheduled run: do its work now, and do not schedule it again.`;
 
 export default function createSchedules(host: PocketHost) {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
