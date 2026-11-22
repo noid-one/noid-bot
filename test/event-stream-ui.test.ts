@@ -123,7 +123,8 @@ test("a first stream that hears nothing at all is made again", real, async () =>
             addEventListener() {}
         };
         connect();
-        await wait(11_500);
+        const until = Date.now() + 20_000;
+        while (made.length < 2 && Date.now() < until) await wait(100);
         return JSON.stringify(made.length);
     `);
 
@@ -172,12 +173,117 @@ test(
             };
             localStorage.setItem("pocket.transport", "poll:" + Date.now());
             connect();
-            await wait(5000);
+            const until = Date.now() + 20_000;
+            while (polls < 3 && Date.now() < until) await wait(100);
             localStorage.removeItem("pocket.transport");
             return JSON.stringify(polls);
         `);
 
             assert.ok(Number(polls) >= 3, `${polls} polls: the hung one was waited on`);
+        } finally {
+            far.close();
+        }
+    },
+);
+
+test(
+    "a stream that hears nothing try after try is still made again within a minute",
+    real,
+    async () => {
+        const page = await browsers.open(5);
+
+        await page.navigate(url);
+        const waits = await page.evaluate(`
+        const { connect } = await import("/store.js");
+        const realTimeout = setTimeout;
+        const wait = (ms) => new Promise((resolve) => realTimeout(resolve, ms));
+        const made = [], firstData = [];
+        const Real = EventSource;
+        // Not even the stream's headers come, so no try counts as open.
+        globalThis.EventSource = class extends Real {
+            constructor(...a) { super(...a); made.push(this); }
+            addEventListener() {}
+            set onopen(_) {}
+        };
+        // Time runs 200 times faster, so eight silent tries in a row take seconds, not minutes.
+        globalThis.setTimeout = (fn, ms = 0, ...rest) => {
+            if (String(fn).includes("heardAny")) firstData.push(ms);
+            return realTimeout(fn, ms / 200, ...rest);
+        };
+        connect();
+        const until = Date.now() + 20_000;
+        while (made.length < 9 && Date.now() < until) await wait(50);
+        globalThis.setTimeout = realTimeout;
+        return JSON.stringify(firstData);
+    `);
+        const asked = JSON.parse(waits) as number[];
+
+        assert.ok(asked.length >= 8, `${asked.length} tries`);
+        assert.ok(
+            Math.max(...asked) <= 60_000,
+            `waits ${asked.join(", ")}: one waited past a minute`,
+        );
+    },
+);
+
+test(
+    "a poll that hangs before its headers, try after try, waits twice as long each time",
+    { skip: real.skip || (lan === undefined ? "no address but loopback" : false) },
+    async () => {
+        const far = createServer(
+            createHandler({ app, listen: { host: lan!, port: 0 }, restart() {} }),
+        );
+
+        await new Promise<void>((resolve) => far.listen(0, lan, resolve));
+        const token = encodeURIComponent(app.config.ownerToken);
+        const page = await browsers.open(6);
+
+        try {
+            await page.navigate(
+                `http://${lan}:${(far.address() as { port: number }).port}/login?token=${token}`,
+            );
+            const starts = await page.evaluate(`
+            const { connect } = await import("/store.js");
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const real = fetch;
+            const starts = [];
+            // The first answer says the server holds a poll 300 ms; every later poll hangs before its headers.
+            globalThis.fetch = async (input, init) => {
+                if (!String(input).includes("/api/poll?") || String(input).includes("close=1")) {
+                    return real(input, init);
+                }
+
+                starts.push(Date.now());
+
+                if (starts.length > 1) {
+                    return new Promise((_, reject) =>
+                        init.signal.addEventListener("abort", () => reject(new DOMException("stop", "AbortError"))),
+                    );
+                }
+
+                const response = await real(input, init);
+                const data = await response.json();
+
+                return new Response(JSON.stringify({ ...data, hold: 300 }), { status: response.status });
+            };
+            localStorage.setItem("pocket.transport", "poll:" + Date.now());
+            connect();
+            const until = Date.now() + 30_000;
+            while (starts.length < 4 && Date.now() < until) await wait(100);
+            localStorage.removeItem("pocket.transport");
+            return JSON.stringify(starts);
+        `);
+            const at = JSON.parse(starts) as number[];
+
+            assert.ok(at.length >= 4, `${at.length} polls`);
+            // Each gap is the hung poll's wait (2.45 s for a 300 ms hold), then the pause after a failure (1 s, then 2 s).
+            const first = at[2]! - at[1]! - 1000;
+            const second = at[3]! - at[2]! - 2000;
+
+            assert.ok(
+                second > first * 1.6,
+                `the second hung poll waited ${second} ms, the first ${first} ms`,
+            );
         } finally {
             far.close();
         }
