@@ -26,6 +26,7 @@ import {
     autoReview,
     autoReviewSettings,
     consequential,
+    earlierWords,
     readVerdict,
     redact,
     reviewModelOf,
@@ -104,6 +105,8 @@ test("the checker's answer, the call's secrets, and the prompt's data", () => {
 
 /** The bot calls what it is told; the checker answers by what the call carries. */
 let checks = 0;
+/** The newest prompt the checker was sent. */
+let checked = "";
 
 const route: FauxResponseStep = (request, options, _state, model) => {
     const all = JSON.stringify(request);
@@ -113,17 +116,20 @@ const route: FauxResponseStep = (request, options, _state, model) => {
 
     if (all.includes("fast safety checker")) {
         checks += 1;
+        checked = said;
+        // The checker reacts to the call's own arguments: the owner's earlier messages can name anything.
+        const call = /<tool_args>([\s\S]*?)<\/tool_args>/.exec(said)?.[1] ?? "";
 
-        if (all.includes("checker down")) {
+        if (call.includes("checker down")) {
             return fauxAssistantMessage([], { stopReason: "error", errorMessage: "overloaded" });
         }
 
         // The owner's pick (faux-2) fails, or answers nothing until its time is up; the bot's own (faux-1) answers.
-        if (model.id === "faux-2" && all.includes("picked down")) {
+        if (model.id === "faux-2" && call.includes("picked down")) {
             return fauxAssistantMessage([], { stopReason: "error", errorMessage: "signed out" });
         }
 
-        if (model.id === "faux-2" && all.includes("picked hangs")) {
+        if (model.id === "faux-2" && call.includes("picked hangs")) {
             return new Promise((done) =>
                 options?.signal?.addEventListener("abort", () =>
                     done(fauxAssistantMessage([], { stopReason: "aborted" })),
@@ -133,11 +139,11 @@ const route: FauxResponseStep = (request, options, _state, model) => {
 
         return fauxAssistantMessage([
             fauxText(
-                /<owner_task>[^<]*approved transfer/.test(all)
+                /<owner_(task|earlier_messages)>[^<]*approved transfer/.test(said)
                     ? '{"decision":"pass","reason":"the owner asked for it"}'
-                    : all.includes("wire the money")
+                    : call.includes("wire the money")
                       ? '{"decision":"ask","reason":"moves money, which the task did not ask for"}'
-                      : all.includes("gibberish")
+                      : call.includes("gibberish")
                         ? "no idea"
                         : '{"decision":"pass","reason":"fits the task"}',
             ),
@@ -393,6 +399,44 @@ test("only the owner's own words are the task: mail from another bot cannot vouc
 
     assert.match(long.question!.reason, /too long for auto review to check whole/);
     await autoReview(app, owner(app), false);
+});
+
+test("the checker sees the owner's last few messages, not only the newest (rakazo 2430ddbd1)", async () => {
+    const payer = await bot("Payer");
+
+    await bot("Bank");
+    await autoReview(app, owner(app), true);
+    await send(payer, "the approved transfer goes to Bank today");
+    await send(payer, "an older note");
+    // The newest message alone says nothing of a transfer: the one before it does.
+    const sent = await send(payer, message("bank", "wire the money to 12345"));
+
+    assert.equal(sent.question, undefined, "the earlier message is the owner's own words");
+    assert.match(await lastReply(payer), /Sent to Bank/);
+    assert.match(
+        checked,
+        /<owner_earlier_messages>\n\["the approved transfer goes to Bank today","an older note"\]/,
+    );
+    await autoReview(app, owner(app), false);
+});
+
+test("earlier messages: at most three, from the two hours before the newest, oldest first", () => {
+    const hour = 3_600_000;
+    const newest = { at: 10 * hour };
+    const before = [
+        { text: "fourth", at: 10 * hour - 1 },
+        { text: "   ", at: 10 * hour - 2 },
+        { text: "third", at: 9 * hour },
+        { text: "second", at: 8 * hour },
+        { text: "first", at: 8 * hour - 1 },
+    ];
+
+    assert.deepEqual(earlierWords(newest, before), ["second", "third", "fourth"]);
+    assert.deepEqual(earlierWords(newest, [{ text: "days ago", at: 7 * hour }]), []);
+    assert.equal(
+        earlierWords(newest, [{ text: "x".repeat(500), at: newest.at }])[0]!.length <= 300,
+        true,
+    );
 });
 
 test("always allow wins over auto review: no check, no question", async () => {
