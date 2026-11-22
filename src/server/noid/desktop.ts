@@ -169,12 +169,23 @@ function keyName(keys: string): string {
         throw new Error(`“${keys}” is not a key, such as ctrl+s, Return, or alt+Tab.`);
     }
 
+    // xdotool skips a name it does not know and still exits 0, so a web name such as PageDown must become its own.
     const names: Record<string, string> = {
         control: "ctrl",
         cmd: "super",
         meta: "super",
         enter: "Return",
         esc: "Escape",
+        pagedown: "Page_Down",
+        pgdn: "Page_Down",
+        pageup: "Page_Up",
+        pgup: "Page_Up",
+        arrowup: "Up",
+        arrowdown: "Down",
+        arrowleft: "Left",
+        arrowright: "Right",
+        del: "Delete",
+        ins: "Insert",
     };
 
     return parts.map((key) => names[key.toLowerCase()] ?? key).join("+");
