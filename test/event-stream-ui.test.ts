@@ -109,6 +109,56 @@ test(
     },
 );
 
+test(
+    "one stream that goes quiet after its first batch, away from this computer, is replaced, not turned to polling",
+    { skip: real.skip || (lan === undefined ? "no address but loopback" : false) },
+    async () => {
+        const far = createServer(
+            createHandler({ app, listen: { host: lan!, port: 0 }, restart() {} }),
+        );
+
+        await new Promise<void>((resolve) => far.listen(0, lan, resolve));
+        const token = encodeURIComponent(app.config.ownerToken);
+        const page = await browsers.open(7);
+
+        try {
+            await page.navigate(
+                `http://${lan}:${(far.address() as { port: number }).port}/login?token=${token}`,
+            );
+            const seen = await page.evaluate(`
+            const { connect } = await import("/store.js");
+            const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const made = [], Real = EventSource;
+            // Only the first stream has its pings held back, as a healthy path cut off once (a network change, a lock).
+            globalThis.EventSource = class extends Real {
+                constructor(...a) { super(...a); made.push(this); this.first = made.length === 1; }
+                addEventListener(name, fn, ...rest) {
+                    const held = name === "ping" && this.first;
+                    super.addEventListener(name, held ? (e) => e.isTrusted || fn(e) : fn, ...rest);
+                }
+            };
+            localStorage.removeItem("pocket.transport");
+            connect();
+            await wait(1500);
+            made[0].dispatchEvent(new MessageEvent("ping", { data: '{"every":200}' }));
+            const until = Date.now() + 10_000;
+            while (made.length < 2 && Date.now() < until) await wait(100);
+            await wait(500);
+            return JSON.stringify({ streams: made.length, transport: localStorage.getItem("pocket.transport") ?? "" });
+        `);
+            const { streams, transport } = JSON.parse(seen) as {
+                streams: number;
+                transport: string;
+            };
+
+            assert.equal(transport, "", "one quiet stream turned the tab to polling");
+            assert.ok(streams >= 2, `${streams} streams: the quiet one was kept`);
+        } finally {
+            far.close();
+        }
+    },
+);
+
 test("a first stream that hears nothing at all is made again", real, async () => {
     const page = await browsers.open(3);
 
