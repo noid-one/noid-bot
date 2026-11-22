@@ -58,6 +58,31 @@ test(
     },
 );
 
+test("a tab back from the background replaces a stream that missed its ping", real, async () => {
+    const page = await browsers.open(8);
+
+    await page.navigate(url);
+    const streams = await page.evaluate(`
+        const { connect } = await import("/store.js");
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const made = [], Real = EventSource;
+        globalThis.EventSource = class extends Real { constructor(...a) { super(...a); made.push(this); } };
+        connect();
+        await wait(1000);
+        // A ping says the server pings every second; 1.7 s later the watch (2.5 periods) has not acted yet.
+        made[0].dispatchEvent(new MessageEvent("ping", { data: '{"every":1000}' }));
+        await wait(1700);
+        const before = made.length;
+        document.dispatchEvent(new Event("visibilitychange"));
+        await wait(100);
+        return JSON.stringify({ before, after: made.length });
+    `);
+    const { before, after } = JSON.parse(streams) as { before: number; after: number };
+
+    assert.equal(before, 1, "the watch replaced the stream before the tab came back");
+    assert.ok(after >= 2, `${after} streams: the tab came back to a stream that missed its ping`);
+});
+
 // A Cloudflare quick tunnel passes the first batch, then holds small events back: no ping after the first comes.
 const lan = Object.values(networkInterfaces())
     .flat()
